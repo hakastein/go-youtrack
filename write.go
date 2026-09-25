@@ -2,17 +2,14 @@ package youtrack
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
 
-// WriteOptions: Fields is the fields= expression of the document a write answers with, empty for the defaults of
-// the operation and +x for them and x.
+// WriteOptions: Fields is the fields= expression of what a write answers with, the entity written or, for
+// Links.Add, each linked issue; empty for the defaults of the operation and +x for them and x.
 type WriteOptions struct {
 	Fields string
 }
@@ -54,23 +51,6 @@ func (c *Client) deleteOwner(ctx context.Context, spec *schemas, kind ownerKind,
 		return nil, fault
 	}
 	return objectNode(decoded, requested, decoded.objects[0], nil)
-}
-
-type clearablePart[W any] struct {
-	name  string
-	empty func(*W)
-}
-
-func clearablePartIndex[W any](parts []clearablePart[W], name string) int {
-	return slices.IndexFunc(parts, func(p clearablePart[W]) bool { return strings.EqualFold(name, p.name) })
-}
-
-func partsOf[W any](parts []clearablePart[W]) string {
-	names := make([]string, 0, len(parts))
-	for _, part := range parts {
-		names = append(names, part.name)
-	}
-	return strings.Join(names, " or ")
 }
 
 func rejectReplaced(flag, text, empty string, replacements []charReplacement) *Error {
@@ -122,14 +102,6 @@ func emptyMismatch(wrong []mismatch, field string, value any) []mismatch {
 		return wrong
 	}
 	return append(wrong, mismatch{field: field, expected: NewNull(), actual: rawValueNode(value)})
-}
-
-func sizeMismatch(wrong []mismatch, bytesStreamed int64, value any) []mismatch {
-	if received, isNumber := parseInt64(value); isNumber && received == bytesStreamed {
-		return wrong
-	}
-	written := NewNumber(json.Number(strconv.FormatInt(bytesStreamed, 10)))
-	return append(wrong, mismatch{field: sizeKey, expected: written, actual: rawValueNode(value)})
 }
 
 func mismatchFault(a decodedResponse, identity []Pair, wrong []mismatch) *Error {

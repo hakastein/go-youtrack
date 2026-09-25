@@ -3,10 +3,12 @@ package youtrack
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -295,4 +297,12 @@ func rewrittenName(name string) (because string, rewritten bool) {
 		return fmt.Sprintf("it begins or ends with a character no greater than U+%04X, which YouTrack trims away", maxTrimmedRune), true
 	}
 	return "", false
+}
+
+func sizeMismatch(wrong []mismatch, bytesStreamed int64, value any) []mismatch {
+	if received, isNumber := parseInt64(value); isNumber && received == bytesStreamed {
+		return wrong
+	}
+	written := NewNumber(json.Number(strconv.FormatInt(bytesStreamed, 10)))
+	return append(wrong, mismatch{field: sizeKey, expected: written, actual: rawValueNode(value)})
 }
