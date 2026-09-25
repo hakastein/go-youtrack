@@ -28,32 +28,116 @@ const (
 
 const LinkListFields = "idReadable,summary"
 
+// ListLinksOptions: Fields is a fields= expression of each linked issue, empty for LinkListFields and +x for them
+// and x.
+type ListLinksOptions struct {
+	Fields string
+}
+
+// List has no page: the links come with the issue, and truncated says the instance sent fewer linked issues than
+// its links hold.
+func (s *LinksService) List(ctx context.Context, id string, opts *ListLinksOptions) (*Node, error) {
+	return result(s.list(ctx, id, optionsOf(opts)))
+}
+
+// Add matches the phrase in any letter case and in the translation of the instance; its exact spelling decides
+// between two links that answer to it.
+func (s *LinksService) Add(ctx context.Context, id, phrase, target string, opts *WriteOptions) (*Node, error) {
+	return result(s.add(ctx, id, phrase, target, optionsOf(opts)))
+}
+
+// Remove names a link from either end: DEV-1 "depends on" DEV-2 and DEV-2 "is required for" DEV-1 are one link.
+func (s *LinksService) Remove(ctx context.Context, id, phrase, target string) (*Node, error) {
+	return result(s.remove(ctx, id, phrase, target))
+}
+
 func issueLinkFields() []string {
 	return []string{linksKey, "parent", "subtasks"}
 }
 
-func ListLinks(id string, expression string) (Call, *Error) {
+func (s *LinksService) list(ctx context.Context, id string, opts ListLinksOptions) (*Node, *Error) {
 	id, fault := parseIssueID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	requested, fault := linkFields(spec, expression)
+	c := s.client
+	requested, fault := linkFields(c.spec, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listLinks(ctx, spec, id, requested)
-	}, nil
+	asked := cloneFields(requested)
+	issueBlocks(c.spec, composedIssue(), asked)
+	for i := range asked {
+		if asked[i].name == linksKey {
+			asked[i].children = linkDocumentFields(asked[i].children, targetFields(requested))
+		}
+	}
+	decoded, fault := c.request(ctx, c.spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiGetIssue(ctx, id, fields, nil)
+	})
+	if fault != nil {
+		return nil, fault
+	}
+	return newConverter(decoded, inlineLayout).linkDocument(targetFields(requested), decoded.objects[0])
+}
+
+func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts WriteOptions) (*Node, *Error) {
+	id, target, fault := parseLinkWrite(id, phrase, target)
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	requested, fault := linkFields(c.spec, opts.Fields)
+	if fault != nil {
+		return nil, fault
+	}
+	w, fault := c.prepareLinkWrite(ctx, id, phrase, target)
+	if fault != nil {
+		return nil, fault
+	}
+	body, _ := json.Marshal(internalIssueIDBody{ID: w.target.id})
+	node, fault := c.write(ctx, c.spec, issueSchema, linkWriteFields(targetBlocks(c.spec, requested)),
+		func(ctx context.Context, fields string) (*http.Response, error) {
+			return c.apiAddLinkedIssue(ctx, w.source.readable, w.link.id, body, fields)
+		}, w.verify, w.renderResult(targetFields(requested)))
+	if fault != nil {
+		return nil, w.withLinkDetails(fault)
+	}
+	return node, nil
+}
+
+func (s *LinksService) remove(ctx context.Context, id, phrase, target string) (*Node, *Error) {
+	id, target, fault := parseLinkWrite(id, phrase, target)
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	w, fault := c.prepareLinkWrite(ctx, id, phrase, target)
+	if fault != nil {
+		return nil, fault
+	}
+	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
+		return c.apiRemoveLinkedIssue(ctx, w.source.readable, w.link.id, w.target.id)
+	}); fault != nil {
+		return nil, w.withLinkDetails(noSuchLink(fault))
+	}
+	return w.removed(), nil
+}
+
+func parseLinkWrite(id, phrase, target string) (string, string, *Error) {
+	id, fault := parseIssueID(id)
+	if fault != nil {
+		return "", "", fault
+	}
+	target, fault = parseIssueID(target)
+	if fault != nil {
+		return "", "", fault
+	}
+	return id, target, validatePhrase(phrase)
 }
 
 func linkFields(spec *schemas, expression string) ([]requestedField, *Error) {
-	written := LinkListFields
-	target, fault := parseDefault(LinkListFields, false)
-	if expression != "" {
-		written = expression
-		target, fault = parseFields(written, LinkListFields)
-	}
+	written, target, fault := fieldsOrDefault(expression, LinkListFields, false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -72,46 +156,6 @@ func linkFields(spec *schemas, expression string) ([]requestedField, *Error) {
 	return requested, nil
 }
 
-func AddLink(id, phrase, target string, expression string) (Call, *Error) {
-	id, fault := parseIssueID(id)
-	if fault != nil {
-		return nil, fault
-	}
-	target, fault = parseIssueID(target)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := validatePhrase(phrase); fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	requested, fault := linkFields(spec, expression)
-	if fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.addLink(ctx, spec, id, phrase, target, requested)
-	}, nil
-}
-
-func RemoveLink(id, phrase, target string) (Call, *Error) {
-	id, fault := parseIssueID(id)
-	if fault != nil {
-		return nil, fault
-	}
-	target, fault = parseIssueID(target)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := validatePhrase(phrase); fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.removeLink(ctx, spec, id, phrase, target)
-	}, nil
-}
-
 func validatePhrase(phrase string) *Error {
 	switch {
 	case phrase == "":
@@ -123,25 +167,8 @@ func validatePhrase(phrase string) *Error {
 	return nil
 }
 
-const emptyPhrase = "the phrase is empty: a link goes by the phrase ytrack link list prints it under, as in " +
-	`ytrack link add DEV-1 "depends on" DEV-2`
-
-func (c *Client) listLinks(ctx context.Context, spec *schemas, id string, requested []requestedField) (*Node, *Error) {
-	asked := cloneFields(requested)
-	issueBlocks(spec, composedIssue(), asked)
-	for i := range asked {
-		if asked[i].name == linksKey {
-			asked[i].children = linkDocumentFields(asked[i].children, targetFields(requested))
-		}
-	}
-	decoded, fault := c.request(ctx, spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiGetIssue(ctx, id, fields, nil)
-	})
-	if fault != nil {
-		return nil, fault
-	}
-	return newConverter(decoded, inlineLayout).linkDocument(targetFields(requested), decoded.objects[0])
-}
+const emptyPhrase = "the phrase is empty, and a link is named by the phrase it goes by from the issue, such as " +
+	`"depends on"`
 
 func (n converter) linkDocument(target []requestedField, issue map[string]any) (*Node, *Error) {
 	block, held, printed, fault := n.linkListing(target, issue[linksKey])
@@ -341,8 +368,8 @@ func (n converter) phrase(link map[string]any) (string, *Error) {
 	return phrase, nil
 }
 
-func (c *Client) prepareLinkWrite(ctx context.Context, spec *schemas, id, phrase, target string) (linkWrite, *Error) {
-	source, fault := c.readSourceIssue(ctx, spec, id)
+func (c *Client) prepareLinkWrite(ctx context.Context, id, phrase, target string) (linkWrite, *Error) {
+	source, fault := c.readSourceIssue(ctx, id)
 	if fault != nil {
 		return linkWrite{}, fault
 	}
@@ -350,7 +377,7 @@ func (c *Client) prepareLinkWrite(ctx context.Context, spec *schemas, id, phrase
 	if fault != nil {
 		return linkWrite{}, fault
 	}
-	other, fault := c.readTargetIssue(ctx, spec, target)
+	other, fault := c.readTargetIssue(ctx, target)
 	if fault != nil {
 		return linkWrite{}, fault
 	}
@@ -359,35 +386,6 @@ func (c *Client) prepareLinkWrite(ctx context.Context, spec *schemas, id, phrase
 			Pair{Key: "target", Value: NewString(other.readable)})
 	}
 	return linkWrite{source: source, target: other, link: link}, nil
-}
-
-func (c *Client) addLink(ctx context.Context, spec *schemas, id, phrase, target string, requested []requestedField) (*Node, *Error) {
-	w, fault := c.prepareLinkWrite(ctx, spec, id, phrase, target)
-	if fault != nil {
-		return nil, fault
-	}
-	body, _ := json.Marshal(internalIssueIDBody{ID: w.target.id})
-	node, fault := c.write(ctx, spec, issueSchema, linkWriteFields(targetBlocks(spec, requested)),
-		func(ctx context.Context, fields string) (*http.Response, error) {
-			return c.apiAddLinkedIssue(ctx, w.source.readable, w.link.id, body, fields)
-		}, w.verify, w.renderResult(targetFields(requested)))
-	if fault != nil {
-		return nil, w.withLinkDetails(fault)
-	}
-	return node, nil
-}
-
-func (c *Client) removeLink(ctx context.Context, spec *schemas, id, phrase, target string) (*Node, *Error) {
-	w, fault := c.prepareLinkWrite(ctx, spec, id, phrase, target)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return c.apiRemoveLinkedIssue(ctx, w.source.readable, w.link.id, w.target.id)
-	}); fault != nil {
-		return nil, w.withLinkDetails(noSuchLink(fault))
-	}
-	return w.removed(), nil
 }
 
 func noSuchLink(fault *Error) *Error {
@@ -440,8 +438,8 @@ func linkCatalogueFields() []requestedField {
 	}
 }
 
-func (c *Client) readSourceIssue(ctx context.Context, spec *schemas, id string) (linkIssue, *Error) {
-	read, fault := c.readLinkedIssue(ctx, spec, id, linkCatalogueFields())
+func (c *Client) readSourceIssue(ctx context.Context, id string) (linkIssue, *Error) {
+	read, fault := c.readLinkedIssue(ctx, id, linkCatalogueFields())
 	if fault != nil {
 		return linkIssue{}, fault
 	}
@@ -453,12 +451,12 @@ func (c *Client) readSourceIssue(ctx context.Context, spec *schemas, id string) 
 	return read, nil
 }
 
-func (c *Client) readTargetIssue(ctx context.Context, spec *schemas, id string) (linkIssue, *Error) {
-	return c.readLinkedIssue(ctx, spec, id, []requestedField{{name: idKey}, {name: idReadableKey}})
+func (c *Client) readTargetIssue(ctx context.Context, id string) (linkIssue, *Error) {
+	return c.readLinkedIssue(ctx, id, []requestedField{{name: idKey}, {name: idReadableKey}})
 }
 
-func (c *Client) readLinkedIssue(ctx context.Context, spec *schemas, id string, requested []requestedField) (linkIssue, *Error) {
-	a, fault := c.request(ctx, spec, issueSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+func (c *Client) readLinkedIssue(ctx context.Context, id string, requested []requestedField) (linkIssue, *Error) {
+	a, fault := c.request(ctx, c.spec, issueSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
 	if fault != nil {
@@ -658,7 +656,7 @@ func (link issueLink) hasValidID() bool {
 	return false
 }
 
-const unreadableLink = "the server addresses the link by an id ytrack cannot read the end of: a link an issue " +
+const unreadableLink = "the server addresses the link by an id whose end cannot be read: a link an issue " +
 	"stands at either end of is addressed by digits, a dash and digits, one it stands at the source of by the " +
 	"same and an s, and one it stands at the target of by the same and a t"
 
