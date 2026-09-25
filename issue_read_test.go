@@ -276,7 +276,7 @@ func TestListIssuesPrintsTheTextOfARecordAsAString(t *testing.T) {
 	node, _, err := issueSearch(t, server, "field: value", "description,customFields", 50)
 
 	require.NoError(t, err)
-	assert.Equal(t, issuesListed(1, false, youtrack.NewMap(
+	assert.Equal(t, wholePage("issues", youtrack.NewMap(
 		youtrack.Pair{Key: "description", Value: youtrack.NewString("First\nSecond")},
 		youtrack.Pair{Key: "customFields", Value: youtrack.NewMap(youtrack.DataPair("Notes", youtrack.NewString("First\nSecond")))},
 	)), node)

@@ -124,16 +124,11 @@ func TestListUsersReadsTheDefaultFields(t *testing.T) {
 	node, err := client(t, server).Users.List(t.Context(), "fir", nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(1)},
-		youtrack.Pair{Key: "returned", Value: number(1)},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(false)},
-		youtrack.Pair{Key: "users", Value: youtrack.NewList(youtrack.NewMap(
-			youtrack.Pair{Key: "login", Value: youtrack.NewString("first")},
-			youtrack.Pair{Key: "fullName", Value: youtrack.NewString("First Last")},
-			youtrack.Pair{Key: "banned", Value: youtrack.NewBool(true)},
-		))},
-	), node)
+	assert.Equal(t, wholePage("users", youtrack.NewMap(
+		youtrack.Pair{Key: "login", Value: youtrack.NewString("first")},
+		youtrack.Pair{Key: "fullName", Value: youtrack.NewString("First Last")},
+		youtrack.Pair{Key: "banned", Value: youtrack.NewBool(true)},
+	)), node)
 	assert.Equal(t, []url.Values{{"fields": {"login,fullName,banned"}, "$top": {"50"}, "query": {"fir"}}}, server.Queries())
 }
 

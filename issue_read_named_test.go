@@ -352,7 +352,7 @@ func TestListIssuesPrintsAFieldOfTheDefaultByEitherNameOfIt(t *testing.T) {
 			node, err := client(t, server).Issues.List(t.Context(), "field: value", nil)
 
 			require.NoError(t, err)
-			assert.Equal(t, issuesListed(1, false, youtrack.NewMap(
+			assert.Equal(t, wholePage("issues", youtrack.NewMap(
 				youtrack.Pair{Key: "idReadable", Value: youtrack.NewString("DEV-1")},
 				youtrack.Pair{Key: "summary", Value: youtrack.NewString("First")},
 				youtrack.Pair{Key: "customFields", Value: youtrack.NewMap(tc.printed...)},

@@ -85,18 +85,6 @@ func activityList(t *testing.T, server *fake.Server, fields string, categories .
 	return client(t, server).Activities.List(t.Context(), "DEV-1", opts)
 }
 
-func activityPage(total *youtrack.Node, truncated bool, records ...*youtrack.Node) *youtrack.Node {
-	return youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: total},
-		youtrack.Pair{Key: "returned", Value: number(len(records))},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(truncated)},
-		youtrack.Pair{Key: "activities", Value: youtrack.NewList(records...)})
-}
-
-func activitiesListed(records ...*youtrack.Node) *youtrack.Node {
-	return activityPage(number(len(records)), false, records...)
-}
-
 func activityAt(moment string) *youtrack.Node {
 	return youtrack.NewMap(youtrack.Pair{Key: "timestamp", Value: youtrack.NewString(moment)})
 }
@@ -518,35 +506,36 @@ func TestListActivitiesPrintsThePageTheLimitAndTheSkipAskFor(t *testing.T) {
 		{
 			name:       "no options, which is the default page of the default fields",
 			activities: `[]`,
-			want:       activitiesListed(),
+			want:       wholePage("activities"),
 			top:        "51",
 		},
 		{
 			name:       "no limit, which is the default one",
 			opts:       &youtrack.ListActivitiesOptions{Fields: "timestamp"},
 			activities: activityArray(early),
-			want:       activitiesListed(activityAt("1970-01-01T00:00:01Z")),
+			want:       wholePage("activities", activityAt("1970-01-01T00:00:01Z")),
 			top:        "51",
 		},
 		{
 			name:       "a page the history goes past",
 			opts:       &youtrack.ListActivitiesOptions{Fields: "timestamp", Page: youtrack.Page{Limit: 2}},
 			activities: activityArray(latest, late, early),
-			want:       activityPage(youtrack.NewNull(), true, activityAt("1970-01-01T00:00:03Z"), activityAt("1970-01-01T00:00:02Z")),
-			top:        "3",
+			want: page("activities", youtrack.NewNull(), youtrack.NewBool(true),
+				activityAt("1970-01-01T00:00:03Z"), activityAt("1970-01-01T00:00:02Z")),
+			top: "3",
 		},
 		{
 			name:       "a page the history fills to its end",
 			opts:       &youtrack.ListActivitiesOptions{Fields: "timestamp", Page: youtrack.Page{Limit: 2}},
 			activities: activityArray(late, early),
-			want:       activitiesListed(activityAt("1970-01-01T00:00:02Z"), activityAt("1970-01-01T00:00:01Z")),
+			want:       wholePage("activities", activityAt("1970-01-01T00:00:02Z"), activityAt("1970-01-01T00:00:01Z")),
 			top:        "3",
 		},
 		{
 			name:       "a last page short of the limit",
 			opts:       &youtrack.ListActivitiesOptions{Fields: "timestamp", Page: youtrack.Page{Limit: 2, Skip: 2}},
 			activities: activityArray(early),
-			want:       activityPage(number(3), false, activityAt("1970-01-01T00:00:01Z")),
+			want:       page("activities", number(3), youtrack.NewBool(false), activityAt("1970-01-01T00:00:01Z")),
 			top:        "3",
 			skip:       "2",
 		},
@@ -554,7 +543,7 @@ func TestListActivitiesPrintsThePageTheLimitAndTheSkipAskFor(t *testing.T) {
 			name:       "an empty page past the end, where the skip may have passed over the history",
 			opts:       &youtrack.ListActivitiesOptions{Fields: "timestamp", Page: youtrack.Page{Limit: 2, Skip: 9}},
 			activities: `[]`,
-			want:       activityPage(youtrack.NewNull(), false),
+			want:       page("activities", youtrack.NewNull(), youtrack.NewBool(false)),
 			top:        "3",
 			skip:       "9",
 		},
@@ -562,7 +551,7 @@ func TestListActivitiesPrintsThePageTheLimitAndTheSkipAskFor(t *testing.T) {
 			name:       "the largest limit, and the one activity past it the largest int32",
 			opts:       &youtrack.ListActivitiesOptions{Fields: "timestamp", Page: youtrack.Page{Limit: math.MaxInt32 - 1}},
 			activities: activityArray(early),
-			want:       activitiesListed(activityAt("1970-01-01T00:00:01Z")),
+			want:       wholePage("activities", activityAt("1970-01-01T00:00:01Z")),
 			top:        "2147483647",
 		},
 	}
@@ -630,16 +619,16 @@ func TestListActivitiesPrintsTheActivitiesAsTheyArrive(t *testing.T) {
 		activities string
 		want       *youtrack.Node
 	}{
-		{name: "none at all", activities: `[]`, want: activitiesListed()},
+		{name: "none at all", activities: `[]`, want: wholePage("activities")},
 		{
 			name:       "the newest first",
 			activities: activityArray(late, early),
-			want:       activitiesListed(activityAt("1970-01-01T00:00:02Z"), activityAt("1970-01-01T00:00:01Z")),
+			want:       wholePage("activities", activityAt("1970-01-01T00:00:02Z"), activityAt("1970-01-01T00:00:01Z")),
 		},
 		{
 			name:       "two of one moment",
 			activities: activityArray(early, early),
-			want:       activitiesListed(activityAt("1970-01-01T00:00:01Z"), activityAt("1970-01-01T00:00:01Z")),
+			want:       wholePage("activities", activityAt("1970-01-01T00:00:01Z"), activityAt("1970-01-01T00:00:01Z")),
 		},
 	}
 	for _, tc := range tests {
@@ -691,7 +680,7 @@ func TestListActivitiesPrintsTheFieldOfAChangeByItsCategory(t *testing.T) {
 			got, err := activityList(t, server, "field")
 
 			require.NoError(t, err)
-			assert.Equal(t, activitiesListed(youtrack.NewMap(youtrack.Pair{Key: "field", Value: tc.want})), got)
+			assert.Equal(t, wholePage("activities", youtrack.NewMap(youtrack.Pair{Key: "field", Value: tc.want})), got)
 		})
 	}
 }
@@ -761,7 +750,7 @@ func TestListActivitiesPrintsTheValuesOfAChangeAsAList(t *testing.T) {
 
 			require.NoError(t, err)
 			want := youtrack.NewMap(youtrack.Pair{Key: "added", Value: tc.added}, youtrack.Pair{Key: "removed", Value: tc.removed})
-			assert.Equal(t, activitiesListed(want), got)
+			assert.Equal(t, wholePage("activities", want), got)
 		})
 	}
 }
@@ -822,7 +811,7 @@ func TestListActivitiesPrintsTheValuesOfACustomFieldByTheTypeOfTheField(t *testi
 			got, err := activityList(t, server, "added(id,login,name)")
 
 			require.NoError(t, err)
-			assert.Equal(t, activitiesListed(youtrack.NewMap(youtrack.Pair{Key: "added", Value: tc.want})), got)
+			assert.Equal(t, wholePage("activities", youtrack.NewMap(youtrack.Pair{Key: "added", Value: tc.want})), got)
 		})
 	}
 }
@@ -931,7 +920,7 @@ func TestListActivitiesPrintsOfAValueTheNamesItsTypeDeclares(t *testing.T) {
 			got, err := activityList(t, server, tc.fields)
 
 			require.NoError(t, err)
-			assert.Equal(t, activitiesListed(tc.want...), got)
+			assert.Equal(t, wholePage("activities", tc.want...), got)
 		})
 	}
 }

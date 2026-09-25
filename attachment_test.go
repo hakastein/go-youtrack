@@ -542,12 +542,8 @@ func TestListAttachmentsResolvesTheLinkOfARecordTheServerNamedNothing(t *testing
 	node, err := client(t, server).Attachments.List(t.Context(), "DEV-1", &youtrack.ListAttachmentsOptions{Fields: "url"})
 
 	require.NoError(t, err)
-	assert.Equal(t, youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(1)},
-		youtrack.Pair{Key: "returned", Value: number(1)},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(false)},
-		youtrack.Pair{Key: "attachments", Value: youtrack.NewList(youtrack.NewMap(
-			youtrack.Pair{Key: "url", Value: youtrack.NewString(server.Origin + "/api/files/12-2?sign=s")}))}), node)
+	assert.Equal(t, wholePage("attachments", youtrack.NewMap(
+		youtrack.Pair{Key: "url", Value: youtrack.NewString(server.Origin + "/api/files/12-2?sign=s")})), node)
 }
 
 func TestAttachmentsRefuseTheContentOfAFileInTheFields(t *testing.T) {

@@ -995,11 +995,7 @@ func TestListChildArticlesReadsTheChildrenOfTheParent(t *testing.T) {
 		&youtrack.ListArticlesOptions{Fields: "idReadable", Page: youtrack.Page{Limit: 2}})
 
 	require.NoError(t, err)
-	assert.Equal(t, youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(1)},
-		youtrack.Pair{Key: "returned", Value: number(1)},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(false)},
-		youtrack.Pair{Key: "articles", Value: youtrack.NewList(articleNamed("DEV-A-9"))}), node)
+	assert.Equal(t, wholePage("articles", articleNamed("DEV-A-9")), node)
 	assert.Equal(t, []string{"/api/articles/DEV-A-7/childArticles"}, server.Paths())
 	assert.Equal(t, []url.Values{{"fields": {"idReadable"}, "$top": {"2"}}}, server.Queries())
 }

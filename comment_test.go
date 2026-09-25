@@ -580,11 +580,7 @@ func TestListCommentsCountsTheCommentsOfAnArticleWhereTheyFillThePage(t *testing
 	comment := youtrack.NewMap(
 		youtrack.Pair{Key: "id", Value: youtrack.NewString("8-1")},
 		youtrack.Pair{Key: "text", Value: youtrack.NewString("Text")})
-	assert.Equal(t, youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(3)},
-		youtrack.Pair{Key: "returned", Value: number(1)},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(true)},
-		youtrack.Pair{Key: "comments", Value: youtrack.NewList(comment)}), node)
+	assert.Equal(t, page("comments", number(3), youtrack.NewBool(true), comment), node)
 	assert.Equal(t, []string{"/api/articles/DEV-A-3/comments", "/api/articles/DEV-A-3/comments"}, server.Paths())
 	assert.Equal(t, []url.Values{
 		{"fields": {"id,text"}, "$top": {"1"}},

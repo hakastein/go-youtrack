@@ -27,14 +27,6 @@ func named(name string) *youtrack.Node {
 	return youtrack.NewMap(fieldNamed(name))
 }
 
-func listedFields(records ...*youtrack.Node) *youtrack.Node {
-	return youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(len(records))},
-		youtrack.Pair{Key: "returned", Value: number(len(records))},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(false)},
-		youtrack.Pair{Key: "fields", Value: youtrack.NewList(records...)})
-}
-
 func unresolvedField(t *testing.T, server *fake.Server, key string, entry *youtrack.Node) youtrack.Error {
 	t.Helper()
 	return youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{
@@ -107,19 +99,19 @@ func TestListFieldsPrintsTheFieldsByOrdinal(t *testing.T) {
 			name:   "fields the server sent out of order",
 			fields: `[` + placed("3", "Third") + `,` + placed("1", "First") + `,` + placed("2", "Second") + `]`,
 			asked:  "field(name)",
-			want:   listedFields(named("First"), named("Second"), named("Third")),
+			want:   wholePage("fields", named("First"), named("Second"), named("Third")),
 		},
 		{
 			name:   "fields of one ordinal, in the order the server sent them",
 			fields: `[` + placed("2", "Second") + `,` + strings.Join(unplaced, ",") + `,` + placed("1", "First") + `]`,
 			asked:  "field(name)",
-			want:   listedFields(append(unplacedPrinted, named("First"), named("Second"))...),
+			want:   wholePage("fields", append(unplacedPrinted, named("First"), named("Second"))...),
 		},
 		{
 			name:   "the ordinal asked for",
 			fields: `[` + placed("2", "Second") + `,` + placed("1", "First") + `]`,
 			asked:  "field(name),ordinal",
-			want: listedFields(
+			want: wholePage("fields",
 				youtrack.NewMap(fieldNamed("First"), youtrack.Pair{Key: "ordinal", Value: number(1)}),
 				youtrack.NewMap(fieldNamed("Second"), youtrack.Pair{Key: "ordinal", Value: number(2)})),
 		},
@@ -144,7 +136,7 @@ func TestListFieldsPrintsTheDefaultFieldsAndAsksForTheOrdinalBesides(t *testing.
 	got, err := client(t, server).Fields.List(t.Context(), "DEV", nil)
 
 	require.NoError(t, err)
-	want := listedFields(youtrack.NewMap(
+	want := wholePage("fields", youtrack.NewMap(
 		youtrack.Pair{Key: "field", Value: youtrack.NewMap(
 			youtrack.Pair{Key: "name", Value: youtrack.NewString("First")},
 			youtrack.Pair{Key: "localizedName", Value: youtrack.NewNull()},

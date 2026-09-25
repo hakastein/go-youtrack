@@ -65,12 +65,7 @@ func pageOfProjects(total int, truncated bool, ids ...int) *youtrack.Node {
 	for _, id := range ids {
 		records = append(records, youtrack.NewMap(youtrack.Pair{Key: "id", Value: youtrack.NewString(fmt.Sprintf("0-%d", id))}))
 	}
-	return youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(total)},
-		youtrack.Pair{Key: "returned", Value: number(len(ids))},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(truncated)},
-		youtrack.Pair{Key: "projects", Value: youtrack.NewList(records...)},
-	)
+	return page("projects", number(total), youtrack.NewBool(truncated), records...)
 }
 
 func pageSent(top string, skip ...string) url.Values {

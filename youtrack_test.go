@@ -85,6 +85,18 @@ func withNearest(key, written string, nearest ...string) *youtrack.Node {
 		youtrack.Pair{Key: "nearest", Value: texts(nearest...)})
 }
 
+func page(plural string, total, truncated *youtrack.Node, records ...*youtrack.Node) *youtrack.Node {
+	return youtrack.NewMap(
+		youtrack.Pair{Key: "total", Value: total},
+		youtrack.Pair{Key: "returned", Value: number(len(records))},
+		youtrack.Pair{Key: "truncated", Value: truncated},
+		youtrack.Pair{Key: plural, Value: youtrack.NewList(records...)})
+}
+
+func wholePage(plural string, records ...*youtrack.Node) *youtrack.Node {
+	return page(plural, number(len(records)), youtrack.NewBool(false), records...)
+}
+
 func answeredWith(fields string) *youtrack.WriteOptions {
 	return &youtrack.WriteOptions{Fields: fields}
 }

@@ -98,14 +98,6 @@ func workItemNearest(names ...string) youtrack.Pair {
 	return youtrack.Pair{Key: "nearest", Value: texts(names...)}
 }
 
-func workItemListing(records ...*youtrack.Node) *youtrack.Node {
-	return youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(len(records))},
-		youtrack.Pair{Key: "returned", Value: number(len(records))},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(false)},
-		youtrack.Pair{Key: "workItems", Value: youtrack.NewList(records...)})
-}
-
 func workItemMismatch(t *testing.T, server *fake.Server, field string, expected, actual *youtrack.Node) youtrack.Error {
 	t.Helper()
 	return youtrack.Error{
@@ -127,7 +119,7 @@ func TestListWorkItemsAsksAPageOfTheDefaultFields(t *testing.T) {
 	node, err := client(t, server).WorkItems.List(t.Context(), "DEV-1", nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, workItemListing(), node)
+	assert.Equal(t, wholePage("workItems"), node)
 	assert.Equal(t, []string{workItemsOfTheIssue}, server.Paths())
 	assert.Equal(t, []url.Values{{
 		"fields": {"id,duration(minutes),type(name),attributes(id,name,value(id,name)),author(login),date,text"},
@@ -1252,7 +1244,7 @@ func TestListWorkItemsPrintsAWorkItem(t *testing.T) {
 				&youtrack.ListWorkItemsOptions{Fields: tc.expression})
 
 			require.NoError(t, err)
-			assert.Equal(t, workItemListing(youtrack.NewMap(youtrack.Pair{Key: tc.expression, Value: tc.printed})), node)
+			assert.Equal(t, wholePage("workItems", youtrack.NewMap(youtrack.Pair{Key: tc.expression, Value: tc.printed})), node)
 		})
 	}
 }

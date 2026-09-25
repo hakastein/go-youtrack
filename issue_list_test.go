@@ -37,14 +37,6 @@ func issueSearch(t *testing.T, server *fake.Server, query, expression string, li
 	return node, warned, err
 }
 
-func issuesListed(total int, truncated bool, records ...*youtrack.Node) *youtrack.Node {
-	return youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(total)},
-		youtrack.Pair{Key: "returned", Value: number(len(records))},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(truncated)},
-		youtrack.Pair{Key: "issues", Value: youtrack.NewList(records...)})
-}
-
 func issueMarkedUp(t *testing.T, marked string, rest http.HandlerFunc) *fake.Server {
 	t.Helper()
 	return fake.Serve(t, func(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +193,7 @@ func TestListIssuesAsksForNoMarkupWithoutAWarnToHandTheFreeTextTo(t *testing.T) 
 	node, err := client(t, server).Issues.List(t.Context(), "field: word", &youtrack.ListIssuesOptions{Fields: "idReadable"})
 
 	require.NoError(t, err)
-	assert.Equal(t, issuesListed(0, false), node)
+	assert.Equal(t, wholePage("issues"), node)
 	assert.Equal(t, []string{issuesPath}, server.Paths())
 }
 
@@ -360,14 +352,8 @@ func TestListIssuesPrintsTheCountOfTheSearch(t *testing.T) {
 			node, _, err := issueSearch(t, server, "field: value", "idReadable", 1)
 
 			require.NoError(t, err)
-			assert.Equal(t, youtrack.NewMap(
-				youtrack.Pair{Key: "total", Value: tc.total},
-				youtrack.Pair{Key: "returned", Value: number(1)},
-				youtrack.Pair{Key: "truncated", Value: tc.truncated},
-				youtrack.Pair{Key: "issues", Value: youtrack.NewList(youtrack.NewMap(
-					youtrack.Pair{Key: "idReadable", Value: youtrack.NewString("DEV-1")},
-				))},
-			), node)
+			issue := youtrack.NewMap(youtrack.Pair{Key: "idReadable", Value: youtrack.NewString("DEV-1")})
+			assert.Equal(t, page("issues", tc.total, tc.truncated, issue), node)
 			assert.Equal(t, tc.paths, server.Paths())
 		})
 	}

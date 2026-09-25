@@ -91,19 +91,14 @@ func TestListTagsPrintsAPageOfTheDefaultFields(t *testing.T) {
 	node, err := client(t, server).Tags.List(t.Context(), nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, youtrack.NewMap(
-		youtrack.Pair{Key: "total", Value: number(1)},
-		youtrack.Pair{Key: "returned", Value: number(1)},
-		youtrack.Pair{Key: "truncated", Value: youtrack.NewBool(false)},
-		youtrack.Pair{Key: "tags", Value: youtrack.NewList(youtrack.NewMap(
-			youtrack.Pair{Key: "name", Value: youtrack.NewString("Early")},
-			youtrack.Pair{Key: "owner", Value: youtrack.NewMap(youtrack.Pair{Key: "login", Value: youtrack.NewString("first")})},
-			youtrack.Pair{Key: "readSharingSettings", Value: youtrack.NewMap(
-				youtrack.Pair{Key: "permittedGroups", Value: youtrack.NewList(youtrack.NewMap(
-					youtrack.Pair{Key: "name", Value: youtrack.NewString("First")}))},
-				youtrack.Pair{Key: "permittedUsers", Value: youtrack.NewList(youtrack.NewMap(
-					youtrack.Pair{Key: "login", Value: youtrack.NewString("third")}))})}))},
-	), node)
+	assert.Equal(t, wholePage("tags", youtrack.NewMap(
+		youtrack.Pair{Key: "name", Value: youtrack.NewString("Early")},
+		youtrack.Pair{Key: "owner", Value: youtrack.NewMap(youtrack.Pair{Key: "login", Value: youtrack.NewString("first")})},
+		youtrack.Pair{Key: "readSharingSettings", Value: youtrack.NewMap(
+			youtrack.Pair{Key: "permittedGroups", Value: youtrack.NewList(youtrack.NewMap(
+				youtrack.Pair{Key: "name", Value: youtrack.NewString("First")}))},
+			youtrack.Pair{Key: "permittedUsers", Value: youtrack.NewList(youtrack.NewMap(
+				youtrack.Pair{Key: "login", Value: youtrack.NewString("third")}))})})), node)
 	assert.Equal(t, []string{"/api/tags"}, server.Paths())
 	assert.Equal(t, []url.Values{{"fields": {youtrack.TagListFields}, "$top": {"50"}}}, server.Queries())
 }
