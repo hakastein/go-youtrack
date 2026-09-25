@@ -101,6 +101,10 @@ type projectAttribute struct {
 	values []workItemType
 }
 
+func (attribute projectAttribute) info() fieldInfo {
+	return fieldInfo{name: attribute.name}
+}
+
 type resolvedAttribute struct {
 	id    string
 	name  string
@@ -125,10 +129,7 @@ func attributeBodies(filed []resolvedAttribute) []attributeBody {
 }
 
 func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]resolvedAttribute, *Error) {
-	catalogue := make([]fieldInfo, 0, len(p.attributes))
-	for _, attribute := range p.attributes {
-		catalogue = append(catalogue, fieldInfo{name: attribute.name})
-	}
+	catalogue := catalogueOf(p.attributes)
 	var filed []resolvedAttribute
 	var unknown []*Node
 	for _, asked := range written {
@@ -142,10 +143,7 @@ func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]res
 			filed = append(filed, resolvedAttribute{id: attribute.id, name: attribute.name})
 			continue
 		}
-		values := make([]fieldInfo, 0, len(attribute.values))
-		for _, value := range attribute.values {
-			values = append(values, fieldInfo{name: value.name})
-		}
+		values := catalogueOf(attribute.values)
 		place, found := matchName(asked.Value, values)
 		if !found {
 			unknown = append(unknown, NewMap(

@@ -184,6 +184,10 @@ type workItemType struct {
 	name string
 }
 
+func (t workItemType) info() fieldInfo {
+	return fieldInfo{name: t.name}
+}
+
 func workItemTypesFields(withAttributes bool) []requestedField {
 	settings := []requestedField{{name: workItemTypesKey, children: []requestedField{{name: idKey}, {name: nameKey}}}}
 	if withAttributes {
@@ -276,20 +280,12 @@ func timeTrackingSettingsOf(a decodedResponse, project map[string]any) (map[stri
 const brokenWorkItemType = "the id or the name of a type of work of the project is not text"
 
 func (p projectWorkItemTypes) resolve(name string) (resolvedWorkType, *Error) {
-	catalogue := p.catalogue()
+	catalogue := catalogueOf(p.types)
 	at, found := matchName(name, catalogue)
 	if !found {
 		return resolvedWorkType{}, p.fault(name, catalogue)
 	}
 	return resolvedWorkType{id: p.types[at].id, name: name}, nil
-}
-
-func (p projectWorkItemTypes) catalogue() []fieldInfo {
-	catalogue := make([]fieldInfo, 0, len(p.types))
-	for _, found := range p.types {
-		catalogue = append(catalogue, fieldInfo{name: found.name})
-	}
-	return catalogue
 }
 
 func (p projectWorkItemTypes) fault(name string, catalogue []fieldInfo) *Error {
