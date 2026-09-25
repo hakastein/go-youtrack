@@ -19,8 +19,9 @@ const (
 	issuePath     = "/api/issues/DEV-1"
 	fieldNaming   = "field(name,localizedName,fieldType(valueType,isMultiValue))"
 	projectFields = "id,shortName,customFields(id,ordinal,canBeEmpty," + fieldNaming + ")"
-	issueFields   = "id,idReadable,summary,project(id,shortName,name),customFields(name,value(name,login,minutes,text,id)," +
-		"projectCustomField(id,ordinal,field(localizedName,fieldType(valueType,isMultiValue))))"
+	issueFields   = "id,idReadable,summary,description,project(id,shortName,name),customFields(name,value(name,login,minutes,text,id,localizedName)," +
+		"projectCustomField(id,ordinal,field(localizedName,fieldType(valueType,isMultiValue))))," +
+		"links(direction,linkType(name,sourceToTarget,targetToSource),issues(id,idReadable))"
 	issueToWriteFields = "idReadable,customFields($type,name,projectCustomField(id)),project(" + projectFields + ")"
 )
 
@@ -117,11 +118,13 @@ func element(name string) string {
 func issueJSON(t *testing.T, members map[string]any) string {
 	t.Helper()
 	issue := map[string]any{
-		"$type":      "Issue",
-		"id":         "2-1",
-		"idReadable": "DEV-1",
-		"summary":    "First",
-		"project":    map[string]any{"$type": "Project", "id": "0-1", "shortName": "DEV", "name": "Development"},
+		"$type":       "Issue",
+		"id":          "2-1",
+		"idReadable":  "DEV-1",
+		"summary":     "First",
+		"description": nil,
+		"project":     map[string]any{"$type": "Project", "id": "0-1", "shortName": "DEV", "name": "Development"},
+		"links":       []any{},
 	}
 	maps.Copy(issue, members)
 	answer, err := json.Marshal(issue)

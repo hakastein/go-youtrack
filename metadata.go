@@ -24,17 +24,39 @@ const (
 	canBeEmptyKey = "canBeEmpty"
 )
 
-// Fields reads the custom fields of the project from the server, in the project's order.
-func (c *Client) Fields(ctx context.Context, project string) ([]ProjectField, error) {
+// Metadata is the custom fields of a project in the project's order and where they came from: FromCache when the
+// client's metadata cache held them, else the server, and then Request is the read that brought them.
+type Metadata struct {
+	Fields    []ProjectField
+	FromCache bool
+	Request   Request
+}
+
+// Metadata answers from the metadata cache when the client has one and it holds the project, else reads the
+// project from the server and stores it. The cache confirms and never refuses: a caller that finds the cached
+// fields disagreeing with the server reads again with ReadMetadata.
+func (c *Client) Metadata(ctx context.Context, project string) (*Metadata, error) {
 	code, err := parseProjectCode(project)
 	if err != nil {
 		return nil, err
 	}
-	metadata, _, err := c.readProjectMetadata(ctx, code)
+	if cached, hit := c.cache.load(metadataTarget(code)); hit {
+		return &Metadata{Fields: cached, FromCache: true}, nil
+	}
+	return c.ReadMetadata(ctx, project)
+}
+
+// ReadMetadata reads the custom fields of the project from the server and stores them in the metadata cache.
+func (c *Client) ReadMetadata(ctx context.Context, project string) (*Metadata, error) {
+	code, err := parseProjectCode(project)
 	if err != nil {
 		return nil, err
 	}
-	return metadata.fields, nil
+	metadata, a, err := c.readProjectMetadata(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+	return &Metadata{Fields: metadata.fields, Request: a.request}, nil
 }
 
 type projectMetadata struct {
@@ -46,7 +68,7 @@ type projectMetadata struct {
 func fieldNaming() field {
 	return field{name: "field", children: []field{
 		{name: nameKey},
-		{name: "localizedName"},
+		{name: localizedNameKey},
 		{name: "fieldType", children: []field{{name: "valueType"}, {name: "isMultiValue"}}},
 	}}
 }
@@ -78,6 +100,7 @@ func (c *Client) readProjectMetadata(ctx context.Context, code string) (projectM
 	if err != nil {
 		return projectMetadata{}, answer{}, err
 	}
+	c.cache.store(metadataTarget(code), metadata.fields)
 	return metadata, a, nil
 }
 
@@ -159,7 +182,7 @@ func readFieldNaming(value any) (fieldNamingInfo, bool) {
 	if !ok {
 		return fieldNamingInfo{}, false
 	}
-	localized, ok := readLocalizedName(object["localizedName"])
+	localized, ok := readLocalizedName(object[localizedNameKey])
 	if !ok {
 		return fieldNamingInfo{}, false
 	}

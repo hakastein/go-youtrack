@@ -10,15 +10,47 @@ import (
 	"strings"
 )
 
-// Issue is an issue with its custom fields read by their types. Tree is the answer of the server as it came,
-// with what the caller's fields expression asked for beyond the members here.
+// Issue is an issue with its custom fields read by their types. Description is empty when the issue has none.
+// Links are the slots the server sends, one per link type and direction, empty ones too. Tree is the answer of
+// the server as it came, with what the caller's fields expression asked for beyond the members here.
 type Issue struct {
+	ID          string
+	IDReadable  string
+	Summary     string
+	Description string
+	Project     Project
+	Fields      []Field
+	Links       []Link
+	Tree        map[string]any
+}
+
+// Link is one slot of the links of an issue: the issues at the other end of one link type in one direction.
+type Link struct {
+	Direction Direction
+	Type      LinkType
+	Issues    []IssueRef
+}
+
+// Direction is the end of a link the issue stands at.
+type Direction string
+
+const (
+	Outward Direction = "OUTWARD"
+	Inward  Direction = "INWARD"
+	Both    Direction = "BOTH"
+)
+
+// LinkType names a type of link and its two phrases; a phrase the instance does not translate is empty.
+type LinkType struct {
+	Name           string
+	SourceToTarget string
+	TargetToSource string
+}
+
+// IssueRef names an issue at the other end of a link.
+type IssueRef struct {
 	ID         string
 	IDReadable string
-	Summary    string
-	Project    Project
-	Fields     []Field
-	Tree       map[string]any
 }
 
 // Project names the project an issue stands in.
@@ -39,10 +71,11 @@ type Field struct {
 // Value is one value of a custom field. Text is the value key of the field's type: the name of a bundle
 // value or group, the login of a user, a period as PT1H30M, a day as 2026-09-16, a moment in UTC, a number in
 // its shortest decimal form, or the string or text itself. ID is the internal id of a bundle value, user or
-// group and is empty for the other types.
+// group, and LocalizedName the translation the interface shows for a bundle value; both are empty otherwise.
 type Value struct {
-	ID   string
-	Text string
+	ID            string
+	Text          string
+	LocalizedName string
 }
 
 // Field is the custom field the name resolves to, by name and then by translation, without regard to letter case.
@@ -77,11 +110,13 @@ func (f Field) Texts() []string {
 const (
 	idReadableKey   = "idReadable"
 	summaryKey      = "summary"
+	descriptionKey  = "description"
 	projectKey      = "project"
 	customFieldsKey = "customFields"
 	bindingKey      = "projectCustomField"
 	ordinalKey      = "ordinal"
 	valueKey        = "value"
+	linksKey        = "links"
 )
 
 func issueFields() []field {
@@ -89,6 +124,7 @@ func issueFields() []field {
 		{name: idKey},
 		{name: idReadableKey},
 		{name: summaryKey},
+		{name: descriptionKey},
 		{name: projectKey, children: []field{{name: idKey}, {name: "shortName"}, {name: nameKey}}},
 		{name: customFieldsKey, children: []field{
 			{name: nameKey},
@@ -97,10 +133,15 @@ func issueFields() []field {
 				{name: idKey},
 				{name: ordinalKey},
 				{name: "field", children: []field{
-					{name: "localizedName"},
+					{name: localizedNameKey},
 					{name: "fieldType", children: []field{{name: "valueType"}, {name: "isMultiValue"}}},
 				}},
 			}},
+		}},
+		{name: linksKey, children: []field{
+			{name: "direction"},
+			{name: "linkType", children: []field{{name: nameKey}, {name: "sourceToTarget"}, {name: "targetToSource"}}},
+			{name: "issues", children: []field{{name: idKey}, {name: idReadableKey}}},
 		}},
 	}
 }
@@ -140,6 +181,10 @@ func readIssue(a answer) (*Issue, error) {
 	if !isID || !isReadable || !isSummary {
 		return nil, a.invalid("the id, the readable id or the summary of the issue is not text")
 	}
+	description, isText := readLocalizedName(object[descriptionKey])
+	if !isText {
+		return nil, a.invalid("the description of the issue is neither text nor null")
+	}
 	project, ok := readProject(object[projectKey])
 	if !ok {
 		return nil, a.invalid("the project of the issue is not of the shape the specification gives it")
@@ -148,7 +193,68 @@ func readIssue(a answer) (*Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Issue{ID: id, IDReadable: idReadable, Summary: summary, Project: project, Fields: fields, Tree: object}, nil
+	links, err := readLinks(a, object[linksKey])
+	if err != nil {
+		return nil, err
+	}
+	return &Issue{ID: id, IDReadable: idReadable, Summary: summary, Description: description, Project: project,
+		Fields: fields, Links: links, Tree: object}, nil
+}
+
+// A slot the server left null would hide a link, so it is refused rather than skipped.
+func readLinks(a answer, value any) ([]Link, error) {
+	if value == nil {
+		return nil, nil
+	}
+	items, isList := value.([]any)
+	if !isList {
+		return nil, a.invalid("the links of the issue are neither a JSON array nor null")
+	}
+	links := make([]Link, 0, len(items))
+	for _, item := range items {
+		link, ok := readLink(item)
+		if !ok {
+			return nil, a.invalid("a link of the issue is not of the shape the specification gives it")
+		}
+		links = append(links, link)
+	}
+	return links, nil
+}
+
+func readLink(item any) (Link, bool) {
+	object, isObject := item.(map[string]any)
+	if !isObject {
+		return Link{}, false
+	}
+	direction, isText := object["direction"].(string)
+	linkType, isObject := object["linkType"].(map[string]any)
+	if !isText || !isObject {
+		return Link{}, false
+	}
+	name, isName := linkType[nameKey].(string)
+	outward, isOutward := readLocalizedName(linkType["sourceToTarget"])
+	inward, isInward := readLocalizedName(linkType["targetToSource"])
+	if !isName || !isOutward || !isInward {
+		return Link{}, false
+	}
+	held, isList := object["issues"].([]any)
+	if !isList {
+		return Link{}, false
+	}
+	issues := make([]IssueRef, 0, len(held))
+	for _, ref := range held {
+		refObject, isObject := ref.(map[string]any)
+		if !isObject {
+			return Link{}, false
+		}
+		id, isID := refObject[idKey].(string)
+		idReadable, isReadable := refObject[idReadableKey].(string)
+		if !isID || !isReadable {
+			return Link{}, false
+		}
+		issues = append(issues, IssueRef{ID: id, IDReadable: idReadable})
+	}
+	return Link{Direction: Direction(direction), Type: LinkType{Name: name, SourceToTarget: outward, TargetToSource: inward}, Issues: issues}, true
 }
 
 func readProject(value any) (Project, bool) {
@@ -254,15 +360,14 @@ func readCustomField(a answer, item any) (placedIssueField, error) {
 	if !ok {
 		return placedIssueField{}, a.invalid(brokenIssueBinding(name))
 	}
-	localized, ok := readLocalizedName(declared["localizedName"])
+	localized, ok := readLocalizedName(declared[localizedNameKey])
 	if !ok {
 		return placedIssueField{}, a.invalid(brokenIssueBinding(name))
 	}
-	kind, known := fieldType.kind()
-	if !known {
+	if !fieldType.Known() {
 		return placedIssueField{}, a.invalid(unmodelled(fieldType))
 	}
-	values, err := readValues(a, name, kind, object[valueKey])
+	values, err := readValues(a, name, fieldType, object[valueKey])
 	if err != nil {
 		return placedIssueField{}, err
 	}
@@ -274,23 +379,23 @@ func brokenIssueBinding(name string) string {
 	return fmt.Sprintf("the project's field the custom field %s stands for is not of the shape the specification gives it", quote(name))
 }
 
-func readValues(a answer, name string, kind fieldKind, value any) ([]Value, error) {
+func readValues(a answer, name string, fieldType FieldType, value any) ([]Value, error) {
 	held, isList := value.([]any)
 	switch {
 	case value == nil:
 		return nil, nil
-	case isList && !kind.multi:
+	case isList && !fieldType.Multi:
 		return nil, a.invalid(fmt.Sprintf("the custom field %s holds one value by its type and arrived as a list", quote(name)))
-	case !isList && kind.multi:
+	case !isList && fieldType.Multi:
 		return nil, a.invalid(fmt.Sprintf("the custom field %s holds more than one value by its type and arrived as something other than a list", quote(name)))
 	case !isList:
 		held = []any{value}
 	}
 	values := make([]Value, 0, len(held))
 	for _, item := range held {
-		v, present, err := readValue(a, name, kind, item)
+		v, present, err := fieldType.ReadValue(item)
 		if err != nil {
-			return nil, err
+			return nil, a.invalid(fmt.Sprintf("the custom field %s: %s", quote(name), err))
 		}
 		if present {
 			values = append(values, v)
@@ -300,38 +405,4 @@ func readValues(a answer, name string, kind fieldKind, value any) ([]Value, erro
 		return nil, nil
 	}
 	return values, nil
-}
-
-func readValue(a answer, name string, kind fieldKind, item any) (Value, bool, error) {
-	held, id := item, ""
-	if kind.member != "" {
-		object, isObject := item.(map[string]any)
-		if !isObject {
-			return Value{}, false, a.invalid(missingMember(name, kind.member))
-		}
-		inside, ok := object[kind.member]
-		if !ok {
-			return Value{}, false, a.invalid(missingMember(name, kind.member))
-		}
-		if inside == nil {
-			return Value{}, false, nil
-		}
-		held = inside
-		if kind.isNamedValue() {
-			id, _ = object[idKey].(string)
-		}
-	}
-	text, read := kind.keyText(held)
-	if !read {
-		what := fmt.Sprintf("the value of the custom field %s", quote(name))
-		if kind.member != "" {
-			what = fmt.Sprintf("the %s of the custom field %s", kind.member, quote(name))
-		}
-		return Value{}, false, a.invalid(what + " is not " + kind.shape())
-	}
-	return Value{ID: id, Text: text}, true, nil
-}
-
-func missingMember(name, member string) string {
-	return fmt.Sprintf("the value of the custom field %s holds no %s, which is what a field of its type is named by", quote(name), member)
 }
