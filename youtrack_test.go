@@ -2,6 +2,7 @@ package youtrack_test
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -38,6 +39,15 @@ func errorOf(t *testing.T, err error) youtrack.Error {
 	kept.Message = ""
 	kept.Err = nil
 	return kept
+}
+
+func routes(t *testing.T, answers map[string]http.HandlerFunc) *fake.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	for pattern, answer := range answers {
+		mux.Handle(pattern, answer)
+	}
+	return fake.Serve(t, mux.ServeHTTP)
 }
 
 func requestTo(method string, server *fake.Server, target string) youtrack.Pair {

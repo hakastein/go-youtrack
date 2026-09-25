@@ -116,23 +116,23 @@ func (i *metaInstance) change(projects map[string]string, answers map[string]htt
 
 func (i *metaInstance) serve(t *testing.T) *fake.Server {
 	t.Helper()
-	routes := http.NewServeMux()
-	routes.HandleFunc("GET /api/admin/projects/{code}", func(w http.ResponseWriter, r *http.Request) {
-		i.mu.Lock()
-		metadata := i.projects[r.PathValue("code")]
-		i.mu.Unlock()
-		fake.JSON(http.StatusOK, metadata)(w, r)
+	return routes(t, map[string]http.HandlerFunc{
+		"GET /api/admin/projects/{code}": func(w http.ResponseWriter, r *http.Request) {
+			i.mu.Lock()
+			metadata := i.projects[r.PathValue("code")]
+			i.mu.Unlock()
+			fake.JSON(http.StatusOK, metadata)(w, r)
+		},
+		"GET /api/admin/projects/{code}/customFields/{id}": func(w http.ResponseWriter, r *http.Request) {
+			i.mu.Lock()
+			answer, held := i.answers[r.PathValue("id")]
+			i.mu.Unlock()
+			if !held {
+				answer = fake.JSON(http.StatusNotFound, `{}`)
+			}
+			answer(w, r)
+		},
 	})
-	routes.HandleFunc("GET /api/admin/projects/{code}/customFields/{id}", func(w http.ResponseWriter, r *http.Request) {
-		i.mu.Lock()
-		answer, held := i.answers[r.PathValue("id")]
-		i.mu.Unlock()
-		if !held {
-			answer = fake.JSON(http.StatusNotFound, `{}`)
-		}
-		answer(w, r)
-	})
-	return fake.Serve(t, routes.ServeHTTP)
 }
 
 func cached(t *testing.T, server *fake.Server, root string) *youtrack.Client {

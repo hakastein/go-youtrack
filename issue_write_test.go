@@ -95,12 +95,12 @@ func issueToWrite(project, classes string) string {
 
 func issueWriting(t *testing.T, project, classes string, write http.HandlerFunc) *fake.Server {
 	t.Helper()
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+projectPath, fake.JSON(http.StatusOK, project))
-	mux.HandleFunc("GET "+issuePath, fake.JSON(http.StatusOK, issueToWrite(project, classes)))
-	mux.HandleFunc("POST "+issuesPath, write)
-	mux.HandleFunc("POST "+issuePath, write)
-	return fake.Serve(t, mux.ServeHTTP)
+	return routes(t, map[string]http.HandlerFunc{
+		"GET " + projectPath: fake.JSON(http.StatusOK, project),
+		"GET " + issuePath:   fake.JSON(http.StatusOK, issueToWrite(project, classes)),
+		"POST " + issuesPath: write,
+		"POST " + issuePath:  write,
+	})
 }
 
 func issueCreate(t *testing.T, server *fake.Server, in youtrack.IssueInput, fields string) (*youtrack.Node, error) {
@@ -487,12 +487,12 @@ func TestIssueWritePrintsACustomFieldTheExpressionNamesAndChecksThemAll(t *testi
 	answer := issueWritten(t, map[string]any{"summary": "First", "customFields": issueHeldFields(
 		issueHeld{name: "Named", valueType: "string", value: `"First"`},
 		issueHeld{name: "Unnamed", valueType: "string", value: `"Second"`})})
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+projectPath, fake.JSON(http.StatusOK, issueProject()))
-	mux.HandleFunc("GET "+issueCataloguePath, fake.JSON(http.StatusOK,
-		issueCatalogue(issueCatalogued("Named", `"Localized"`), issueCatalogued("Unnamed", "null"))))
-	mux.HandleFunc("POST "+issuesPath, fake.JSON(http.StatusOK, answer))
-	server := fake.Serve(t, mux.ServeHTTP)
+	server := routes(t, map[string]http.HandlerFunc{
+		"GET " + projectPath: fake.JSON(http.StatusOK, issueProject()),
+		"GET " + issueCataloguePath: fake.JSON(http.StatusOK,
+			issueCatalogue(issueCatalogued("Named", `"Localized"`), issueCatalogued("Unnamed", "null"))),
+		"POST " + issuesPath: fake.JSON(http.StatusOK, answer),
+	})
 
 	node, err := issueCreate(t, server, youtrack.IssueInput{Summary: "First"}, `idReadable,customFields("localized")`)
 
@@ -578,9 +578,7 @@ func TestUpdateIssueRefusesAnIssueOfAnotherShape(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			mux := http.NewServeMux()
-			mux.HandleFunc("GET "+issuePath, fake.JSON(http.StatusOK, tc.read))
-			server := fake.Serve(t, mux.ServeHTTP)
+			server := routes(t, map[string]http.HandlerFunc{"GET " + issuePath: fake.JSON(http.StatusOK, tc.read)})
 
 			_, err := issueUpdate(t, server, youtrack.IssueUpdate{Fields: []youtrack.FieldWrite{issueFill("Field", "First")}}, "")
 
@@ -592,19 +590,15 @@ func TestUpdateIssueRefusesAnIssueOfAnotherShape(t *testing.T) {
 
 func issueDeleting(t *testing.T, read string, deletion http.HandlerFunc) *fake.Server {
 	t.Helper()
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/issues/dev-7", fake.JSON(http.StatusOK, read))
-	mux.HandleFunc("DELETE /api/issues/DEV-7", deletion)
-	return fake.Serve(t, mux.ServeHTTP)
-}
-
-func issueDeleted(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK)
+	return routes(t, map[string]http.HandlerFunc{
+		"GET /api/issues/dev-7":    fake.JSON(http.StatusOK, read),
+		"DELETE /api/issues/DEV-7": deletion,
+	})
 }
 
 func TestDeleteIssueDeletesByTheIDTheReadAnswers(t *testing.T) {
 	t.Parallel()
-	server := issueDeleting(t, `{"$type":"Issue","idReadable":"DEV-7"}`, issueDeleted)
+	server := issueDeleting(t, `{"$type":"Issue","idReadable":"DEV-7"}`, fake.JSON(http.StatusOK, ""))
 
 	node, err := client(t, server).Issues.Delete(t.Context(), "dev-7")
 
@@ -637,7 +631,7 @@ func TestDeleteIssueRefusesAReadableIDItCannotDeleteBy(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			read := `{"$type":"Issue","idReadable":` + tc.readable + `}`
-			server := issueDeleting(t, read, issueDeleted)
+			server := issueDeleting(t, read, fake.JSON(http.StatusOK, ""))
 
 			_, err := client(t, server).Issues.Delete(t.Context(), "dev-7")
 

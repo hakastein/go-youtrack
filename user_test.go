@@ -95,9 +95,7 @@ func TestShowUserRefusesANameNoSchemaOfItsNodeDeclares(t *testing.T) {
 	want := youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{
 		requestTo(http.MethodGet, server, "/api/users/leader?fields=login,logn"),
 		{Key: "fields", Value: youtrack.NewString("login,logn")},
-		{Key: "unknown", Value: youtrack.NewList(youtrack.NewMap(
-			youtrack.Pair{Key: "field", Value: youtrack.NewString("logn")},
-			youtrack.Pair{Key: "nearest", Value: texts("login")}))},
+		{Key: "unknown", Value: youtrack.NewList(withNearest("field", "logn", "login"))},
 	}}
 	assert.Equal(t, want, errorOf(t, err))
 }

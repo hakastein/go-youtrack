@@ -947,7 +947,7 @@ func TestDeleteArticleDeletesByTheReadableIDTheReadGave(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.InTurn(
 		fake.JSON(http.StatusOK, `{"$type":"Article","idReadable":"DEV-A-7"}`),
-		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+		fake.JSON(http.StatusOK, "")))
 
 	node, err := client(t, server).Articles.Delete(t.Context(), "dev-A-7")
 

@@ -342,10 +342,10 @@ func TestWriteFieldsAnswersWithTheIssueAsTheServerHoldsIt(t *testing.T) {
 		issueHeld{name: "State", valueType: "state", binding: "1-1",
 			value: `{"$type":"StateBundleElement","id":"3-9","name":"Done","localizedName":null}`},
 	)})
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/issues/dev-1", fake.JSON(http.StatusOK, issueToWrite(project, "[]")))
-	mux.HandleFunc("POST "+issuePath, fake.JSON(http.StatusOK, answer))
-	server := fake.Serve(t, mux.ServeHTTP)
+	server := routes(t, map[string]http.HandlerFunc{
+		"GET /api/issues/dev-1": fake.JSON(http.StatusOK, issueToWrite(project, "[]")),
+		"POST " + issuePath:     fake.JSON(http.StatusOK, answer),
+	})
 
 	issue, err := client(t, server).Issues.WriteFields(t.Context(), "dev-1", []youtrack.FieldWrite{issueFill("State", "Done")})
 

@@ -21,12 +21,12 @@ type commentAnswers struct {
 
 func commentServer(t *testing.T, answers commentAnswers) *fake.Server {
 	t.Helper()
-	routes := http.NewServeMux()
-	routes.HandleFunc("GET /api/{owners}/{owner}/comments", fake.JSON(http.StatusOK, answers.listed))
-	routes.HandleFunc("GET /api/{owners}/{owner}/comments/{comment}", fake.JSON(http.StatusOK, answers.read))
-	routes.HandleFunc("POST /", fake.JSON(http.StatusOK, answers.written))
-	routes.HandleFunc("DELETE /", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	return fake.Serve(t, routes.ServeHTTP)
+	return routes(t, map[string]http.HandlerFunc{
+		"GET /api/{owners}/{owner}/comments":           fake.JSON(http.StatusOK, answers.listed),
+		"GET /api/{owners}/{owner}/comments/{comment}": fake.JSON(http.StatusOK, answers.read),
+		"POST /":   fake.JSON(http.StatusOK, answers.written),
+		"DELETE /": fake.JSON(http.StatusOK, ""),
+	})
 }
 
 func commentWritten(t *testing.T, id, text string) string {
@@ -468,7 +468,7 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 		target     string
 		fields     string
 		unknown    string
-		nearest    *youtrack.Node
+		nearest    []string
 		afterWrite bool
 	}{
 		{
@@ -481,8 +481,8 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 			target:  "/api/articles/DEV-A-3/comments?fields=id,deleted,text",
 			fields:  "id,deleted,text",
 			unknown: "deleted",
-			nearest: texts("$type", "article", "attachments", "author", "created", "id", "pinned", "reactions",
-				"text", "updated", "visibility"),
+			nearest: []string{"$type", "article", "attachments", "author", "created", "id", "pinned", "reactions",
+				"text", "updated", "visibility"},
 			afterWrite: true,
 		},
 		{
@@ -495,8 +495,8 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 			target:  "/api/issues/DEV-7/comments?fields=id,article(idReadable),text",
 			fields:  "id,article(idReadable),text",
 			unknown: "article",
-			nearest: texts("$type", "attachments", "author", "created", "deleted", "id", "issue", "pinned",
-				"reactions", "text", "textPreview", "updated", "visibility"),
+			nearest: []string{"$type", "attachments", "author", "created", "deleted", "id", "issue", "pinned",
+				"reactions", "text", "textPreview", "updated", "visibility"},
 			afterWrite: true,
 		},
 		{
@@ -509,8 +509,8 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 			target:  "/api/articles/DEV-A-3/comments?fields=id,deleted&$top=1",
 			fields:  "id,deleted",
 			unknown: "deleted",
-			nearest: texts("$type", "article", "attachments", "author", "created", "id", "pinned", "reactions",
-				"text", "updated", "visibility"),
+			nearest: []string{"$type", "article", "attachments", "author", "created", "id", "pinned", "reactions",
+				"text", "updated", "visibility"},
 		},
 	}
 	for _, tc := range tests {
@@ -523,13 +523,10 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 
 			err := tc.call(t.Context(), client(t, server).Comments)
 
-			unknown := youtrack.NewMap(
-				youtrack.Pair{Key: "field", Value: youtrack.NewString(tc.unknown)},
-				youtrack.Pair{Key: "nearest", Value: tc.nearest})
 			want := youtrack.Error{Code: youtrack.CodeUnknownName, AfterWrite: tc.afterWrite, Details: []youtrack.Pair{
 				requestTo(tc.method, server, tc.target),
 				{Key: "fields", Value: youtrack.NewString(tc.fields)},
-				{Key: "unknown", Value: youtrack.NewList(unknown)},
+				{Key: "unknown", Value: youtrack.NewList(withNearest("field", tc.unknown, tc.nearest...))},
 			}}
 			assert.Equal(t, want, errorOf(t, err))
 		})

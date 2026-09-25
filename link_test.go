@@ -114,12 +114,12 @@ func linkedIssue(readable string) string {
 
 func linkServer(t *testing.T, source, target string, write http.HandlerFunc) *fake.Server {
 	t.Helper()
-	mux := http.NewServeMux()
-	mux.Handle("GET /api/issues/DEV-1", fake.JSON(http.StatusOK, source))
-	mux.Handle("GET /api/issues/DEV-2", fake.JSON(http.StatusOK, target))
-	mux.Handle("POST /api/issues/DEV-1/links/{slot}/issues", write)
-	mux.Handle("DELETE /api/issues/DEV-1/links/{slot}/issues/{target}", write)
-	return fake.Serve(t, mux.ServeHTTP)
+	return routes(t, map[string]http.HandlerFunc{
+		"GET /api/issues/DEV-1":                                 fake.JSON(http.StatusOK, source),
+		"GET /api/issues/DEV-2":                                 fake.JSON(http.StatusOK, target),
+		"POST /api/issues/DEV-1/links/{slot}/issues":            write,
+		"DELETE /api/issues/DEV-1/links/{slot}/issues/{target}": write,
+	})
 }
 
 func linkDocument(total, returned int, truncated bool, phrases ...youtrack.Pair) *youtrack.Node {
@@ -144,12 +144,6 @@ func linkNames(pairs ...youtrack.Pair) []youtrack.Pair {
 		{Key: "phrase", Value: youtrack.NewString("needs")},
 		{Key: "target", Value: youtrack.NewString("DEV-2")},
 	}, pairs...)
-}
-
-func linkUnknownPhrase(phrase string, nearest ...string) youtrack.Pair {
-	return youtrack.Pair{Key: "unknown", Value: youtrack.NewList(youtrack.NewMap(
-		youtrack.Pair{Key: "phrase", Value: youtrack.NewString(phrase)},
-		youtrack.Pair{Key: "nearest", Value: texts(nearest...)}))}
 }
 
 type linkCall func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error)
@@ -367,11 +361,11 @@ func TestAddLinkWritesToTheSlotThePhraseNames(t *testing.T) {
 
 func TestAddLinkAsksForTheIssuesAndTheTargetAsAskedOfIt(t *testing.T) {
 	t.Parallel()
-	mux := http.NewServeMux()
-	mux.Handle("GET /api/issues/dev-1", fake.JSON(http.StatusOK, linkEverySlot()))
-	mux.Handle("GET /api/issues/DEV-2", fake.JSON(http.StatusOK, linkTarget))
-	mux.Handle("POST /api/issues/DEV-1/links/5-1t/issues", fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
-	server := fake.Serve(t, mux.ServeHTTP)
+	server := routes(t, map[string]http.HandlerFunc{
+		"GET /api/issues/dev-1":                    fake.JSON(http.StatusOK, linkEverySlot()),
+		"GET /api/issues/DEV-2":                    fake.JSON(http.StatusOK, linkTarget),
+		"POST /api/issues/DEV-1/links/5-1t/issues": fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()),
+	})
 
 	_, err := client(t, server).Links.Add(t.Context(), "dev-1", "needs", "DEV-2", answeredWith("idReadable"))
 
@@ -419,7 +413,7 @@ func TestAddLinkResolvesAPhraseTwoSlotsAnswerToByItsSpelling(t *testing.T) {
 		assert.Equal(t, youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{
 			requestTo(http.MethodGet, server, "/api/issues/DEV-1?fields="+linkSourceFields),
 			{Key: "issue", Value: youtrack.NewString("DEV-1")},
-			linkUnknownPhrase("NEEDS", "leads", "needs"),
+			{Key: "unknown", Value: youtrack.NewList(withNearest("phrase", "NEEDS", "leads", "needs"))},
 		}}, errorOf(t, err))
 		assert.Equal(t, []string{"/api/issues/DEV-1"}, server.Paths())
 	})
@@ -464,7 +458,7 @@ func TestAddLinkRefusesAPhraseNoSlotGoesBy(t *testing.T) {
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{
 				requestTo(http.MethodGet, server, "/api/issues/DEV-1?fields="+linkSourceFields),
 				{Key: "issue", Value: youtrack.NewString("DEV-1")},
-				linkUnknownPhrase(tc.phrase, tc.nearest...),
+				{Key: "unknown", Value: youtrack.NewList(withNearest("phrase", tc.phrase, tc.nearest...))},
 			}}, errorOf(t, err))
 			assert.Equal(t, []string{"/api/issues/DEV-1"}, server.Paths())
 		})
@@ -709,10 +703,7 @@ func TestAddLinkRefusesAnIssueTheServerDoesNotHave(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			mux := http.NewServeMux()
-			mux.Handle("GET /api/issues/DEV-1", tc.source)
-			mux.Handle("GET /api/issues/DEV-2", tc.target)
-			server := fake.Serve(t, mux.ServeHTTP)
+			server := routes(t, map[string]http.HandlerFunc{"GET /api/issues/DEV-1": tc.source, "GET /api/issues/DEV-2": tc.target})
 
 			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", nil)
 
@@ -799,9 +790,7 @@ func TestAddLinkNamesTheLinkInWhatTheServerSaidAboutTheWrite(t *testing.T) {
 
 func TestRemoveLinkTakesTheLinkAwayBySlotAndInternalID(t *testing.T) {
 	t.Parallel()
-	server := linkServer(t, linkEverySlot(), linkTarget, func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
+	server := linkServer(t, linkEverySlot(), linkTarget, fake.JSON(http.StatusOK, ""))
 
 	node, err := client(t, server).Links.Remove(t.Context(), "DEV-1", "NEEDS", "DEV-2")
 
@@ -850,7 +839,7 @@ func TestRemoveLinkRefusesBeforeTheRemovalTheWayAddDoes(t *testing.T) {
 			read:   "/api/issues/DEV-1?fields=" + linkSourceFields,
 			details: []youtrack.Pair{
 				{Key: "issue", Value: youtrack.NewString("DEV-1")},
-				linkUnknownPhrase("Neds", "needs"),
+				{Key: "unknown", Value: youtrack.NewList(withNearest("phrase", "Neds", "needs"))},
 			},
 			paths: []string{"/api/issues/DEV-1"},
 		},

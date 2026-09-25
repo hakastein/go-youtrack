@@ -409,7 +409,7 @@ func attachmentDeleting(t *testing.T, read http.HandlerFunc) *fake.Server {
 	t.Helper()
 	return fake.Serve(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete {
-			w.WriteHeader(http.StatusOK)
+			fake.JSON(http.StatusOK, "")(w, r)
 			return
 		}
 		read(w, r)

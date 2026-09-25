@@ -64,22 +64,9 @@ func tagCandidate(name, owner string) *youtrack.Node {
 		youtrack.Pair{Key: "owner", Value: youtrack.NewString(owner)})
 }
 
-func tagServer(t *testing.T, routes map[string]http.HandlerFunc) *fake.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-	for pattern, handler := range routes {
-		mux.Handle(pattern, handler)
-	}
-	return fake.Serve(t, mux.ServeHTTP)
-}
-
 func tagCreationEchoed(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	fake.JSON(http.StatusOK, `{"$type":"Tag",`+strings.TrimPrefix(string(body), "{"))(w, r)
-}
-
-func tagDeletionDone(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK)
 }
 
 func TestListTagsPrintsAPageOfTheDefaultFields(t *testing.T) {
@@ -377,7 +364,7 @@ func TestCreateTagWritesEachSetOfGroupsItWasGiven(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := tagServer(t, map[string]http.HandlerFunc{
+			server := routes(t, map[string]http.HandlerFunc{
 				"GET /api/groups": fake.JSON(http.StatusOK, tagGroups()),
 				"POST /api/tags":  tagCreationEchoed,
 			})
@@ -393,7 +380,7 @@ func TestCreateTagWritesEachSetOfGroupsItWasGiven(t *testing.T) {
 
 func TestCreateTagAsksForTheGroupsOfEachSetItWrote(t *testing.T) {
 	t.Parallel()
-	server := tagServer(t, map[string]http.HandlerFunc{
+	server := routes(t, map[string]http.HandlerFunc{
 		"GET /api/groups": fake.JSON(http.StatusOK, tagGroups()),
 		"POST /api/tags":  tagCreationEchoed,
 	})
@@ -410,7 +397,7 @@ func TestCreateTagAsksForTheGroupsOfEachSetItWrote(t *testing.T) {
 
 func TestCreateTagRefusesGroupNamesItCannotResolve(t *testing.T) {
 	t.Parallel()
-	every := texts("First", "Second", "Team", "team")
+	every := []string{"First", "Second", "Team", "team"}
 	tests := []struct {
 		name    string
 		sharing youtrack.TagSharing
@@ -419,9 +406,7 @@ func TestCreateTagRefusesGroupNamesItCannotResolve(t *testing.T) {
 		{
 			name:    "a name near a group",
 			sharing: youtrack.TagSharing{VisibleFor: []string{"Frist"}},
-			details: []youtrack.Pair{{Key: "unknown", Value: youtrack.NewList(youtrack.NewMap(
-				youtrack.Pair{Key: "group", Value: youtrack.NewString("Frist")},
-				youtrack.Pair{Key: "nearest", Value: texts("First")}))}},
+			details: []youtrack.Pair{{Key: "unknown", Value: youtrack.NewList(withNearest("group", "Frist", "First"))}},
 		},
 		{
 			name: "a name near no group in each set",
@@ -430,10 +415,8 @@ func TestCreateTagRefusesGroupNamesItCannotResolve(t *testing.T) {
 				UpdatableBy: []string{"Nil"},
 				TaggableBy:  []string{"None"},
 			},
-			details: []youtrack.Pair{{Key: "unknown", Value: youtrack.NewList(
-				youtrack.NewMap(youtrack.Pair{Key: "group", Value: youtrack.NewString("Nobody")}, youtrack.Pair{Key: "nearest", Value: every}),
-				youtrack.NewMap(youtrack.Pair{Key: "group", Value: youtrack.NewString("Nil")}, youtrack.Pair{Key: "nearest", Value: every}),
-				youtrack.NewMap(youtrack.Pair{Key: "group", Value: youtrack.NewString("None")}, youtrack.Pair{Key: "nearest", Value: every}))}},
+			details: []youtrack.Pair{{Key: "unknown", Value: youtrack.NewList(withNearest("group", "Nobody", every...),
+				withNearest("group", "Nil", every...), withNearest("group", "None", every...))}},
 		},
 		{
 			name:    "a name two groups answer to by letter case",
@@ -449,9 +432,7 @@ func TestCreateTagRefusesGroupNamesItCannotResolve(t *testing.T) {
 				TaggableBy: []string{"TEAM"},
 			},
 			details: []youtrack.Pair{
-				{Key: "unknown", Value: youtrack.NewList(youtrack.NewMap(
-					youtrack.Pair{Key: "group", Value: youtrack.NewString("Nobody")},
-					youtrack.Pair{Key: "nearest", Value: every}))},
+				{Key: "unknown", Value: youtrack.NewList(withNearest("group", "Nobody", every...))},
 				{Key: "ambiguous", Value: youtrack.NewList(youtrack.NewMap(
 					youtrack.Pair{Key: "group", Value: youtrack.NewString("TEAM")},
 					youtrack.Pair{Key: "candidates", Value: texts("Team", "team")}))},
@@ -586,7 +567,7 @@ func TestCreateTagRefusesASetOfGroupsThatCameBackAsAnother(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := tagServer(t, map[string]http.HandlerFunc{
+			server := routes(t, map[string]http.HandlerFunc{
 				"GET /api/groups": fake.JSON(http.StatusOK, tagGroups()),
 				"POST /api/tags":  fake.JSON(http.StatusOK, tc.kept),
 			})
@@ -605,7 +586,7 @@ func TestCreateTagRefusesASetOfGroupsThatCameBackAsAnother(t *testing.T) {
 
 func TestCreateTagTakesASetOfGroupsThatCameBackInAnotherOrder(t *testing.T) {
 	t.Parallel()
-	server := tagServer(t, map[string]http.HandlerFunc{
+	server := routes(t, map[string]http.HandlerFunc{
 		"GET /api/groups": fake.JSON(http.StatusOK, tagGroups()),
 		"POST /api/tags":  fake.JSON(http.StatusOK, tagKeptWith("readSharingSettings", `[{"id":"6-2"},{"id":"6-1"}]`)),
 	})
@@ -638,9 +619,9 @@ func TestDeleteTagResolvesTheNameAgainstTheTagsItIsShown(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := tagServer(t, map[string]http.HandlerFunc{
+			server := routes(t, map[string]http.HandlerFunc{
 				"GET /api/tags":         fake.JSON(http.StatusOK, tagsShown()),
-				"DELETE /api/tags/{id}": tagDeletionDone,
+				"DELETE /api/tags/{id}": fake.JSON(http.StatusOK, ""),
 			})
 
 			_, err := client(t, server).Tags.Delete(t.Context(), tc.written, &youtrack.TagOptions{OwnedBy: tc.ownedBy})
@@ -653,9 +634,9 @@ func TestDeleteTagResolvesTheNameAgainstTheTagsItIsShown(t *testing.T) {
 
 func TestDeleteTagReadsEveryTagOnceAndPrintsTheOneItDeleted(t *testing.T) {
 	t.Parallel()
-	server := tagServer(t, map[string]http.HandlerFunc{
+	server := routes(t, map[string]http.HandlerFunc{
 		"GET /api/tags":         fake.JSON(http.StatusOK, tagsShown()),
-		"DELETE /api/tags/{id}": tagDeletionDone,
+		"DELETE /api/tags/{id}": fake.JSON(http.StatusOK, ""),
 	})
 
 	node, err := client(t, server).Tags.Delete(t.Context(), "early", nil)
@@ -677,16 +658,13 @@ func TestDeleteTagRefusesANameThatNamesNoOneTag(t *testing.T) {
 		{
 			name:    "a name near a tag",
 			written: "Erly",
-			detail: youtrack.Pair{Key: "unknown", Value: youtrack.NewList(youtrack.NewMap(
-				youtrack.Pair{Key: "tag", Value: youtrack.NewString("Erly")},
-				youtrack.Pair{Key: "nearest", Value: texts("Early")}))},
+			detail:  youtrack.Pair{Key: "unknown", Value: youtrack.NewList(withNearest("tag", "Erly", "Early"))},
 		},
 		{
 			name:    "a name near no tag",
 			written: "zzzzzz",
-			detail: youtrack.Pair{Key: "unknown", Value: youtrack.NewList(youtrack.NewMap(
-				youtrack.Pair{Key: "tag", Value: youtrack.NewString("zzzzzz")},
-				youtrack.Pair{Key: "nearest", Value: texts("10-1", "Early", "Mixed", "Mixed", "mixed")}))},
+			detail: youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
+				withNearest("tag", "zzzzzz", "10-1", "Early", "Mixed", "Mixed", "mixed"))},
 		},
 		{
 			name:    "a name of several tags and no exact spelling",
@@ -876,11 +854,11 @@ func TestAddAndRemoveTagNarrowTheNameByTheOwnerOfTheTag(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := tagServer(t, map[string]http.HandlerFunc{
+			server := routes(t, map[string]http.HandlerFunc{
 				"GET /api/issues/{id}":               fake.JSON(http.StatusOK, tagOwner("Issue", "DEV-7")),
 				"GET /api/tags":                      fake.JSON(http.StatusOK, tagsShown()),
 				"POST /api/issues/{id}/tags":         fake.JSON(http.StatusOK, tagOf("10-3", "Mixed", "second")),
-				"DELETE /api/issues/{id}/tags/{tag}": tagDeletionDone,
+				"DELETE /api/issues/{id}/tags/{tag}": fake.JSON(http.StatusOK, ""),
 			})
 
 			_, err := tc.call(t.Context(), client(t, server).Tags)
@@ -923,7 +901,7 @@ func TestAddTagWritesUnderTheIDsTheReadsFound(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := tagServer(t, map[string]http.HandlerFunc{
+			server := routes(t, map[string]http.HandlerFunc{
 				"GET /api/issues/{id}":         fake.JSON(http.StatusOK, tc.owner),
 				"GET /api/articles/{id}":       fake.JSON(http.StatusOK, tc.owner),
 				"GET /api/tags":                fake.JSON(http.StatusOK, tagsShown()),
@@ -942,7 +920,7 @@ func TestAddTagWritesUnderTheIDsTheReadsFound(t *testing.T) {
 
 func TestAddTagPrintsTheTagTheWriteAnsweredWith(t *testing.T) {
 	t.Parallel()
-	server := tagServer(t, map[string]http.HandlerFunc{
+	server := routes(t, map[string]http.HandlerFunc{
 		"GET /api/issues/{id}":       fake.JSON(http.StatusOK, tagOwner("Issue", "DEV-7")),
 		"GET /api/tags":              fake.JSON(http.StatusOK, tagsShown()),
 		"POST /api/issues/{id}/tags": fake.JSON(http.StatusOK, tagOf("10-1", "Late", "second")),
@@ -984,7 +962,7 @@ func TestAddTagRefusesATagOtherThanTheOneResolved(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			other := tagOf("10-2", "Early", "first")
-			server := tagServer(t, map[string]http.HandlerFunc{
+			server := routes(t, map[string]http.HandlerFunc{
 				"GET /api/issues/{id}":         fake.JSON(http.StatusOK, tc.owner),
 				"GET /api/articles/{id}":       fake.JSON(http.StatusOK, tc.owner),
 				"GET /api/tags":                fake.JSON(http.StatusOK, tagsShown()),
@@ -1041,12 +1019,12 @@ func TestRemoveTagTakesTheTagOffUnderTheIDsTheReadsFound(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := tagServer(t, map[string]http.HandlerFunc{
+			server := routes(t, map[string]http.HandlerFunc{
 				"GET /api/issues/{id}":                 fake.JSON(http.StatusOK, tc.owner),
 				"GET /api/articles/{id}":               fake.JSON(http.StatusOK, tc.owner),
 				"GET /api/tags":                        fake.JSON(http.StatusOK, tagsShown()),
-				"DELETE /api/issues/{id}/tags/{tag}":   tagDeletionDone,
-				"DELETE /api/articles/{id}/tags/{tag}": tagDeletionDone,
+				"DELETE /api/issues/{id}/tags/{tag}":   fake.JSON(http.StatusOK, ""),
+				"DELETE /api/articles/{id}/tags/{tag}": fake.JSON(http.StatusOK, ""),
 			})
 
 			node, err := client(t, server).Tags.Remove(t.Context(), tc.written, "early", nil)
@@ -1063,7 +1041,7 @@ func TestRemoveTagTakesTheTagOffUnderTheIDsTheReadsFound(t *testing.T) {
 
 func TestRemoveTagRefusesATagTheOwnerDoesNotCarry(t *testing.T) {
 	t.Parallel()
-	server := tagServer(t, map[string]http.HandlerFunc{
+	server := routes(t, map[string]http.HandlerFunc{
 		"GET /api/issues/{id}": fake.JSON(http.StatusOK, tagOwner("Issue", "DEV-7")),
 		"GET /api/tags":        fake.JSON(http.StatusOK, tagsShown()),
 		"DELETE /api/issues/{id}/tags/{tag}": fake.JSON(http.StatusNotFound,

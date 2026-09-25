@@ -48,10 +48,7 @@ func activityServer(t *testing.T, activities string) *fake.Server {
 
 func activityServerOf(t *testing.T, linkTypes, activities http.HandlerFunc) *fake.Server {
 	t.Helper()
-	routes := http.NewServeMux()
-	routes.Handle("GET "+activityLinkTypesPath, linkTypes)
-	routes.Handle("GET "+activityListPath, activities)
-	return fake.Serve(t, routes.ServeHTTP)
+	return routes(t, map[string]http.HandlerFunc{"GET " + activityLinkTypesPath: linkTypes, "GET " + activityListPath: activities})
 }
 
 func activityJSON(kind, category string, at int, members string) string {

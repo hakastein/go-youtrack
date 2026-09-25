@@ -94,10 +94,6 @@ func workItemTimeTracking(settings string) string {
 		`"timeTrackingSettings":` + settings + `}}`)
 }
 
-func workItemNearest(names ...string) youtrack.Pair {
-	return youtrack.Pair{Key: "nearest", Value: texts(names...)}
-}
-
 func workItemMismatch(t *testing.T, server *fake.Server, field string, expected, actual *youtrack.Node) youtrack.Error {
 	t.Helper()
 	return youtrack.Error{
@@ -983,8 +979,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour, Type: "Secnd"}, nil)
 			},
-			unknown: []*youtrack.Node{youtrack.NewMap(youtrack.Pair{Key: "type", Value: youtrack.NewString("Secnd")},
-				workItemNearest("Second"))},
+			unknown: []*youtrack.Node{withNearest("type", "Secnd", "Second")},
 		},
 		{
 			name:     "a type near none of the project",
@@ -992,8 +987,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour, Type: "zzzzzzzz"}, nil)
 			},
-			unknown: []*youtrack.Node{youtrack.NewMap(youtrack.Pair{Key: "type", Value: youtrack.NewString("zzzzzzzz")},
-				workItemNearest("First", "Second"))},
+			unknown: []*youtrack.Node{withNearest("type", "zzzzzzzz", "First", "Second")},
 		},
 		{
 			name:     "a type two types answer to in another letter case",
@@ -1001,8 +995,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Type: new("twin")}, nil)
 			},
-			unknown: []*youtrack.Node{youtrack.NewMap(youtrack.Pair{Key: "type", Value: youtrack.NewString("twin")},
-				workItemNearest("TWIN", "Twin"))},
+			unknown: []*youtrack.Node{withNearest("type", "twin", "TWIN", "Twin")},
 		},
 		{
 			name:     "an attribute the project has none of",
@@ -1011,8 +1004,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour,
 					Attributes: []youtrack.AttributeWrite{{Name: "Mood", Value: "Pair"}}}, nil)
 			},
-			unknown: []*youtrack.Node{youtrack.NewMap(youtrack.Pair{Key: "attribute", Value: youtrack.NewString("Mood")},
-				workItemNearest("Mode"))},
+			unknown: []*youtrack.Node{withNearest("attribute", "Mood", "Mode")},
 		},
 		{
 			name:     "a value the attribute does not take",
@@ -1024,7 +1016,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			unknown: []*youtrack.Node{youtrack.NewMap(
 				youtrack.Pair{Key: "attribute", Value: youtrack.NewString("Mode")},
 				youtrack.Pair{Key: "value", Value: youtrack.NewString("Trio")},
-				workItemNearest("Pair", "Solo"))},
+				youtrack.Pair{Key: "nearest", Value: texts("Pair", "Solo")})},
 		},
 		{
 			name:     "a value set and an attribute taken away, both unknown",
@@ -1039,8 +1031,8 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 				youtrack.NewMap(
 					youtrack.Pair{Key: "attribute", Value: youtrack.NewString("Mode")},
 					youtrack.Pair{Key: "value", Value: youtrack.NewString("Sol")},
-					workItemNearest("Solo")),
-				youtrack.NewMap(youtrack.Pair{Key: "attribute", Value: youtrack.NewString("Mood")}, workItemNearest("Mode")),
+					youtrack.Pair{Key: "nearest", Value: texts("Solo")}),
+				withNearest("attribute", "Mood", "Mode"),
 			},
 		},
 	}
@@ -1126,11 +1118,11 @@ func TestWorkItemWriteRefusesSettingsOfAnotherShape(t *testing.T) {
 
 func TestDeleteWorkItemRemovesTheWorkItemUnderTheIssueTheReadNamed(t *testing.T) {
 	t.Parallel()
-	mux := http.NewServeMux()
-	mux.Handle("GET /api/issues/dev-1/timeTracking/workItems/7-1",
-		fake.JSON(http.StatusOK, `{"$type":"IssueWorkItem","id":"7-1","issue":{"$type":"Issue","idReadable":"DEV-1"}}`))
-	mux.HandleFunc("DELETE "+workItemOfTheIssue, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	server := fake.Serve(t, mux.ServeHTTP)
+	server := routes(t, map[string]http.HandlerFunc{
+		"GET /api/issues/dev-1/timeTracking/workItems/7-1": fake.JSON(http.StatusOK,
+			`{"$type":"IssueWorkItem","id":"7-1","issue":{"$type":"Issue","idReadable":"DEV-1"}}`),
+		"DELETE " + workItemOfTheIssue: fake.JSON(http.StatusOK, ""),
+	})
 
 	node, err := client(t, server).WorkItems.Delete(t.Context(), "dev-1", "7-1")
 
