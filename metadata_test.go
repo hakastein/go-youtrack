@@ -26,7 +26,7 @@ const (
 	firstFieldPath  = fieldPath + "1-1"
 	secondFieldPath = fieldPath + "1-2"
 	fieldNaming     = "field(name,localizedName,fieldType(valueType,isMultiValue))"
-	projectFields   = "id,shortName,customFields(id,ordinal,canBeEmpty," + fieldNaming + ")"
+	projectFields   = "customFields(id,ordinal,canBeEmpty," + fieldNaming + ")"
 )
 
 // translation is the JSON of localizedName, null when empty.

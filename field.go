@@ -1,12 +1,9 @@
 package youtrack
 
 import (
-	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 )
 
 const FieldListFields = "field(name,localizedName,fieldType(valueType,isMultiValue)),canBeEmpty"
@@ -209,30 +206,16 @@ func fieldsToPrint(expression string, kind FieldType) (requested []requestedFiel
 	return requested, true, fault
 }
 
-type orderedField struct {
-	position int64
-	field    map[string]any
-}
-
 func sortedByOrdinal(decoded decodedResponse) ([]map[string]any, *Error) {
-	placed := make([]orderedField, 0, len(decoded.objects))
+	fields := make([]placed[map[string]any], 0, len(decoded.objects))
 	for _, field := range decoded.objects {
-		number, isNumber := field[ordinalKey].(json.Number)
-		if !isNumber {
-			return nil, decoded.invalid("the ordinal of a custom field is not a number")
-		}
-		position, err := number.Int64()
-		if err != nil {
+		ordinal, isWhole := parseInt64(field[ordinalKey])
+		if !isWhole {
 			return nil, decoded.invalid("the ordinal of a custom field is not a whole number")
 		}
-		placed = append(placed, orderedField{position: position, field: field})
+		fields = append(fields, placed[map[string]any]{ordinal: ordinal, item: field})
 	}
-	slices.SortStableFunc(placed, func(a, b orderedField) int { return cmp.Compare(a.position, b.position) })
-	ordered := make([]map[string]any, 0, len(placed))
-	for _, p := range placed {
-		ordered = append(ordered, p.field)
-	}
-	return ordered, nil
+	return inOrdinalOrder(fields), nil
 }
 
 func noFields(a decodedResponse, code string) *Error {
