@@ -547,7 +547,7 @@ func (s linkIssue) linkFor(phrase string) (issueLink, *Error) {
 		return issueLink{}, s.fault(CodeUpstreamInvalid, message,
 			Pair{Key: "phrase", Value: NewString(twin)})
 	}
-	link, found := pickLink(named, phrase)
+	link, found := soleMatch(named, phrase, func(link issueLink) string { return link.phrase })
 	if !found {
 		return issueLink{}, s.unknownPhrase(phrase, named)
 	}
@@ -569,18 +569,6 @@ func (s linkIssue) matchLinks(phrase string) []issueLink {
 		}
 	}
 	return named
-}
-
-func pickLink(named []issueLink, phrase string) (issueLink, bool) {
-	if len(named) == 1 {
-		return named[0], true
-	}
-	for _, link := range named {
-		if link.phrase == phrase {
-			return link, true
-		}
-	}
-	return issueLink{}, false
 }
 
 func duplicatePhrase(named []issueLink) (string, bool) {

@@ -563,23 +563,11 @@ func matchTag(a decodedResponse, sought tagRef, shown []tagCandidate) (int, *Err
 		return 0, noTagOfThatOwner(a, sought, shown, named)
 	case len(candidates) == 0:
 		return 0, noTagNamed(a, sought.name, shown)
-	case len(candidates) == 1:
-		return candidates[0], nil
 	}
-	if tieBrokenByCase := exactlyNamed(shown, candidates, sought.name); len(tieBrokenByCase) == 1 {
-		return tieBrokenByCase[0], nil
+	if at, found := soleMatch(candidates, sought.name, func(at int) string { return shown[at].name }); found {
+		return at, nil
 	}
 	return 0, severalTagsNamed(a, sought.name, shown, candidates)
-}
-
-func exactlyNamed(shown []tagCandidate, candidates []int, name string) []int {
-	var exact []int
-	for _, at := range candidates {
-		if shown[at].name == name {
-			exact = append(exact, at)
-		}
-	}
-	return exact
 }
 
 type named interface {
@@ -746,22 +734,14 @@ func (r *groupResolver) resolveOne(name string) (groupID, bool) {
 		r.unknown = append(r.unknown, nearestEntry(groupKey, name, nearestNames(name, sortedNames(r.shown.groups))))
 		return groupID{}, false
 	}
-	if len(candidates) > 1 {
-		var exact []groupCandidate
-		for _, group := range candidates {
-			if group.name == name {
-				exact = append(exact, group)
-			}
-		}
-		if len(exact) != 1 {
-			r.ambiguous = append(r.ambiguous, NewMap(
-				Pair{Key: groupKey, Value: NewString(name)},
-				Pair{Key: "candidates", Value: textList(sortedNames(candidates))}))
-			return groupID{}, false
-		}
-		candidates = exact
+	group, found := soleMatch(candidates, name, groupCandidate.displayName)
+	if !found {
+		r.ambiguous = append(r.ambiguous, NewMap(
+			Pair{Key: groupKey, Value: NewString(name)},
+			Pair{Key: "candidates", Value: textList(sortedNames(candidates))}))
+		return groupID{}, false
 	}
-	return r.validID(candidates[0])
+	return r.validID(group)
 }
 
 func (r *groupResolver) validID(group groupCandidate) (groupID, bool) {

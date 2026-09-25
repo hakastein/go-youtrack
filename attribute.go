@@ -167,14 +167,18 @@ func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]res
 }
 
 func matchName(name string, catalogue []fieldInfo) (int, bool) {
-	places := findMatches(name, catalogue)
-	if len(places) > 1 {
-		places = slices.DeleteFunc(places, func(at int) bool { return catalogue[at].name != name })
+	return soleMatch(findMatches(name, catalogue), name, func(at int) string { return catalogue[at].name })
+}
+
+func soleMatch[E any](candidates []E, name string, spelling func(E) string) (E, bool) {
+	if len(candidates) > 1 {
+		candidates = slices.DeleteFunc(slices.Clone(candidates), func(candidate E) bool { return spelling(candidate) != name })
 	}
-	if len(places) != 1 {
-		return 0, false
+	if len(candidates) != 1 {
+		var none E
+		return none, false
 	}
-	return places[0], true
+	return candidates[0], true
 }
 
 func attributesOf(a decodedResponse, settings map[string]any) ([]projectAttribute, *Error) {
