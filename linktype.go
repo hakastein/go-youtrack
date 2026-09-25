@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const linkTypeCatalogue = "[]IssueLinkType"
+const linkTypesListing = "[]IssueLinkType"
 
 const topAllCutOff = 1000
 
@@ -25,7 +25,7 @@ func linkTypeFields() []requestedField {
 }
 
 func (c *Client) linkPhrases(ctx context.Context) (linkPhrases, *Error) {
-	a, fault := c.request(ctx, linkTypeCatalogue, linkTypeFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, linkTypesListing, linkTypeFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssueLinkTypes(ctx, fields, topAllCutOff)
 	})
 	if fault != nil {

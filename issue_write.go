@@ -422,7 +422,7 @@ func (w issueWrite) verifyCustomFields(a decodedResponse, wrong []mismatch) ([]m
 		if sameValueSet(written.field.Type, written.sentKeys, texts) {
 			continue
 		}
-		wrong = append(wrong, mismatch{field: name, expected: written.node(), actual: valueNode(texts, written.field.Type)})
+		wrong = append(wrong, mismatch{field: name, expected: written.node(), actual: textsNode(texts, written.field.Type)})
 	}
 	return wrong, nil
 }
@@ -441,17 +441,17 @@ func covers(kind FieldType, all, some []string) bool {
 }
 
 func (f resolvedField) node() *Node {
-	return valueNode(f.values, f.field.Type)
+	return textsNode(f.values, f.field.Type)
 }
 
-func valueNode(values []string, kind FieldType) *Node {
+func textsNode(texts []string, kind FieldType) *Node {
 	switch {
 	case kind.Multi:
-		return textList(values)
-	case len(values) == 0:
+		return textList(texts)
+	case len(texts) == 0:
 		return NewNull()
 	}
-	return NewString(values[0])
+	return NewString(texts[0])
 }
 
 type projectMetadata struct {

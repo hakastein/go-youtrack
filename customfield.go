@@ -17,25 +17,15 @@ type fieldInfo struct {
 	kind          FieldType
 }
 
-func readLocalized(value any) (string, bool) {
-	switch name := value.(type) {
-	case string:
-		return name, true
-	case nil:
-		return "", true
-	}
-	return "", false
+func (f fieldInfo) translatedAs(name string) bool {
+	return f.localizedName != "" && strings.EqualFold(name, f.localizedName)
 }
 
-func (n fieldInfo) translatedAs(name string) bool {
-	return n.localizedName != "" && strings.EqualFold(name, n.localizedName)
-}
-
-func (n fieldInfo) translations() []string {
-	if n.localizedName == "" {
+func (f fieldInfo) translations() []string {
+	if f.localizedName == "" {
 		return nil
 	}
-	return []string{n.localizedName}
+	return []string{f.localizedName}
 }
 
 func findMatches(name string, catalogue []fieldInfo) []int {
@@ -238,7 +228,7 @@ func (n converter) selectedFieldsNode(asked []requestedField, fields []issueCust
 			return nil, fault
 		}
 		if !present {
-			printed = valueNode(nil, field.kind)
+			printed = textsNode(nil, field.kind)
 		}
 		pairs = append(pairs, DataPair(field.name, printed))
 	}
@@ -306,7 +296,7 @@ func readBinding(place map[string]any) (binding string, named fieldInfo, ok bool
 	binding, isText := place[idKey].(string)
 	field, _ := place[fieldKey].(map[string]any)
 	kind, typed := readFieldType(field)
-	translated, isName := readLocalized(field[localizedNameKey])
+	translated, isName := readOptionalText(field[localizedNameKey])
 	return binding, fieldInfo{localizedName: translated, kind: kind}, isText && typed && isName
 }
 
@@ -348,7 +338,7 @@ func (n converter) valueNode(f issueCustomField) (*Node, bool, *Error) {
 	return NewList(items...), true, nil
 }
 
-const customFieldCatalogue = "[]CustomField"
+const customFieldsListing = "[]CustomField"
 
 const brokenCatalogue = "a custom field of the instance is named in some shape other than text"
 
@@ -357,7 +347,7 @@ func catalogueFields() []requestedField {
 }
 
 func (c *Client) customFieldCatalogue(ctx context.Context) (decodedResponse, []fieldInfo, *Error) {
-	a, fault := c.request(ctx, customFieldCatalogue, catalogueFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, customFieldsListing, catalogueFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetCustomFields(ctx, fields, topAll)
 	})
 	if fault != nil {
@@ -376,7 +366,7 @@ func (c *Client) customFieldCatalogue(ctx context.Context) (decodedResponse, []f
 
 func readFieldNames(field map[string]any) (fieldInfo, bool) {
 	name, isText := field[nameKey].(string)
-	translated, isName := readLocalized(field[localizedNameKey])
+	translated, isName := readOptionalText(field[localizedNameKey])
 	return fieldInfo{name: name, localizedName: translated}, isText && isName
 }
 

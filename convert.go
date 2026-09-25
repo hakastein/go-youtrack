@@ -315,6 +315,24 @@ func parseInt64(value any) (int64, bool) {
 	return count, true
 }
 
+func memberOf(value any, name string) any {
+	object, isObject := value.(map[string]any)
+	if !isObject {
+		return nil
+	}
+	return object[name]
+}
+
+func readOptionalText(value any) (string, bool) {
+	switch text := value.(type) {
+	case string:
+		return text, true
+	case nil:
+		return "", true
+	}
+	return "", false
+}
+
 func notAnInstant(name string) string {
 	return fmt.Sprintf("%s is a time, and what arrived for it is no whole number of milliseconds since the epoch", name)
 }

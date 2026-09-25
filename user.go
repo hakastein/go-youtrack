@@ -150,7 +150,7 @@ func readUser(a decodedResponse, object map[string]any) (User, *Error) {
 	login, isLogin := object[loginKey].(string)
 	fullName, isName := object[fullNameKey].(string)
 	banned, isFlag := object[bannedKey].(bool)
-	email, isEmail := readLocalized(object[emailKey])
+	email, isEmail := readOptionalText(object[emailKey])
 	if !isID || !isLogin || !isName || !isFlag || !isEmail {
 		return User{}, a.invalid("a user is not of the shape the specification gives it")
 	}

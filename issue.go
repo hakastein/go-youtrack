@@ -119,7 +119,7 @@ func readIssue(a decodedResponse) (*Issue, *Error) {
 	if !isID || !isReadable || !isSummary {
 		return nil, a.invalid("the id, the readable id or the summary of the issue is not text")
 	}
-	description, isText := readLocalized(object[descriptionKey])
+	description, isText := readOptionalText(object[descriptionKey])
 	if !isText {
 		return nil, a.invalid("the description of the issue is neither text nor null")
 	}
@@ -202,8 +202,8 @@ func (n converter) recordLink(slot map[string]any) (Link, *Error) {
 		return Link{}, n.response.invalid(brokenLinkSlot)
 	}
 	name, isName := kind[nameKey].(string)
-	forward, isForward := readLocalized(kind[sourceToTarget])
-	backward, isBackward := readLocalized(kind[targetToSource])
+	forward, isForward := readOptionalText(kind[sourceToTarget])
+	backward, isBackward := readOptionalText(kind[targetToSource])
 	if !isName || !isForward || !isBackward {
 		return Link{}, n.response.invalid(brokenLinkSlot)
 	}

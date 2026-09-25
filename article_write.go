@@ -222,11 +222,3 @@ func parentMismatch(wrong []mismatch, readable string, value any) []mismatch {
 	}
 	return append(wrong, mismatch{field: parentArticleKey, expected: NewString(readable), actual: rawValueNode(received)})
 }
-
-func memberOf(value any, name string) any {
-	object, isObject := value.(map[string]any)
-	if !isObject {
-		return nil
-	}
-	return object[name]
-}

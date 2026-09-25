@@ -163,8 +163,8 @@ func (t FieldType) read(item any) (value Value, present bool, reason string) {
 		}
 		held = inside
 		if k.isNamedValue() {
-			id, isID := readLocalized(object[idKey])
-			translated, isName := readLocalized(object[localizedNameKey])
+			id, isID := readOptionalText(object[idKey])
+			translated, isName := readOptionalText(object[localizedNameKey])
 			if !isID || !isName {
 				return Value{}, false, "the id or the translation of the value is neither text nor null"
 			}
