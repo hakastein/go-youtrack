@@ -117,13 +117,13 @@ func bodyDetail(body []byte) Pair {
 
 func responseDetails(response *http.Response) []Pair {
 	return []Pair{
-		requestDetail(response.Request.Method, response.Request.URL.Redacted()),
+		sentRequest(response),
 		{Key: "upstream_status", Value: intNode(response.StatusCode)},
 	}
 }
 
-func sentRequest(sent Request) Pair {
-	return Pair{Key: requestKey, Value: NewString(sent.String())}
+func sentRequest(response *http.Response) Pair {
+	return requestDetail(response.Request.Method, response.Request.URL.Redacted())
 }
 
 func requestDetail(method, address string) Pair {

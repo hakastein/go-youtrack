@@ -308,7 +308,7 @@ func (n converter) readCustomField(item any) (issueCustomField, *Error) {
 		return issueCustomField{}, n.malformed(message)
 	}
 	if !named.kind.Known() {
-		return issueCustomField{}, n.malformed(unmodelledType(named))
+		return issueCustomField{}, n.malformed(unmodelled(named.kind))
 	}
 	return issueCustomField{name: name, value: object["value"], kind: named.kind, ordinal: ordinal,
 		binding: binding, localizedName: named.localizedName}, nil
@@ -521,32 +521,6 @@ func ambiguousEntry(field string, candidates []string) *Node {
 		Pair{Key: "candidates", Value: NewList(names...)})
 }
 
-func defaultFields(n fieldInfo) (string, bool) {
-	switch {
-	case !n.kind.Known():
-		return "", false
-	case n.kind.BundleFields() == "":
-		return FieldListFields, true
-	}
-	return FieldListFields + "," + n.kind.BundleFields(), true
-}
-
-func fieldsToPrint(expression string, n fieldInfo) (requested []requestedField, modelled bool, fault *Error) {
-	defaults := ""
-	if expression == "" || extendsDefault(expression) {
-		if defaults, modelled = defaultFields(n); !modelled {
-			return nil, false, nil
-		}
-	}
-	_, requested, fault = fieldsOrDefault(expression, defaults, false)
-	return requested, true, fault
-}
-
-func unmodelledType(n fieldInfo) string {
-	return fmt.Sprintf("valueType %s with isMultiValue %t is not one of the twenty custom-field types ytrack models",
-		quote(string(n.kind.ValueType)), n.kind.Multi)
-}
-
 func fieldInfoFields() requestedField {
 	return requestedField{name: "field", children: []requestedField{
 		{name: nameKey},
@@ -582,59 +556,4 @@ func readFieldInfo(object map[string]any) (fieldInfo, bool) {
 	}
 	fieldType := FieldType{ValueType: ValueType(valueType), Multi: isMultiValue}
 	return fieldInfo{name: name, localizedName: translated, kind: fieldType}, true
-}
-
-func lookUp(name string, fields []customField) (customField, bool) {
-	places := findMatches(name, fieldInfos(fields))
-	if len(places) != 1 {
-		return customField{}, false
-	}
-	return fields[places[0]], true
-}
-
-func unresolved(sent Request, code, name string, fields []customField) *Error {
-	catalogue := fieldInfos(fields)
-	if places := findMatches(name, catalogue); len(places) > 0 {
-		message := "the name under unknown belongs to more than one custom field of the project"
-		return unknownField(sent, code, name, canonical(pick(catalogue, places)), message)
-	}
-	message := "the name under unknown is not a custom field of the project"
-	return unknownField(sent, code, name, nearestNamed(name, catalogue), message)
-}
-
-func unknownField(sent Request, code, name string, nearest []string, message string) *Error {
-	against := Pair{Key: "project", Value: NewString(code)}
-	return unknownNames(sentRequest(sent), against, "unknown", message, []*Node{unknownEntry(name, nearest)})
-}
-
-func fieldInfos(fields []customField) []fieldInfo {
-	catalogue := make([]fieldInfo, 0, len(fields))
-	for _, field := range fields {
-		catalogue = append(catalogue, field.info)
-	}
-	return catalogue
-}
-
-func (f customField) hasValidID() bool {
-	return isInternalID(f.id)
-}
-
-func invalidFieldID(id string) string {
-	return fmt.Sprintf("the id %s of a custom field is not two numbers with a dash between them", quote(id))
-}
-
-func (n fieldInfo) verifyUnchanged(a decodedResponse, code string) *Error {
-	answered, ok := readFieldInfo(a.objects[0])
-	if !ok {
-		return shapeFailure(a.httpResponse, a.body, brokenFieldInfo)
-	}
-	if answered == n {
-		return nil
-	}
-	details := append(responseDetails(a.httpResponse),
-		Pair{Key: "project", Value: NewString(code)},
-		Pair{Key: "field", Value: NewString(n.name)},
-		bodyDetail(a.body))
-	message := "the custom field the id addresses is no longer the one the name resolved to"
-	return &Error{Code: CodeUpstreamFailed, Message: message, Details: details}
 }

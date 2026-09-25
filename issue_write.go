@@ -713,7 +713,7 @@ func (p projectMetadata) encodeValues(given [][]string, emptied []bool, issueFie
 		field := p.fields[at]
 		kind := field.info.kind
 		if !kind.Known() {
-			return nil, shapeFailure(p.response.httpResponse, p.response.body, unmodelledType(field.info))
+			return nil, shapeFailure(p.response.httpResponse, p.response.body, unmodelled(kind))
 		}
 		class := kind.Class()
 		if typeOnIssue, onTheIssue := issueFieldTypes[field.id]; onTheIssue {

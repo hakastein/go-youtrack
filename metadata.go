@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strings"
 )
 
+// ID is the id of the binding to the project, not of the field.
 type ProjectField struct {
 	ID            string
 	Name          string
@@ -17,69 +17,64 @@ type ProjectField struct {
 	CanBeEmpty    bool
 }
 
-// Metadata is the custom fields of a project; Request is the read that brought them when FromCache is false.
+// Fields are in the project's order.
 type Metadata struct {
 	Fields    []ProjectField
 	FromCache bool
-	Request   Request
 }
 
 // Metadata answers from the metadata cache when it holds the project, else reads the server and stores the
 // result; a caller that finds the cache stale reads again with ReadMetadata.
-func (c *Client) Metadata(ctx context.Context, project string) (*Metadata, error) {
-	return result(c.metadata(ctx, project))
+func (s *FieldsService) Metadata(ctx context.Context, project string) (*Metadata, error) {
+	metadata, _, fault := s.metadata(ctx, project)
+	return result(metadata, fault)
 }
 
-// ReadMetadata reads the custom fields of the project from the server and stores them in the metadata cache.
-func (c *Client) ReadMetadata(ctx context.Context, project string) (*Metadata, error) {
-	return result(c.readMetadata(ctx, project))
+// ReadMetadata also stores the result in the metadata cache.
+func (s *FieldsService) ReadMetadata(ctx context.Context, project string) (*Metadata, error) {
+	metadata, _, fault := s.readMetadata(ctx, project)
+	return result(metadata, fault)
 }
 
-func (c *Client) metadata(ctx context.Context, project string) (*Metadata, *Error) {
+// sent is the read that brought the metadata, and nothing for metadata from the cache.
+func (s *FieldsService) metadata(ctx context.Context, project string) (*Metadata, Pair, *Error) {
 	code, fault := parseProjectCode(project)
 	if fault != nil {
-		return nil, fault
+		return nil, Pair{}, fault
 	}
-	if cached, hit := c.cache.load(metadataTarget(code)); hit {
-		return &Metadata{Fields: cached, FromCache: true}, nil
+	if cached, hit := s.client.cache.load(metadataTarget(code)); hit {
+		return &Metadata{Fields: cached, FromCache: true}, Pair{}, nil
 	}
-	return c.readMetadata(ctx, code)
+	return s.readMetadata(ctx, code)
 }
 
-func (c *Client) readMetadata(ctx context.Context, project string) (*Metadata, *Error) {
+func (s *FieldsService) readMetadata(ctx context.Context, project string) (*Metadata, Pair, *Error) {
 	code, fault := parseProjectCode(project)
 	if fault != nil {
-		return nil, fault
+		return nil, Pair{}, fault
 	}
-	decoded, fault := c.request(ctx, loadSchemas(), projectSchema, projectFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	c := s.client
+	decoded, fault := c.request(ctx, c.spec, projectSchema, projectFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProject(ctx, code, fields)
 	})
 	if fault != nil {
-		return nil, fault
+		return nil, Pair{}, fault
 	}
 	fields, fault := readProjectFields(decoded, code)
 	if fault != nil {
-		return nil, fault
+		return nil, Pair{}, fault
 	}
 	c.cache.store(metadataTarget(code), fields)
-	return &Metadata{Fields: fields, Request: requestOf(decoded.httpResponse)}, nil
+	return &Metadata{Fields: fields}, sentRequest(decoded.httpResponse), nil
 }
 
 const canBeEmptyKey = "canBeEmpty"
-
-func fieldNaming() requestedField {
-	return requestedField{name: "field", children: []requestedField{
-		{name: nameKey},
-		{name: localizedNameKey},
-		{name: fieldTypeKey, children: []requestedField{{name: valueTypeKey}, {name: "isMultiValue"}}},
-	}}
-}
 
 func projectFields() []requestedField {
 	return []requestedField{
 		{name: idKey},
 		{name: "shortName"},
-		{name: customFieldsKey, children: []requestedField{{name: idKey}, {name: ordinalKey}, {name: canBeEmptyKey}, fieldNaming()}},
+		{name: customFieldsKey, children: []requestedField{{name: idKey}, {name: ordinalKey}, {name: canBeEmptyKey}, fieldInfoFields()}},
 	}
 }
 
@@ -121,7 +116,7 @@ func readProjectFields(a decodedResponse, code string) ([]ProjectField, *Error) 
 		}})
 	}
 	if len(placed) == 0 {
-		return nil, noFields(requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()), code)
+		return nil, noFields(sentRequest(a.httpResponse), code)
 	}
 	slices.SortStableFunc(placed, func(x, y placedField) int { return cmp.Compare(x.ordinal, y.ordinal) })
 	fields := make([]ProjectField, 0, len(placed))
@@ -129,23 +124,6 @@ func readProjectFields(a decodedResponse, code string) ([]ProjectField, *Error) 
 		fields = append(fields, p.field)
 	}
 	return fields, nil
-}
-
-// The server resolves a name as matchFields does: by name, then by the translation, without regard to letter case.
-func matchFields(name string, fields []ProjectField) []int {
-	var byName, byTranslation []int
-	for at, f := range fields {
-		switch {
-		case strings.EqualFold(name, f.Name):
-			byName = append(byName, at)
-		case f.LocalizedName != "" && strings.EqualFold(name, f.LocalizedName):
-			byTranslation = append(byTranslation, at)
-		}
-	}
-	if len(byName) > 0 {
-		return byName
-	}
-	return byTranslation
 }
 
 func unmodelled(t FieldType) string {
