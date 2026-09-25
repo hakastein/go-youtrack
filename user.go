@@ -65,7 +65,7 @@ func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOpti
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := parseFields(opts.Fields, UserShowFields)
+	_, requested, fault := parseFields(opts.Fields, UserShowFields, false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -87,7 +87,7 @@ func (s *UsersService) list(ctx context.Context, query string, opts ListUsersOpt
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := parseFields(opts.Fields, UserListFields)
+	_, requested, fault := parseFields(opts.Fields, UserListFields, false)
 	if fault != nil {
 		return nil, fault
 	}

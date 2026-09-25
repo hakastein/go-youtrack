@@ -99,7 +99,7 @@ func (s *IssuesService) delete(ctx context.Context, id string) (*Node, *Error) {
 }
 
 func issueFields(spec *schemas, expression string, defaults, comments string) ([]requestedField, *Error) {
-	written, requested, fault := fieldsOrDefault(expression, defaults, true)
+	written, requested, fault := parseFields(expression, defaults, true)
 	if fault != nil {
 		return nil, fault
 	}
@@ -277,7 +277,7 @@ func rejectIssueBlocks(spec *schemas, at blockSchema, expression string, request
 }
 
 func eachCustomFields(spec *schemas, at string, requested []requestedField, visit func(parents []string, field *requestedField)) {
-	fieldsNamed(spec, at, issueSchema, customFieldsKey, requested, nil, visit)
+	fieldsNamed(spec, at, issueSchema, customFieldsKey, requested, visit)
 }
 
 func ownCustomFields(spec *schemas, at string, requested []requestedField) *requestedField {

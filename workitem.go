@@ -351,7 +351,7 @@ func workItemRequestFields(spec *schemas, requested []requestedField) []requeste
 }
 
 func workItemFields(spec *schemas, expression string, defaults string) ([]requestedField, *Error) {
-	written, requested, fault := fieldsOrDefault(expression, defaults, false)
+	written, requested, fault := parseFields(expression, defaults, false)
 	if fault != nil {
 		return nil, fault
 	}

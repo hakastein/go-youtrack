@@ -83,7 +83,7 @@ func (s *CommentsService) list(ctx context.Context, owner string, opts ListComme
 		return nil, fault
 	}
 	held := commentTargetOf(at.kind)
-	requested, fault := parseFields(opts.Fields, formatFields(held.listed()))
+	_, requested, fault := parseFields(opts.Fields, formatFields(held.listed()), false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -152,7 +152,7 @@ func (h commentTarget) commentsOfAWrite() string {
 }
 
 func (h commentTarget) reject(spec *schemas, expression string, requested []requestedField, because string) *Error {
-	path, written := firstFieldNamed(spec, h.schema, h.schema, commentsKey, requested, nil)
+	path, written := firstFieldNamed(spec, h.schema, h.schema, commentsKey, requested)
 	if !written {
 		return nil
 	}

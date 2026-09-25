@@ -79,7 +79,7 @@ func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAt
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := parseFields(opts.Fields, AttachmentListFields)
+	_, requested, fault := parseFields(opts.Fields, AttachmentListFields, false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -104,7 +104,7 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 	if fault := checkFile(file); fault != nil {
 		return nil, fault
 	}
-	requested, fault := parseFields(opts.Fields, AttachmentListFields)
+	_, requested, fault := parseFields(opts.Fields, AttachmentListFields, false)
 	if fault != nil {
 		return nil, fault
 	}

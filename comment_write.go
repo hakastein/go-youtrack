@@ -15,7 +15,7 @@ func (s *CommentsService) create(ctx context.Context, owner, text string, opts W
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := parseFields(opts.Fields, CommentFields)
+	_, requested, fault := parseFields(opts.Fields, CommentFields, false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -40,7 +40,7 @@ func (s *CommentsService) update(ctx context.Context, owner, id, text string, op
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := parseFields(opts.Fields, CommentFields)
+	_, requested, fault := parseFields(opts.Fields, CommentFields, false)
 	if fault != nil {
 		return nil, fault
 	}

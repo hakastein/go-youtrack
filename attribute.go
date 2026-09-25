@@ -28,7 +28,7 @@ func attributesAsked() []requestedField {
 }
 
 func eachAttributes(spec *schemas, at string, requested []requestedField, visit func(parents []string, field *requestedField)) {
-	fieldsOfType(spec, at, workItemAttributeSchema, requested, nil, visit)
+	fieldsOfType(spec, at, workItemAttributeSchema, requested, visit)
 }
 
 func rejectAttributeNames(spec *schemas, at, expression string, requested []requestedField) *Error {

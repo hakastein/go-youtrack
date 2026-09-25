@@ -78,7 +78,7 @@ func checkMissingFields(spec *schemas, response *http.Response, responseSchema s
 }
 
 func findMissingFields(requested []requestedField, tree any) (*fieldNode, []missingField) {
-	s := missingFieldCollector{found: map[missingField]bool{}}
+	var s missingFieldCollector
 	root := newFieldNode(nil, requestedField{children: requested})
 	s.visit(root, tree)
 	return root, s.absences
@@ -86,7 +86,6 @@ func findMissingFields(requested []requestedField, tree any) (*fieldNode, []miss
 
 type missingFieldCollector struct {
 	absences []missingField
-	found    map[missingField]bool
 }
 
 func newFieldNode(parent *fieldNode, field requestedField) *fieldNode {
@@ -120,22 +119,15 @@ func (s *missingFieldCollector) visit(p *fieldNode, value any) {
 			child, ok := value[field.name]
 			switch {
 			case !ok:
-				s.add(missingField{at: p, name: field.name, objectType: objectType, hasType: hasType, askedByDefault: fromDefault(field)})
+				s.absences = append(s.absences, missingField{at: p, name: field.name, objectType: objectType, hasType: hasType, askedByDefault: fromDefault(field)})
 			case field.children != nil && !field.normalized:
 				s.visit(p.children[i], child)
 			}
 		}
 	default:
 		for _, field := range p.field.children {
-			s.add(missingField{at: p, name: field.name, scalar: true, askedByDefault: fromDefault(field)})
+			s.absences = append(s.absences, missingField{at: p, name: field.name, scalar: true, askedByDefault: fromDefault(field)})
 		}
-	}
-}
-
-func (s *missingFieldCollector) add(a missingField) {
-	if !s.found[a] {
-		s.found[a] = true
-		s.absences = append(s.absences, a)
 	}
 }
 

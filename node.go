@@ -163,7 +163,7 @@ func (n *Node) writeJSON(w *bytes.Buffer) error {
 	case NumberNode, BoolNode:
 		w.WriteString(n.value)
 	case StringNode, TextNode:
-		return writeJSONString(w, n.value)
+		writeJSONString(w, n.value)
 	case ListNode:
 		w.WriteByte('[')
 		for i, item := range n.items {
@@ -181,9 +181,7 @@ func (n *Node) writeJSON(w *bytes.Buffer) error {
 			if i > 0 {
 				w.WriteByte(',')
 			}
-			if err := writeJSONString(w, pair.Key); err != nil {
-				return err
-			}
+			writeJSONString(w, pair.Key)
 			w.WriteByte(':')
 			if err := pair.Value.writeJSON(w); err != nil {
 				return fmt.Errorf("under %s: %w", quote(pair.Key), err)
@@ -196,10 +194,9 @@ func (n *Node) writeJSON(w *bytes.Buffer) error {
 	return nil
 }
 
-func writeJSONString(w *bytes.Buffer, s string) error {
-	written, err := json.Marshal(s)
+func writeJSONString(w *bytes.Buffer, s string) {
+	written, _ := json.Marshal(s)
 	w.Write(written)
-	return err
 }
 
 // CheckKey says whether key is a name of the module's own: ASCII letters, digits, _ and $, not starting with a
@@ -208,12 +205,10 @@ func writeJSONString(w *bytes.Buffer, s string) error {
 func CheckKey(key string) error {
 	for i, c := range []byte(key) {
 		switch {
-		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', c == '_', c == '$':
-		case '0' <= c && c <= '9' && i > 0:
-		case '0' <= c && c <= '9':
-			return fmt.Errorf("the key %s starts with a digit", quote(key))
-		default:
+		case !isNameByte(c):
 			return fmt.Errorf("the key %s holds more than ASCII letters, digits, _ and $", quote(key))
+		case i == 0 && '0' <= c && c <= '9':
+			return fmt.Errorf("the key %s starts with a digit", quote(key))
 		}
 	}
 	switch strings.ToLower(key) {

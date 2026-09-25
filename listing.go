@@ -24,7 +24,7 @@ func (p Page) parse() (Page, *Error) {
 
 func (p Page) validate(most int) (Page, *Error) {
 	if p.Limit == 0 {
-		p.Limit = min(DefaultLimit, most)
+		p.Limit = DefaultLimit
 	}
 	if p.Limit < 1 || p.Limit > most {
 		message := fmt.Sprintf("limit %d is not between 1 and %d", p.Limit, most)

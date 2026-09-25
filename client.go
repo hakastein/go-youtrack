@@ -99,7 +99,7 @@ func parseAddress(address string) (*url.URL, *Error) {
 		reason = "is not an http or https URL"
 	case parsed.Host == "":
 		reason = "names no host"
-	case parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawFragment != "":
+	case parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "":
 		reason = "carries a query or a fragment, and the address of an instance is a host and a path"
 	default:
 		return parsed, nil

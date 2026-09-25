@@ -42,7 +42,7 @@ func (s *FieldsService) list(ctx context.Context, project string, opts ListField
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := parseFields(opts.Fields, FieldListFields)
+	_, requested, fault := parseFields(opts.Fields, FieldListFields, false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -76,7 +76,7 @@ func (s *FieldsService) show(ctx context.Context, project, name string, opts Sho
 	if fault := checkFieldName(name); fault != nil {
 		return nil, fault
 	}
-	if fault := checkFieldsSyntax(opts.Fields); fault != nil {
+	if _, _, fault := parseFields(opts.Fields, FieldListFields, false); fault != nil {
 		return nil, fault
 	}
 	read, fault := s.readField(ctx, code, name, func(found fieldInfo) ([]requestedField, bool, *Error) {
@@ -93,14 +93,6 @@ func checkFieldName(name string) *Error {
 		return &Error{Code: CodeBadUsage, Message: "the name of a custom field is empty"}
 	}
 	return nil
-}
-
-func checkFieldsSyntax(expression string) *Error {
-	if expression == "" {
-		return nil
-	}
-	_, fault := parseFields(expression, FieldListFields)
-	return fault
 }
 
 // modelled is false when what to read depends on a type the module does not model.
@@ -237,7 +229,7 @@ func fieldsToPrint(expression string, n fieldInfo) (requested []requestedField, 
 			return nil, false, nil
 		}
 	}
-	_, requested, fault = fieldsOrDefault(expression, defaults, false)
+	_, requested, fault = parseFields(expression, defaults, false)
 	return requested, true, fault
 }
 

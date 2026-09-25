@@ -142,7 +142,7 @@ func parseLinkWrite(id, phrase, target string) (string, string, *Error) {
 }
 
 func linkFields(spec *schemas, expression string) ([]requestedField, *Error) {
-	written, target, fault := fieldsOrDefault(expression, LinkListFields, false)
+	written, target, fault := parseFields(expression, LinkListFields, false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -217,7 +217,7 @@ func (n converter) linkListing(target []requestedField, value any) (*Node, count
 
 func eachIssueLink(spec *schemas, at string, requested []requestedField, visit func(parents []string, field *requestedField)) {
 	for _, name := range issueLinkFields() {
-		fieldsNamed(spec, at, issueSchema, name, requested, nil, visit)
+		fieldsNamed(spec, at, issueSchema, name, requested, visit)
 	}
 }
 

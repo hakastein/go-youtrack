@@ -153,7 +153,7 @@ func resolveCategories(asked []string) ([]activityCategory, *Error) {
 }
 
 func activityFields(spec *schemas, expression string) ([]requestedField, *Error) {
-	written, requested, fault := fieldsOrDefault(expression, ActivityListFields, false)
+	written, requested, fault := parseFields(expression, ActivityListFields, false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -204,7 +204,7 @@ func rejectBlockParts(spec *schemas, expression string, requested []requestedFie
 	}
 	var fault *Error
 	for _, block := range blocks {
-		fieldsNamed(spec, activitySchema, activitySchema, block.name, requested, nil, func(parents []string, field *requestedField) {
+		fieldsNamed(spec, activitySchema, activitySchema, block.name, requested, func(parents []string, field *requestedField) {
 			if field.children == nil || fault != nil {
 				return
 			}

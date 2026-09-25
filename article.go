@@ -392,7 +392,7 @@ func (s *ArticlesService) delete(ctx context.Context, id string) (*Node, *Error)
 }
 
 func articleFields(spec *schemas, expression string, defaults, because string) ([]requestedField, *Error) {
-	written, requested, fault := fieldsOrDefault(expression, defaults, false)
+	written, requested, fault := parseFields(expression, defaults, false)
 	if fault != nil {
 		return nil, fault
 	}

@@ -23,46 +23,20 @@ type requestedField struct {
 	extraSchemas []string
 }
 
-func parseFields(expression, defaults string) ([]requestedField, *Error) {
-	return readFields(expression, defaults, false)
-}
-
-func parseDefault(defaults string, named bool) ([]requestedField, *Error) {
-	return (&fieldsReader{text: defaults, named: named}).expression(nil)
-}
-
-func fieldsOrDefault(expression string, defaults string, named bool) (string, []requestedField, *Error) {
-	requested, fault := readFields(expression, defaults, named)
-	if expression == "" {
-		return defaults, requested, fault
+func parseFields(expression, defaults string, named bool) (string, []requestedField, *Error) {
+	given := &fieldsReader{text: expression, named: named, fromCaller: true}
+	var tree []requestedField
+	if expression == "" || given.take('+') {
+		var fault *Error
+		if tree, fault = (&fieldsReader{text: defaults, named: named}).expression(nil); fault != nil || expression == "" {
+			return defaults, tree, fault
+		}
+	}
+	requested, fault := given.expression(tree)
+	if fault == nil {
+		fault = rejectFileContent(expression, requested)
 	}
 	return expression, requested, fault
-}
-
-func readFields(expression, defaults string, named bool) ([]requestedField, *Error) {
-	if expression == "" {
-		return parseDefault(defaults, named)
-	}
-	requested, fault := readExpression(expression, defaults, named)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := rejectFileContent(expression, requested); fault != nil {
-		return nil, fault
-	}
-	return requested, nil
-}
-
-func readExpression(expression, defaults string, named bool) ([]requestedField, *Error) {
-	given := &fieldsReader{text: expression, named: named, fromCaller: true}
-	if !given.take('+') {
-		return given.expression(nil)
-	}
-	tree, fault := parseDefault(defaults, named)
-	if fault != nil {
-		return nil, fault
-	}
-	return given.expression(tree)
 }
 
 const fileContentKey = "base64Content"
@@ -168,25 +142,25 @@ func walkFields(c *schemas, at string, requested []requestedField, parents []str
 	}
 }
 
-func fieldsNamed(c *schemas, at, schema, name string, requested []requestedField, parents []string, visit func(parents []string, field *requestedField)) {
-	walkFields(c, at, requested, parents, func(declaringSchema string, _ typeRef, path []string, field *requestedField) {
+func fieldsNamed(c *schemas, at, schema, name string, requested []requestedField, visit func(parents []string, field *requestedField)) {
+	walkFields(c, at, requested, nil, func(declaringSchema string, _ typeRef, path []string, field *requestedField) {
 		if declaringSchema == schema && field.name == name {
 			visit(path, field)
 		}
 	})
 }
 
-func fieldsOfType(c *schemas, at, schema string, requested []requestedField, parents []string, visit func(parents []string, field *requestedField)) {
-	walkFields(c, at, requested, parents, func(_ string, decl typeRef, path []string, field *requestedField) {
+func fieldsOfType(c *schemas, at, schema string, requested []requestedField, visit func(parents []string, field *requestedField)) {
+	walkFields(c, at, requested, nil, func(_ string, decl typeRef, path []string, field *requestedField) {
 		if decl.schema == schema {
 			visit(path, field)
 		}
 	})
 }
 
-func firstFieldNamed(c *schemas, at, schema, name string, requested []requestedField, parents []string) (string, bool) {
+func firstFieldNamed(c *schemas, at, schema, name string, requested []requestedField) (string, bool) {
 	first, found := "", false
-	fieldsNamed(c, at, schema, name, requested, parents, func(path []string, field *requestedField) {
+	fieldsNamed(c, at, schema, name, requested, func(path []string, field *requestedField) {
 		if !found {
 			first, found = fieldPath(path, field.name), true
 		}
