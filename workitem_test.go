@@ -1141,6 +1141,7 @@ func TestDeleteWorkItemRemovesNothingByAReadOfAnotherShape(t *testing.T) {
 		name string
 		read string
 	}{
+		{name: "another work item than the one asked for", read: `{"$type":"IssueWorkItem","id":"7-2","issue":{"idReadable":"DEV-1"}}`},
 		{name: "an id that is no internal id", read: `{"$type":"IssueWorkItem","id":"..","issue":{"idReadable":"DEV-1"}}`},
 		{name: "an id that is no text", read: `{"$type":"IssueWorkItem","id":7,"issue":{"idReadable":"DEV-1"}}`},
 		{name: "no issue at all", read: `{"$type":"IssueWorkItem","id":"7-1","issue":null}`},

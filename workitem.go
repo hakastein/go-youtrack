@@ -2,7 +2,6 @@ package youtrack
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 )
 
@@ -154,13 +153,6 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 	}, changed.verify, writeResultNode(requested))
 }
 
-func removedWorkItemFields() []requestedField {
-	return []requestedField{
-		{name: idKey},
-		{name: issueOwner.String(), children: []requestedField{{name: idReadableKey}}},
-	}
-}
-
 func (s *WorkItemsService) delete(ctx context.Context, issue, item string) (*Node, *Error) {
 	id, fault := parseIssueID(issue)
 	if fault != nil {
@@ -171,49 +163,15 @@ func (s *WorkItemsService) delete(ctx context.Context, issue, item string) (*Nod
 		return nil, fault
 	}
 	c := s.client
-	requested := removedWorkItemFields()
-	a, fault := c.request(ctx, workItemSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	requested := []requestedField{
+		{name: idKey},
+		{name: issueOwner.String(), children: []requestedField{{name: idReadableKey}}},
+	}
+	return c.deleteAsRead(ctx, workItemSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssueWorkItem(ctx, id, at, fields)
+	}, childOwner(workItemNoun, at, issueOwner), func(ctx context.Context, owner readableID) (*http.Response, error) {
+		return c.apiDeleteIssueWorkItem(ctx, owner, at)
 	})
-	if fault != nil {
-		return nil, fault
-	}
-	owner, fault := owningIssueID(a)
-	if fault != nil {
-		return nil, fault
-	}
-	known, fault := workItemID(a)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return c.apiDeleteIssueWorkItem(ctx, owner, known)
-	}); fault != nil {
-		return nil, fault
-	}
-	return objectNode(a, requested, a.objects[0], nil)
-}
-
-func owningIssueID(a decodedResponse) (readableID, *Error) {
-	issue, isObject := a.objects[0][issueOwner.String()].(map[string]any)
-	if !isObject {
-		return readableID{}, a.invalid("the issue the work item hangs from is not a JSON object")
-	}
-	return readableIDAt(a, issue, issueOwner, "a removal")
-}
-
-func workItemID(a decodedResponse) (childID, *Error) {
-	id, isText := a.objects[0][idKey].(string)
-	if !isText {
-		return childID{}, a.invalid("the id of the work item arrived as something other than a string")
-	}
-	known, fault := parseChildID(workItemNoun, workItemOwnerNoun, id)
-	if fault != nil {
-		message := fmt.Sprintf("the work item arrived with %s for an id, and a removal is addressed by the id the "+
-			"server gave", quote(id))
-		return childID{}, a.invalid(message)
-	}
-	return known, nil
 }
 
 type projectWorkItemTypes struct {
@@ -255,7 +213,7 @@ func (c *Client) readWorkItemTypes(ctx context.Context, id string, withAttribute
 	if fault != nil {
 		return readableID{}, projectWorkItemTypes{}, fault
 	}
-	readable, fault := readableIDOf(a, issueOwner, "a creation")
+	readable, fault := readableIDOf(a, issueOwner, "a write")
 	if fault != nil {
 		return readableID{}, projectWorkItemTypes{}, fault
 	}

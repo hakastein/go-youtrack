@@ -45,21 +45,44 @@ func (c *Client) deleteOwner(ctx context.Context, kind ownerKind, schema string,
 	read func(ctx context.Context, fields string) (*http.Response, error),
 	destroy func(ctx context.Context, at readableID) (*http.Response, error),
 ) (*Node, *Error) {
-	requested := []requestedField{{name: idReadableKey}}
+	return c.deleteAsRead(ctx, schema, []requestedField{{name: idReadableKey}}, read, func(a decodedResponse) (readableID, *Error) {
+		return readableIDOf(a, kind, "a deletion")
+	}, destroy)
+}
+
+func (c *Client) deleteAsRead(ctx context.Context, schema string, requested []requestedField,
+	read func(ctx context.Context, fields string) (*http.Response, error),
+	address func(decodedResponse) (readableID, *Error),
+	destroy func(ctx context.Context, at readableID) (*http.Response, error),
+) (*Node, *Error) {
 	decoded, fault := c.request(ctx, schema, requested, read)
 	if fault != nil {
 		return nil, fault
 	}
-	readable, fault := readableIDOf(decoded, kind, "a deletion")
+	at, fault := address(decoded)
 	if fault != nil {
 		return nil, fault
 	}
 	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return destroy(ctx, readable)
+		return destroy(ctx, at)
 	}); fault != nil {
 		return nil, fault
 	}
 	return objectNode(decoded, requested, decoded.objects[0], nil)
+}
+
+func childOwner(noun string, asked childID, kind ownerKind) func(decodedResponse) (readableID, *Error) {
+	return func(a decodedResponse) (readableID, *Error) {
+		child := a.objects[0]
+		if received, isText := child[idKey].(string); !isText || received != asked.id {
+			return readableID{}, a.invalid(fmt.Sprintf("the %s asked for under id %s arrived under another id", noun, quote(asked.String())))
+		}
+		holder, isObject := child[kind.String()].(map[string]any)
+		if !isObject {
+			return readableID{}, a.invalid(fmt.Sprintf("the %s the %s hangs from arrived as something other than an object", kind, noun))
+		}
+		return readableIDAt(a, holder, kind, "a deletion")
+	}
 }
 
 func rejectReplaced(what, text, empty string, replacements []charReplacement) *Error {

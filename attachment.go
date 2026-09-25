@@ -55,15 +55,13 @@ func (s *AttachmentsService) Delete(ctx context.Context, owner, id string) (*Nod
 
 type attachmentTarget struct {
 	schema string
-	owner  string
-	kind   ownerKind
 }
 
 func attachmentTargetOf(kind ownerKind) attachmentTarget {
 	if kind == articleOwner {
-		return attachmentTarget{schema: articleAttachmentSchema, owner: "article", kind: articleOwner}
+		return attachmentTarget{schema: articleAttachmentSchema}
 	}
-	return attachmentTarget{schema: issueAttachmentSchema, owner: "issue", kind: issueOwner}
+	return attachmentTarget{schema: issueAttachmentSchema}
 }
 
 func (h attachmentTarget) listSchema() string {
@@ -138,43 +136,16 @@ func (s *AttachmentsService) delete(ctx context.Context, owner, id string) (*Nod
 		return nil, fault
 	}
 	c := s.client
-	target := attachmentTargetOf(at.kind)
 	requested := []requestedField{
 		{name: idKey},
 		{name: nameKey},
-		{name: target.owner, children: []requestedField{{name: idReadableKey}}},
+		{name: at.kind.String(), children: []requestedField{{name: idReadableKey}}},
 	}
-	found, fault := c.request(ctx, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.deleteAsRead(ctx, attachmentTargetOf(at.kind).schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.getAttachment(ctx, at, file, fields)
+	}, childOwner(attachmentKey, file, at.kind), func(ctx context.Context, holder readableID) (*http.Response, error) {
+		return c.apiDeleteAttachment(ctx, at.kind, holder, file)
 	})
-	if fault != nil {
-		return nil, fault
-	}
-	returnedOwner, fault := attachmentOwner(found, target, file)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return c.apiDeleteAttachment(ctx, at.kind, returnedOwner, file)
-	}); fault != nil {
-		return nil, fault
-	}
-	return objectNode(found, requested, found.objects[0], nil)
-}
-
-func attachmentOwner(a decodedResponse, target attachmentTarget, file childID) (readableID, *Error) {
-	received, isText := a.objects[0][idKey].(string)
-	if !isText || received != file.id {
-		message := fmt.Sprintf("the %s asked for under id %s arrived under another id", attachmentKey, quote(file.String()))
-		return readableID{}, a.invalid(message)
-	}
-	holder, isObject := a.objects[0][target.owner].(map[string]any)
-	if !isObject {
-		message := fmt.Sprintf("the %s the %s hangs from arrived as something other than an object",
-			target.kind, attachmentKey)
-		return readableID{}, a.invalid(message)
-	}
-	return readableIDAt(a, holder, target.kind, "a deletion")
 }
 
 func (c *Client) getAttachment(ctx context.Context, at owner, file childID, fields string) (*http.Response, error) {

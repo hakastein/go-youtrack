@@ -247,15 +247,10 @@ func sameDayUTC(a, b int64) bool {
 }
 
 func owningIssue(a decodedResponse) *Node {
-	issue, isObject := a.objects[0][issueOwner.String()].(map[string]any)
-	if !isObject {
-		return NewNull()
+	if readable, isText := memberOf(a.objects[0][issueOwner.String()], idReadableKey).(string); isText {
+		return NewString(readable)
 	}
-	readable, isText := issue[idReadableKey].(string)
-	if !isText {
-		return NewNull()
-	}
-	return NewString(readable)
+	return NewNull()
 }
 
 type workItemUpdateInput struct {
