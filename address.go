@@ -132,7 +132,7 @@ func (c childID) String() string {
 func parseChildID(noun, ownerNoun, arg string) (childID, *Error) {
 	if !isInternalID(arg) {
 		message := fmt.Sprintf("%s id %s is not an internal id, which is digits, a dash and digits, as in "+
-			"7-12: the %s is addressed by the one ytrack prints for it under the %ss of %s it hangs from",
+			"7-12: the %s is addressed by the id its record carries among the %ss of %s it hangs from",
 			noun, quote(arg), noun, noun, ownerNoun)
 		return childID{}, &Error{Code: CodeBadUsage, Message: message}
 	}
@@ -186,7 +186,7 @@ const (
 		"in DEV-1, nor that of an article, which carries an A between them, as in DEV-A-1"
 	lowerCaseMarker = "; the A of an article is upper case, and the server has no article under a lower case one"
 	anInternalID    = "is an internal id, which addresses an entity that has no readable id of its own; an " +
-		"issue is addressed by the id ytrack prints as idReadable, as in DEV-1, and an article by DEV-A-1"
+		"issue is addressed by its idReadable, as in DEV-1, and an article by DEV-A-1"
 	anArticleID = "is the readable id of an article, and an issue is a project code, a dash and a number, as " +
 		"in DEV-1"
 	anIssueID = "is the readable id of an issue, and an article carries an A between the code and the number, " +

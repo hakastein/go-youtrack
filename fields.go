@@ -67,8 +67,8 @@ func readExpression(expression, defaults string, named bool) ([]requestedField, 
 
 const fileContentKey = "base64Content"
 
-const fileContentMessage = "is the file itself, which ytrack does not download; the url printed with an " +
-	"attachment is a signed link, and whoever holds it fetches the file with any client"
+const fileContentMessage = "is the file itself, which the module does not download; the url of an attachment is " +
+	"a signed link, and whoever holds it fetches the file with any client"
 
 func rejectFileContent(expression string, requested []requestedField) *Error {
 	path, written := findField(fileContentKey, requested, nil)
