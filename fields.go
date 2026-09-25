@@ -45,7 +45,8 @@ func parseFields(expression, defaults string, named bool) (string, []requestedFi
 	var tree []requestedField
 	if expression == "" || given.take('+') {
 		var fault *Error
-		if tree, fault = (&fieldsReader{text: defaults, named: named}).expression(nil); fault != nil || expression == "" {
+		tree, fault = (&fieldsReader{text: defaults, named: named}).expression(nil)
+		if expression == "" || fault != nil {
 			return defaults, tree, fault
 		}
 	}
