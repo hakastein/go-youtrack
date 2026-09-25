@@ -19,6 +19,11 @@ const (
 	projectAsked = "shortName,name,archived,leader(login)"
 )
 
+func projectShown(t *testing.T, server *fake.Server, expression string) (*youtrack.Node, error) {
+	t.Helper()
+	return client(t, server).Projects.Show(t.Context(), "DEV", &youtrack.ShowProjectOptions{Fields: expression})
+}
+
 func projectUnchecked(server *fake.Server, code youtrack.Code, expression, key string, entries ...*youtrack.Node) youtrack.Error {
 	return youtrack.Error{Code: code, Details: []youtrack.Pair{
 		requestTo(http.MethodGet, server, "/api/admin/projects/DEV?fields="+expression),

@@ -187,6 +187,16 @@ func TestClientRefusesAnAnswerThatIsNoJSONUnderAStatusThatCarriesJSON(t *testing
 	}
 }
 
+func TestClientTakesWhitespaceAroundTheJSONOfAnAnswer(t *testing.T) {
+	t.Parallel()
+	server := fake.Serve(t, fake.JSON(http.StatusOK, " \t\r\n"+`{"$type":"Project","shortName":"DEV"}`+" \t\r\n"))
+
+	node, err := client(t, server).Projects.Show(t.Context(), "DEV", &youtrack.ShowProjectOptions{Fields: "shortName"})
+
+	require.NoError(t, err)
+	assert.Equal(t, youtrack.NewMap(youtrack.Pair{Key: "shortName", Value: youtrack.NewString("DEV")}), node)
+}
+
 func breakOff(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(io.Discard, r.Body)
 	if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {

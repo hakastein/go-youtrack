@@ -10,11 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func projectShown(t *testing.T, server *fake.Server, expression string) (*youtrack.Node, error) {
-	t.Helper()
-	return client(t, server).Projects.Show(t.Context(), "DEV", &youtrack.ShowProjectOptions{Fields: expression})
-}
-
 func TestShowProjectReadsTheDefaultFields(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, `{"$type":"Project","shortName":"DEV","name":"First",`+
@@ -83,13 +78,4 @@ func TestShowProjectRefusesACodeOfAnotherForm(t *testing.T) {
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
-}
-
-func TestShowProjectTakesWhitespaceAroundTheAnswer(t *testing.T) {
-	t.Parallel()
-	server := fake.Serve(t, fake.JSON(http.StatusOK, " \t\r\n"+`{"$type":"Project","shortName":"DEV"}`+" \t\r\n"))
-	node, err := client(t, server).Projects.Show(t.Context(), "DEV", &youtrack.ShowProjectOptions{Fields: "shortName"})
-
-	require.NoError(t, err)
-	assert.Equal(t, youtrack.NewMap(youtrack.Pair{Key: "shortName", Value: youtrack.NewString("DEV")}), node)
 }
