@@ -64,15 +64,11 @@ func (s *IssuesService) Get(ctx context.Context, id string) (*Issue, error) {
 
 // Field resolves the name by the name of a field, then by its translation, without regard to letter case.
 func (i *Issue) Field(name string) (Field, bool) {
-	catalogue := make([]fieldInfo, 0, len(i.Fields))
-	for _, f := range i.Fields {
-		catalogue = append(catalogue, fieldInfo{name: f.Name, localizedName: f.LocalizedName, kind: f.Type})
-	}
-	places := findMatches(name, catalogue)
-	if len(places) == 0 {
-		return Field{}, false
-	}
-	return i.Fields[places[0]], true
+	return fieldNamed(name, i.Fields)
+}
+
+func (f Field) info() fieldInfo {
+	return fieldInfo{name: f.Name, localizedName: f.LocalizedName, kind: f.Type}
 }
 
 func (f Field) Texts() []string {

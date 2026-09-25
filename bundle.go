@@ -35,31 +35,30 @@ func (s *FieldsService) bundle(ctx context.Context, project, name string) (*Bund
 	if fault != nil {
 		return nil, fault
 	}
-	a := read.answer
+	a, field := read.answer, read.field
 	canBeEmpty, isFlag := a.objects[0][canBeEmptyKey].(bool)
 	if !isFlag {
 		return nil, a.invalid(brokenPlacement)
 	}
-	info := read.field.info
-	if !info.kind.HasBundle() {
+	field.CanBeEmpty = canBeEmpty
+	if !field.Type.HasBundle() {
 		message := fmt.Sprintf("the custom field %s is a %s field, and a %s field holds no bundle of values",
-			quote(info.name), info.kind, info.kind.ValueType)
+			quote(field.Name), field.Type, field.Type.ValueType)
 		return nil, &Error{Code: CodeBadUsage, Message: message}
 	}
 	values, fault := readBundleValues(a)
 	if fault != nil {
 		return nil, fault
 	}
-	field := ProjectField{ID: read.field.id, Name: info.name, LocalizedName: info.localizedName, Type: info.kind, CanBeEmpty: canBeEmpty}
 	return &Bundle{Field: field, Values: values}, nil
 }
 
-func bundleFields(found fieldInfo) ([]requestedField, bool, *Error) {
-	if !found.kind.Known() {
+func bundleFields(found ProjectField) ([]requestedField, bool, *Error) {
+	if !found.Type.Known() {
 		return nil, false, nil
 	}
 	asked := []requestedField{fieldInfoFields(), {name: canBeEmptyKey}}
-	if found.kind.HasBundle() {
+	if found.Type.HasBundle() {
 		values := requestedField{name: "values", children: []requestedField{{name: idKey}, {name: nameKey}, {name: "archived"}}}
 		asked = append(asked, requestedField{name: "bundle", children: []requestedField{values}})
 	}

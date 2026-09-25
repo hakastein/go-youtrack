@@ -138,8 +138,7 @@ func createIssue(ctx context.Context, c *Client, code string, parts issueInput, 
 	if fault != nil {
 		return nil, fault
 	}
-	var newIssueHasNoFieldTypes map[string]string
-	filed, fault := parts.resolve(project, newIssueHasNoFieldTypes)
+	filed, fault := parts.resolve(project, nil)
 	if fault != nil {
 		return nil, fault
 	}
@@ -318,7 +317,6 @@ type issueWrite struct {
 
 type resolvedField struct {
 	field    projectField
-	kind     FieldType
 	class    string
 	values   []string
 	sent     []any
@@ -356,12 +354,12 @@ func (w issueWrite) bodies() []customFieldBody {
 func (f resolvedField) body() customFieldBody {
 	var value any
 	switch {
-	case f.kind.Multi:
+	case f.field.Type.Multi:
 		value = f.sent
 	case len(f.sent) > 0:
 		value = f.sent[0]
 	}
-	return customFieldBody{Type: f.class, Name: f.field.info.name, Value: value}
+	return customFieldBody{Type: f.class, Name: f.field.Name, Value: value}
 }
 
 func (w issueWrite) verifyFields() []requestedField {
@@ -411,7 +409,7 @@ func (w issueWrite) verifyCustomFields(a decodedResponse, wrong []mismatch) ([]m
 		held[field.name] = field
 	}
 	for _, written := range w.fields {
-		name := written.field.info.name
+		name := written.field.Name
 		field, onTheIssue := held[name]
 		if !onTheIssue {
 			if written.cleared {
@@ -425,10 +423,10 @@ func (w issueWrite) verifyCustomFields(a decodedResponse, wrong []mismatch) ([]m
 			return nil, fault
 		}
 		texts := record.Texts()
-		if sameValueSet(written.kind, written.sentKeys, texts) {
+		if sameValueSet(written.field.Type, written.sentKeys, texts) {
 			continue
 		}
-		wrong = append(wrong, mismatch{field: name, expected: written.node(), actual: valueNode(texts, written.kind)})
+		wrong = append(wrong, mismatch{field: name, expected: written.node(), actual: valueNode(texts, written.field.Type)})
 	}
 	return wrong, nil
 }
@@ -447,7 +445,7 @@ func covers(kind FieldType, all, some []string) bool {
 }
 
 func (f resolvedField) node() *Node {
-	return valueNode(f.values, f.kind)
+	return valueNode(f.values, f.field.Type)
 }
 
 func valueNode(values []string, kind FieldType) *Node {
@@ -468,10 +466,9 @@ type projectMetadata struct {
 }
 
 type projectField struct {
-	customField
-	canBeEmpty bool
-	defaults   []string
-	condition  fieldCondition
+	ProjectField
+	defaults  []string
+	condition fieldCondition
 }
 
 type fieldCondition struct {
@@ -479,7 +476,6 @@ type fieldCondition struct {
 	controls         string
 	values           []string
 	showForNullValue bool
-	given            bool
 }
 
 func writeMetadataFields() []requestedField {
@@ -596,36 +592,18 @@ func readWriteMetadata(a decodedResponse, project map[string]any) (projectMetada
 	}
 	fields := make([]projectField, 0, len(items))
 	for _, item := range items {
-		object, isObject := item.(map[string]any)
-		if !isObject {
-			return projectMetadata{}, a.invalid(brokenField)
+		field, reason := readProjectField(item)
+		if reason != "" {
+			return projectMetadata{}, a.invalid(reason)
 		}
-		field, ok := readProjectField(object)
-		if !ok {
+		defaults, isList := readValueNames(memberOf(item, "defaultValues"))
+		shown, isCondition := readCondition(memberOf(item, "condition"))
+		if !isList || !isCondition {
 			return projectMetadata{}, a.invalid(brokenFieldInfo)
 		}
-		fields = append(fields, field)
+		fields = append(fields, projectField{ProjectField: field, defaults: defaults, condition: shown})
 	}
 	return projectMetadata{id: id, code: code, fields: fields, response: a}, nil
-}
-
-func readProjectField(object map[string]any) (projectField, bool) {
-	id, isText := object[idKey].(string)
-	named, isNamed := readFieldInfo(object)
-	canBeEmpty, isFlag := object[canBeEmptyKey].(bool)
-	if !isText || !isNamed || !isFlag {
-		return projectField{}, false
-	}
-	defaults, ok := readValueNames(object["defaultValues"])
-	if !ok {
-		return projectField{}, false
-	}
-	shown, ok := readCondition(object["condition"])
-	if !ok {
-		return projectField{}, false
-	}
-	field := customField{id: id, info: named}
-	return projectField{customField: field, canBeEmpty: canBeEmpty, defaults: defaults, condition: shown}, true
 }
 
 func readValueNames(value any) ([]string, bool) {
@@ -664,7 +642,7 @@ func readCondition(value any) (fieldCondition, bool) {
 		return fieldCondition{}, false
 	}
 	if kind != fieldBasedCondition {
-		return fieldCondition{kind: kind, given: true}, true
+		return fieldCondition{kind: kind}, true
 	}
 	shown, isFlag := object["showForNullValue"].(bool)
 	values, isList := readValueNames(object["values"])
@@ -677,7 +655,7 @@ func readCondition(value any) (fieldCondition, bool) {
 			return fieldCondition{}, false
 		}
 	}
-	return fieldCondition{kind: kind, controls: controls, values: values, showForNullValue: shown, given: true}, true
+	return fieldCondition{kind: kind, controls: controls, values: values, showForNullValue: shown}, true
 }
 
 func (w issueInput) resolve(project projectMetadata, issueFieldTypes map[string]string) (issueWrite, *Error) {
@@ -689,13 +667,9 @@ func (w issueInput) resolve(project projectMetadata, issueFieldTypes map[string]
 }
 
 func (p projectMetadata) resolveFields(named []namedValue, cleared []string, issueFieldTypes map[string]string) ([]resolvedField, *Error) {
-	catalogue := make([]fieldInfo, 0, len(p.fields))
-	for _, field := range p.fields {
-		catalogue = append(catalogue, field.info)
-	}
 	given := make([][]string, len(p.fields))
 	emptied := make([]bool, len(p.fields))
-	names := resolvingNames(catalogue)
+	names := resolvingNames(catalogueOf(p.fields))
 	for _, addressed := range named {
 		if at, found := names.place(addressed.name, addressed.name); found {
 			given[at] = append(given[at], addressed.value)
@@ -721,19 +695,19 @@ func (p projectMetadata) encodeValues(given [][]string, emptied []bool, issueFie
 			continue
 		}
 		field := p.fields[at]
-		kind := field.info.kind
+		kind := field.Type
 		k, known := kind.kind()
 		if !known {
 			return nil, p.response.invalid(unmodelled(kind))
 		}
 		class := kind.Class()
-		if typeOnIssue, onTheIssue := issueFieldTypes[field.id]; onTheIssue {
+		if typeOnIssue, onTheIssue := issueFieldTypes[field.ID]; onTheIssue {
 			class = typeOnIssue
 		}
-		written := resolvedField{field: field, kind: kind, class: class, values: values, cleared: emptied[at]}
+		written := resolvedField{field: field, class: class, values: values, cleared: emptied[at]}
 		switch {
 		case emptied[at] && len(values) > 0:
-			invalid = append(invalid, invalidEntry(field.info.name, values[0], setAndClearedMessage))
+			invalid = append(invalid, invalidEntry(field.Name, values[0], setAndClearedMessage))
 			continue
 		case emptied[at]:
 			written.sent = []any{}
@@ -741,13 +715,13 @@ func (p projectMetadata) encodeValues(given [][]string, emptied []bool, issueFie
 			continue
 		case !kind.Multi && len(values) > 1:
 			reason := fmt.Sprintf("the custom field holds one value by its type, and the call gives it %d", len(values))
-			invalid = append(invalid, invalidEntry(field.info.name, values[1], reason))
+			invalid = append(invalid, invalidEntry(field.Name, values[1], reason))
 			continue
 		}
 		for _, value := range values {
 			sent, reason := k.encode(value)
 			if reason != "" {
-				invalid = append(invalid, invalidEntry(field.info.name, value, reason))
+				invalid = append(invalid, invalidEntry(field.Name, value, reason))
 				continue
 			}
 			written.sent = append(written.sent, sent.Body)
@@ -771,13 +745,13 @@ func invalidEntry(field, value, reason string) *Node {
 func (w issueWrite) missing() []string {
 	var missing []string
 	for _, field := range w.project.fields {
-		if field.canBeEmpty || len(field.defaults) > 0 || w.sets(field) {
+		if field.CanBeEmpty || len(field.defaults) > 0 || w.sets(field) {
 			continue
 		}
 		if _, hidden := w.hiddenReason(field); hidden {
 			continue
 		}
-		missing = append(missing, field.info.name)
+		missing = append(missing, field.Name)
 	}
 	return missing
 }
@@ -785,15 +759,15 @@ func (w issueWrite) missing() []string {
 func (w issueWrite) requiredEmptied() []string {
 	var required []string
 	for _, written := range w.fields {
-		if written.cleared && !written.field.canBeEmpty {
-			required = append(required, written.field.info.name)
+		if written.cleared && !written.field.CanBeEmpty {
+			required = append(required, written.field.Name)
 		}
 	}
 	return required
 }
 
 func (w issueWrite) sets(field projectField) bool {
-	return slices.ContainsFunc(w.fields, func(written resolvedField) bool { return written.field.id == field.id })
+	return slices.ContainsFunc(w.fields, func(written resolvedField) bool { return written.field.ID == field.ID })
 }
 
 const (
@@ -820,11 +794,11 @@ func invalidEntries(hidden []hiddenField) *Node {
 
 func (w issueWrite) hiddenReason(field projectField) (string, bool) {
 	c := field.condition
-	if !c.given || c.kind != fieldBasedCondition || c.controls == "" {
+	if c.kind != fieldBasedCondition || c.controls == "" {
 		return "", false
 	}
 	watched, found := fieldByID(w.project.fields, c.controls)
-	if !found || watched.info.kind.Multi {
+	if !found || watched.Type.Multi {
 		return "", false
 	}
 	held, filled := w.effectiveValue(watched)
@@ -836,7 +810,7 @@ func (w issueWrite) hiddenReason(field projectField) (string, bool) {
 	case slices.ContainsFunc(c.values, func(name string) bool { return strings.EqualFold(name, held) }):
 		return "", false
 	}
-	return hiddenBy(watched.info.name, c, held, filled), true
+	return hiddenBy(watched.Name, c, held, filled), true
 }
 
 func (w issueWrite) hiddenFields() []hiddenField {
@@ -846,7 +820,7 @@ func (w issueWrite) hiddenFields() []hiddenField {
 		if !kept {
 			continue
 		}
-		hidden = append(hidden, hiddenField{name: written.field.info.name, value: written.values[0], reason: reason})
+		hidden = append(hidden, hiddenField{name: written.field.Name, value: written.values[0], reason: reason})
 	}
 	return hidden
 }
@@ -859,7 +833,7 @@ type hiddenField struct {
 
 func (w issueWrite) effectiveValue(field projectField) (string, bool) {
 	for _, written := range w.fields {
-		if written.field.id == field.id && len(written.values) > 0 {
+		if written.field.ID == field.ID && len(written.values) > 0 {
 			return written.values[0], true
 		}
 	}
@@ -904,7 +878,7 @@ const emptyValueText = "nothing at all"
 
 func fieldByID(fields []projectField, id string) (projectField, bool) {
 	for _, field := range fields {
-		if field.id == id {
+		if field.ID == id {
 			return field, true
 		}
 	}

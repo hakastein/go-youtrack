@@ -79,7 +79,32 @@ func metadataTarget(code string) string {
 	return "/api/admin/projects/" + code + "?fields=" + formatFields(projectFields())
 }
 
-const brokenPlacement = "the id, the ordinal or the emptiness of a custom field is not of the shape the specification gives it"
+const (
+	brokenField     = "a custom field of the project is not a JSON object"
+	brokenFieldInfo = "the name or the type of a custom field is not of the shape the specification gives it"
+	brokenPlacement = "the id, the ordinal or the emptiness of a custom field is not of the shape the specification gives it"
+)
+
+func readProjectField(item any) (ProjectField, string) {
+	object, isObject := item.(map[string]any)
+	if !isObject {
+		return ProjectField{}, brokenField
+	}
+	id, isText := object[idKey].(string)
+	canBeEmpty, isFlag := object[canBeEmptyKey].(bool)
+	if !isText || !isFlag {
+		return ProjectField{}, brokenPlacement
+	}
+	named, ok := readFieldInfo(object)
+	if !ok {
+		return ProjectField{}, brokenFieldInfo
+	}
+	return ProjectField{ID: id, Name: named.name, LocalizedName: named.localizedName, Type: named.kind, CanBeEmpty: canBeEmpty}, ""
+}
+
+func (f ProjectField) info() fieldInfo {
+	return fieldInfo{name: f.Name, localizedName: f.LocalizedName, kind: f.Type}
+}
 
 type placedField struct {
 	field   ProjectField
@@ -94,23 +119,15 @@ func readProjectFields(a decodedResponse, code string) ([]ProjectField, *Error) 
 	}
 	placed := make([]placedField, 0, len(items))
 	for _, item := range items {
-		object, isObject := item.(map[string]any)
-		if !isObject {
-			return nil, a.invalid(brokenField)
+		field, reason := readProjectField(item)
+		if reason != "" {
+			return nil, a.invalid(reason)
 		}
-		bindingID, isText := object[idKey].(string)
-		ordinal, isWhole := parseInt64(object[ordinalKey])
-		canBeEmpty, isFlag := object[canBeEmptyKey].(bool)
-		if !isText || !isWhole || !isFlag {
+		ordinal, isWhole := parseInt64(memberOf(item, ordinalKey))
+		if !isWhole {
 			return nil, a.invalid(brokenPlacement)
 		}
-		named, ok := readFieldInfo(object)
-		if !ok {
-			return nil, a.invalid(brokenFieldInfo)
-		}
-		placed = append(placed, placedField{ordinal: ordinal, field: ProjectField{
-			ID: bindingID, Name: named.name, LocalizedName: named.localizedName, Type: named.kind, CanBeEmpty: canBeEmpty,
-		}})
+		placed = append(placed, placedField{ordinal: ordinal, field: field})
 	}
 	if len(placed) == 0 {
 		return nil, noFields(a, code)

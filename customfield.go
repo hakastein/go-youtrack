@@ -54,6 +54,23 @@ func findMatches(name string, catalogue []fieldInfo) []int {
 	return byTranslation
 }
 
+func catalogueOf[T interface{ info() fieldInfo }](fields []T) []fieldInfo {
+	catalogue := make([]fieldInfo, 0, len(fields))
+	for _, field := range fields {
+		catalogue = append(catalogue, field.info())
+	}
+	return catalogue
+}
+
+func fieldNamed[T interface{ info() fieldInfo }](name string, fields []T) (T, bool) {
+	places := findMatches(name, catalogueOf(fields))
+	if len(places) == 0 {
+		var none T
+		return none, false
+	}
+	return fields[places[0]], true
+}
+
 func pick(catalogue []fieldInfo, places []int) []fieldInfo {
 	found := make([]fieldInfo, 0, len(places))
 	for _, at := range places {
@@ -78,16 +95,6 @@ func canonical(catalogue []fieldInfo) []string {
 	slices.Sort(names)
 	return names
 }
-
-type customField struct {
-	id   string
-	info fieldInfo
-}
-
-const (
-	brokenField     = "a custom field of the project is not a JSON object"
-	brokenFieldInfo = "the name or the type of a custom field is not of the shape the specification gives it"
-)
 
 func (n converter) readValue(kind FieldType, item any) (*Node, bool, string) {
 	value, present, reason := kind.read(item)
@@ -162,12 +169,14 @@ func valueKeyFields() []requestedField {
 }
 
 type issueCustomField struct {
-	name          string
-	value         any
-	kind          FieldType
-	ordinal       int64
-	binding       string
-	localizedName string
+	fieldInfo
+	value   any
+	ordinal int64
+	binding string
+}
+
+func (f issueCustomField) info() fieldInfo {
+	return f.fieldInfo
 }
 
 func (n converter) customFields(asked requestedField, value any) (*Node, *Error) {
@@ -218,17 +227,12 @@ func (n converter) allFieldsNode(fields []issueCustomField) (*Node, *Error) {
 }
 
 func (n converter) selectedFieldsNode(asked []requestedField, fields []issueCustomField) (*Node, *Error) {
-	onIssue := make([]fieldInfo, 0, len(fields))
-	for _, field := range fields {
-		onIssue = append(onIssue, fieldInfo{name: field.name, localizedName: field.localizedName})
-	}
 	pairs := make([]Pair, 0, len(asked))
 	for _, name := range asked {
-		matched := findMatches(name.name, onIssue)
-		if len(matched) == 0 {
+		field, found := fieldNamed(name.name, fields)
+		if !found {
 			continue
 		}
-		field := fields[matched[0]]
 		printed, present, fault := n.valueNode(field)
 		if fault != nil {
 			return nil, fault
@@ -289,8 +293,8 @@ func (n converter) readCustomField(item any) (issueCustomField, *Error) {
 	if !named.kind.Known() {
 		return issueCustomField{}, n.response.invalid(unmodelled(named.kind))
 	}
-	return issueCustomField{name: name, value: object[valueKey], kind: named.kind, ordinal: ordinal,
-		binding: binding, localizedName: named.localizedName}, nil
+	named.name = name
+	return issueCustomField{fieldInfo: named, value: object[valueKey], ordinal: ordinal, binding: binding}, nil
 }
 
 func brokenBinding(name string) string {
