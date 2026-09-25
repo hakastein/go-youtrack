@@ -66,9 +66,26 @@ func startShared() *httptest.Server {
 
 func Serve(t *testing.T, handler http.HandlerFunc) *Server {
 	t.Helper()
+	s := &Server{}
+	return s.onShared(t, s.journaling(t, handler))
+}
+
+// ServeUnread is for a test whose handler reads the body itself, as of a request the client breaks off: the journal
+// holds the request without its body.
+func ServeUnread(t *testing.T, handler http.HandlerFunc) *Server {
+	t.Helper()
+	s := &Server{}
+	return s.onShared(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.journal(r, "")
+		handler(w, r)
+	}))
+}
+
+func (s *Server) onShared(t *testing.T, handler http.Handler) *Server {
 	prefix := "/t" + strconv.FormatInt(lastTest.Add(1), 10)
-	s := &Server{URL: shared().URL + prefix, Origin: shared().URL}
-	handlers.Store(prefix, s.journaling(t, handler))
+	s.URL = shared().URL + prefix
+	s.Origin = shared().URL
+	handlers.Store(prefix, handler)
 	t.Cleanup(func() { handlers.Delete(prefix) })
 	return s
 }
@@ -123,18 +140,22 @@ func (s *Server) journaling(t *testing.T, handler http.HandlerFunc) http.Handler
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(t, err, "reading the body of %s %s", r.Method, r.URL)
-		s.mu.Lock()
-		s.received = append(s.received, Request{
-			Method:           r.Method,
-			URL:              new(*r.URL),
-			Header:           r.Header.Clone(),
-			ContentLength:    r.ContentLength,
-			TransferEncoding: r.TransferEncoding,
-			Body:             string(body),
-		})
-		s.mu.Unlock()
+		s.journal(r, string(body))
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		handler(w, r)
+	})
+}
+
+func (s *Server) journal(r *http.Request, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.received = append(s.received, Request{
+		Method:           r.Method,
+		URL:              new(*r.URL),
+		Header:           r.Header.Clone(),
+		ContentLength:    r.ContentLength,
+		TransferEncoding: r.TransferEncoding,
+		Body:             body,
 	})
 }
 

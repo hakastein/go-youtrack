@@ -261,6 +261,34 @@ func TestCreateAttachmentLeavesClosingTheFileToTheCaller(t *testing.T) {
 	assert.False(t, content.closed)
 }
 
+type stallingFile struct {
+	cancel  context.CancelFunc
+	release chan struct{}
+}
+
+func (f stallingFile) Read([]byte) (int, error) {
+	f.cancel()
+	<-f.release
+	return 0, io.EOF
+}
+
+func TestCreateAttachmentReturnsOnACancellationWhileAReadOfTheFileHangs(t *testing.T) {
+	t.Parallel()
+	server := fake.ServeUnread(t, func(_ http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	file := youtrack.File{Name: "one.txt", Content: stallingFile{cancel: cancel, release: release}}
+
+	_, err := client(t, server).Attachments.Create(ctx, "DEV-1", file, &youtrack.WriteOptions{Fields: "id"})
+
+	assert.ErrorIs(t, err, context.Canceled)
+	sent := requestTo(http.MethodPost, server, "/api/issues/DEV-1/attachments?fields=id,name,size")
+	assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamFailed, Details: []youtrack.Pair{sent}}, errorOf(t, err))
+}
+
 func TestCreateAttachmentRefusesAnAnswerThatIsNotTheFileThatWentOut(t *testing.T) {
 	t.Parallel()
 	one := attachmentFiled("IssueAttachment", `"one.txt"`, "6")

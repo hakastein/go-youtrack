@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 )
 
@@ -41,8 +41,8 @@ func (s *AttachmentsService) List(ctx context.Context, owner string, opts *ListA
 	return result(s.list(ctx, owner, optionsOf(opts)))
 }
 
-// Create streams Content to its end and leaves it open: the caller closes it, and nothing reads it once Create has
-// returned. A name YouTrack would keep as another is refused before the request.
+// Create leaves Content for the caller to close; once it returns, only a Read under way when ctx was done may still
+// touch it. A name YouTrack would keep as another is refused before the request.
 func (s *AttachmentsService) Create(ctx context.Context, owner string, file File, opts *WriteOptions) (*Node, error) {
 	return result(s.create(ctx, owner, file, optionsOf(opts)))
 }
@@ -108,7 +108,7 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 	if fault != nil {
 		return nil, fault
 	}
-	sent := &upload{content: file.Content}
+	sent := newUpload(ctx, file.Content)
 	defer sent.stop()
 	body, contentType := sent.form(file.Name)
 	confirmed := func(a decodedResponse) *Error {
@@ -191,36 +191,69 @@ func (c *Client) apiDeleteAttachment(ctx context.Context, kind ownerKind, at rea
 	return c.apiDeleteIssueAttachment(ctx, at, file)
 }
 
-// net/http may go on reading a request body after the response has come, and the caller closes Content once Create
-// returns: stop waits out a read in progress and refuses every later one.
+// net/http may read the body after the response, when the caller has already closed Content; a cancelled request
+// returns only after that read, so Content is read apart and left behind when ctx is done.
 type upload struct {
-	mu      sync.Mutex
+	ctx     context.Context
 	content io.Reader
-	read    int64
-	stopped bool
+	reading chan struct{}
+	stopped atomic.Bool
+	read    atomic.Int64
+}
+
+func newUpload(ctx context.Context, content io.Reader) *upload {
+	return &upload{ctx: ctx, content: content, reading: make(chan struct{}, 1)}
 }
 
 func (u *upload) Read(p []byte) (int, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if u.stopped {
-		return 0, io.ErrClosedPipe
+	select {
+	case u.reading <- struct{}{}:
+	case <-u.ctx.Done():
+		return 0, u.ctx.Err()
 	}
-	n, err := u.content.Read(p)
-	u.read += int64(n)
-	return n, err
+	if err := u.refusal(); err != nil {
+		<-u.reading
+		return 0, err
+	}
+	into := make([]byte, len(p))
+	var err error
+	done := make(chan int, 1)
+	go func() {
+		defer func() { <-u.reading }()
+		var n int
+		n, err = u.content.Read(into)
+		done <- n
+	}()
+	select {
+	case n := <-done:
+		u.read.Add(int64(n))
+		return copy(p, into[:n]), err
+	case <-u.ctx.Done():
+		return 0, u.ctx.Err()
+	}
+}
+
+func (u *upload) refusal() error {
+	if err := u.ctx.Err(); err != nil {
+		return err
+	}
+	if u.stopped.Load() {
+		return io.ErrClosedPipe
+	}
+	return nil
 }
 
 func (u *upload) stop() {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	u.stopped = true
+	u.stopped.Store(true)
+	select {
+	case u.reading <- struct{}{}:
+		<-u.reading
+	case <-u.ctx.Done():
+	}
 }
 
 func (u *upload) streamed() int64 {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	return u.read
+	return u.read.Load()
 }
 
 func (u *upload) form(name string) (io.Reader, string) {
