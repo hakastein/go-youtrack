@@ -1,6 +1,7 @@
 package youtrack_test
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"net/url"
@@ -160,6 +161,38 @@ func TestListUsersSendsTheSearchAsWrittenWithThePageAndTheCount(t *testing.T) {
 			}, server.Queries())
 		})
 	}
+}
+
+func TestUsersRefuseASearchThatIsNoUTF8(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		search func(ctx context.Context, users *youtrack.UsersService, query string) error
+		query  string
+	}{
+		{name: "a list of a byte that is no UTF-8", search: usersListed, query: "\xff"},
+		{name: "a list of a truncated sequence inside a name", search: usersListed, query: "Fir\xc3\x28"},
+		{name: "a find of a byte that is no UTF-8", search: usersFound, query: "\xff"},
+		{name: "a find of a truncated sequence inside a name", search: usersFound, query: "Fir\xc3\x28"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.search(t.Context(), client(t, fake.ServeNothing(t)).Users, tc.query)
+
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
+		})
+	}
+}
+
+func usersListed(ctx context.Context, users *youtrack.UsersService, query string) error {
+	_, err := users.List(ctx, query, nil)
+	return err
+}
+
+func usersFound(ctx context.Context, users *youtrack.UsersService, query string) error {
+	_, err := users.Find(ctx, query, 0)
+	return err
 }
 
 func TestMeReadsTheOwnerOfTheToken(t *testing.T) {

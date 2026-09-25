@@ -80,6 +80,9 @@ func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOpti
 }
 
 func (s *UsersService) list(ctx context.Context, query string, opts ListUsersOptions) (*Node, *Error) {
+	if fault := rejectUnreadableQuery(query); fault != nil {
+		return nil, fault
+	}
 	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
@@ -110,6 +113,9 @@ func (s *UsersService) me(ctx context.Context) (*User, *Error) {
 }
 
 func (s *UsersService) find(ctx context.Context, query string, limit int) ([]User, *Error) {
+	if fault := rejectUnreadableQuery(query); fault != nil {
+		return nil, fault
+	}
 	page, fault := Page{Limit: limit}.parse()
 	if fault != nil {
 		return nil, fault
