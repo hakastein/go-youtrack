@@ -89,7 +89,7 @@ func (s *CommentsService) list(ctx context.Context, owner string, opts ListComme
 		return nil, fault
 	}
 	held := commentTargetOf(at.kind)
-	_, requested, fault := parseFields(opts.Fields, held.listFields, false)
+	requested, fault := s.client.parseFields(held.comment, opts.Fields, held.listFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -131,30 +131,18 @@ func commentTargetOf(kind ownerKind) commentTarget {
 	return issueCommentTarget()
 }
 
-const commentsOfAShow = "is filled by the count of comments the read asks for, which settles how many comments " +
-	"come and what each of them holds"
-
-func (h commentTarget) commentsOfAList() string {
-	return fmt.Sprintf("holds the comments of an %s, which come a record at a time in a list of its comments, and "+
-		"with the %s itself in a read of it that asks for them", h.kind, h.kind)
-}
-
-func (h commentTarget) commentsOfAWrite() string {
-	return fmt.Sprintf("holds the comments of an %s, which no write of it changes; they come with a read of the %s "+
-		"that asks for them", h.kind, h.kind)
-}
-
-func (h commentTarget) reject(spec *schemas, expression string, requested []requestedField, because string) *Error {
-	path, written := firstFieldNamed(spec, h.schema, h.schema, commentsKey, requested)
+func (h commentTarget) reject(spec *schemas, root, expression string, requested []requestedField) *Error {
+	path, written := firstFieldNamed(spec, root, h.schema, commentsKey, requested)
 	if !written {
 		return nil
 	}
-	message := fmt.Sprintf("fields %s: %s %s", quote(expression), path, because)
+	message := fmt.Sprintf("fields %s: %s holds the comments of an %s, which come a record at a time in a list of its "+
+		"comments, and with the %s itself in a read of it that asks for them", quote(expression), path, h.kind, h.kind)
 	return &Error{Code: CodeBadUsage, Message: message}
 }
 
 func ownFields(expression string) []requestedField {
-	_, fields, fault := parseFields("", expression, false)
+	fields, fault := readExpression(expression, "", false)
 	if fault != nil {
 		panic(fault)
 	}

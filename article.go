@@ -73,7 +73,7 @@ func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleO
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := articleFields(c.spec, opts.Fields, ArticleShowFields, commentsOfAShow)
+	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -104,7 +104,7 @@ func (s *ArticlesService) list(ctx context.Context, query string, opts ListArtic
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := articleFields(c.spec, opts.Fields, ArticleListFields, articleCommentTarget().commentsOfAList())
+	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleListFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -123,7 +123,7 @@ func (s *ArticlesService) children(ctx context.Context, parent string, opts List
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := articleFields(c.spec, opts.Fields, ArticleListFields, articleCommentTarget().commentsOfAList())
+	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleListFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -141,7 +141,7 @@ func (s *ArticlesService) create(ctx context.Context, project string, in Article
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := articleFields(c.spec, opts.Fields, ArticleShowFields, articleCommentTarget().commentsOfAWrite())
+	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -236,7 +236,7 @@ func (s *ArticlesService) update(ctx context.Context, id string, in ArticleUpdat
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := articleFields(c.spec, opts.Fields, ArticleShowFields, articleCommentTarget().commentsOfAWrite())
+	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -387,15 +387,4 @@ func (s *ArticlesService) delete(ctx context.Context, id string) (*Node, *Error)
 	return c.deleteOwner(ctx, articleOwner, articleSchema, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetArticle(ctx, id, fields)
 	}, c.apiDeleteArticle)
-}
-
-func articleFields(spec *schemas, expression string, defaults, because string) ([]requestedField, *Error) {
-	written, requested, fault := parseFields(expression, defaults, false)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := articleCommentTarget().reject(spec, written, requested, because); fault != nil {
-		return nil, fault
-	}
-	return requested, nil
 }

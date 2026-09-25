@@ -88,7 +88,7 @@ func (s *TagsService) list(ctx context.Context, opts ListTagsOptions) (*Node, *E
 	if fault != nil {
 		return nil, fault
 	}
-	_, requested, fault := parseFields(opts.Fields, TagListFields, false)
+	requested, fault := s.client.parseFields(tagSchema, opts.Fields, TagListFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -103,7 +103,7 @@ func (s *TagsService) create(ctx context.Context, name string, sharing TagSharin
 	if fault := sharing.rejectNoGroupName(); fault != nil {
 		return nil, fault
 	}
-	_, requested, fault := parseFields(opts.Fields, TagCreateFields, false)
+	requested, fault := s.client.parseFields(tagSchema, opts.Fields, TagCreateFields)
 	if fault != nil {
 		return nil, fault
 	}

@@ -61,7 +61,7 @@ func (s *IssuesService) show(ctx context.Context, id string, opts ShowIssueOptio
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := issueFields(c.spec, opts.Fields, IssueShowFields, commentsOfAShow)
+	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueShowFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -80,7 +80,7 @@ func (s *IssuesService) list(ctx context.Context, query string, opts ListIssuesO
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := issueFields(c.spec, opts.Fields, IssueListFields, issueCommentTarget().commentsOfAList())
+	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueListFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -96,18 +96,6 @@ func (s *IssuesService) delete(ctx context.Context, id string) (*Node, *Error) {
 	return c.deleteOwner(ctx, issueOwner, issueSchema, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	}, c.apiDeleteIssue)
-}
-
-func issueFields(spec *schemas, expression string, defaults, comments string) ([]requestedField, *Error) {
-	written, requested, fault := parseFields(expression, defaults, true)
-	if fault != nil {
-		return nil, fault
-	}
-	expandBareCustomFields(spec, requested)
-	if fault := issueCommentTarget().reject(spec, written, requested, comments); fault != nil {
-		return nil, fault
-	}
-	return requested, rejectIssueBlocks(spec, issueSchema, written, requested)
 }
 
 func (c *Client) listIssues(ctx context.Context, query string, requested []requestedField, page Page, warn func(*Warning)) (*Node, *Error) {
@@ -244,19 +232,6 @@ func issueBlocks(spec *schemas, at string, asked []requestedField) {
 	})
 	eachIssueLink(spec, at, asked, func(_ []string, field *requestedField) { field.children = linkRequestFields(field.children) })
 	eachAttributes(spec, at, asked, func(_ []string, field *requestedField) { field.children = attributesAsked() })
-}
-
-func rejectIssueBlocks(spec *schemas, at, expression string, requested []requestedField) *Error {
-	if fault := rejectQuotedNames(spec, at, expression, requested); fault != nil {
-		return fault
-	}
-	if fault := rejectCustomFieldNames(spec, at, expression, requested); fault != nil {
-		return fault
-	}
-	if fault := rejectLinkParts(spec, at, expression, requested); fault != nil {
-		return fault
-	}
-	return rejectAttributeNames(spec, at, expression, requested)
 }
 
 func eachCustomFields(spec *schemas, at string, requested []requestedField, visit func(parents []string, field *requestedField)) {

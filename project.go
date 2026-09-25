@@ -36,7 +36,7 @@ func (s *ProjectsService) show(ctx context.Context, code string, opts ShowProjec
 	if fault != nil {
 		return nil, fault
 	}
-	_, requested, fault := parseFields(opts.Fields, ProjectShowFields, false)
+	requested, fault := s.client.parseFields(projectSchema, opts.Fields, ProjectShowFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -55,7 +55,7 @@ func (s *ProjectsService) list(ctx context.Context, opts ListProjectsOptions) (*
 	if fault != nil {
 		return nil, fault
 	}
-	_, requested, fault := parseFields(opts.Fields, ProjectListFields, false)
+	requested, fault := s.client.parseFields(projectSchema, opts.Fields, ProjectListFields)
 	if fault != nil {
 		return nil, fault
 	}

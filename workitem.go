@@ -60,7 +60,7 @@ func (s *WorkItemsService) list(ctx context.Context, issue string, opts ListWork
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := workItemFields(c.spec, opts.Fields, WorkItemListFields)
+	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemListFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -81,7 +81,7 @@ func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItem
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := workItemFields(c.spec, opts.Fields, WorkItemWriteFields)
+	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemWriteFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -135,7 +135,7 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := workItemFields(c.spec, opts.Fields, WorkItemWriteFields)
+	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemWriteFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -303,14 +303,6 @@ func workItemRequestFields(spec *schemas, requested []requestedField) []requeste
 	asked := cloneFields(requested)
 	issueBlocks(spec, workItemSchema, asked)
 	return asked
-}
-
-func workItemFields(spec *schemas, expression string, defaults string) ([]requestedField, *Error) {
-	written, requested, fault := parseFields(expression, defaults, false)
-	if fault != nil {
-		return nil, fault
-	}
-	return requested, rejectIssueBlocks(spec, workItemSchema, written, requested)
 }
 
 type minutesBody struct {

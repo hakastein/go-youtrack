@@ -264,6 +264,11 @@ func TestCreateWorkItemRefusesWhatItCannotSend(t *testing.T) {
 			in:     &youtrack.WorkItemInput{Duration: time.Hour},
 			fields: "+issue(customFields(State))",
 		},
+		{
+			name:   "the comments of the issue",
+			in:     &youtrack.WorkItemInput{Duration: time.Hour},
+			fields: "+issue(comments)",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -332,6 +337,7 @@ func TestListWorkItemsRefusesAnExpressionItCannotSend(t *testing.T) {
 		{name: "a part of a link slot of the issue", expression: "issue(links(direction))"},
 		{name: "a part of the parent slot of the issue", expression: "issue(parent(id))"},
 		{name: "a custom field of the issue named", expression: "issue(customFields(State))"},
+		{name: "the comments of the issue", expression: "issue(comments(text))"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

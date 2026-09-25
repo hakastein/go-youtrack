@@ -105,7 +105,7 @@ func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListAct
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := activityFields(c.spec, opts.Fields)
+	requested, fault := c.parseFields(activitySchema, opts.Fields, ActivityListFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -149,27 +149,13 @@ func resolveCategories(asked []string) ([]activityCategory, *Error) {
 	return categories, nil
 }
 
-func activityFields(spec *schemas, expression string) ([]requestedField, *Error) {
-	written, requested, fault := parseFields(expression, ActivityListFields, false)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := rejectBlockParts(spec, written, requested); fault != nil {
-		return nil, fault
-	}
-	if fault := rejectUnknownValueNames(spec, written, requested); fault != nil {
-		return nil, fault
-	}
-	return requested, nil
-}
-
 func activityValueSchemas() []string {
 	return []string{"BundleElement"}
 }
 
-func rejectUnknownValueNames(spec *schemas, expression string, requested []requestedField) *Error {
+func rejectUnknownValueNames(spec *schemas, root, expression string, requested []requestedField) *Error {
 	j := schemaResolver{schemas: spec}
-	activity := schemaSet{schemas: spec.subtree(activitySchema)}
+	activity := schemaSet{schemas: spec.subtree(root)}
 	var unknown []*Node
 	for _, field := range requested {
 		if field.name != addedKey && field.name != removedKey {
@@ -194,14 +180,14 @@ func rejectUnknownValueNames(spec *schemas, expression string, requested []reque
 	return &Error{Code: CodeUnknownName, Message: message, Details: details}
 }
 
-func rejectBlockParts(spec *schemas, expression string, requested []requestedField) *Error {
+func rejectBlockParts(spec *schemas, root, expression string, requested []requestedField) *Error {
 	blocks := []struct{ name, printedAs string }{
 		{categoryKey, "the identifier YouTrack keeps the category under"},
 		{fieldKey, "the name of what the change was of"},
 	}
 	var fault *Error
 	for _, block := range blocks {
-		fieldsNamed(spec, activitySchema, activitySchema, block.name, requested, func(parents []string, field *requestedField) {
+		fieldsNamed(spec, root, activitySchema, block.name, requested, func(parents []string, field *requestedField) {
 			if field.children == nil || fault != nil {
 				return
 			}

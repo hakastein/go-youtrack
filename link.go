@@ -60,7 +60,7 @@ func (s *LinksService) list(ctx context.Context, id string, opts ListLinksOption
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := linkFields(c.spec, opts.Fields)
+	requested, fault := c.parseFields(issueSchema, opts.Fields, LinkListFields, linksKey, issuesKey)
 	if fault != nil {
 		return nil, fault
 	}
@@ -80,7 +80,7 @@ func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts 
 		return nil, fault
 	}
 	c := s.client
-	requested, fault := linkFields(c.spec, opts.Fields)
+	requested, fault := c.parseFields(issueSchema, opts.Fields, LinkListFields, linksKey, issuesKey)
 	if fault != nil {
 		return nil, fault
 	}
@@ -133,26 +133,6 @@ func parseLinkWrite(id, phrase, target string) (string, string, *Error) {
 		return "", "", &Error{Code: CodeBadUsage, Message: oneIssue}
 	}
 	return id, target, nil
-}
-
-func linkFields(spec *schemas, expression string) ([]requestedField, *Error) {
-	written, target, fault := parseFields(expression, LinkListFields, false)
-	if fault != nil {
-		return nil, fault
-	}
-	requested := []requestedField{
-		{name: linksKey, children: []requestedField{{name: issuesKey, children: target}}},
-	}
-	if fault := issueCommentTarget().reject(spec, written, requested, issueCommentTarget().commentsOfAList()); fault != nil {
-		return nil, fault
-	}
-	if fault := rejectCustomFieldNames(spec, issueSchema, written, requested); fault != nil {
-		return nil, fault
-	}
-	if fault := rejectLinkParts(spec, issueSchema, written, requested); fault != nil {
-		return nil, fault
-	}
-	return requested, nil
 }
 
 const emptyPhrase = "is empty, and a link is named by the phrase it goes by from the issue, such as " +

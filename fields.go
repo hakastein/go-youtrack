@@ -1,6 +1,7 @@
 package youtrack
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -41,21 +42,55 @@ type requestedField struct {
 	extraSchemas []string
 }
 
-func parseFields(expression, defaults string, named bool) (string, []requestedField, *Error) {
+func (c *Client) parseFields(root, expression, defaults string, under ...string) ([]requestedField, *Error) {
+	named := root == issueSchema && len(under) == 0
+	requested, fault := readExpression(expression, defaults, named)
+	if fault != nil {
+		return nil, fault
+	}
+	if named {
+		expandBareCustomFields(c.spec, requested)
+	}
+	for _, name := range slices.Backward(under) {
+		requested = []requestedField{{name: name, children: requested}}
+	}
+	for _, reject := range expressionRules(root) {
+		if fault := reject(c.spec, root, cmp.Or(expression, defaults), requested); fault != nil {
+			return nil, fault
+		}
+	}
+	return requested, nil
+}
+
+type expressionRule func(spec *schemas, root, expression string, requested []requestedField) *Error
+
+func expressionRules(root string) []expressionRule {
+	switch {
+	case hasIssueBlocks(root):
+		return []expressionRule{issueCommentTarget().reject, rejectQuotedNames, rejectCustomFieldNames, rejectLinkParts, rejectAttributeNames}
+	case root == articleSchema:
+		return []expressionRule{articleCommentTarget().reject}
+	case root == activitySchema:
+		return []expressionRule{rejectBlockParts, rejectUnknownValueNames}
+	}
+	return nil
+}
+
+func readExpression(expression, defaults string, named bool) ([]requestedField, *Error) {
 	given := &fieldsReader{text: expression, named: named, fromCaller: true}
 	var tree []requestedField
 	if expression == "" || given.take('+') {
 		var fault *Error
 		tree, fault = (&fieldsReader{text: defaults, named: named}).expression(nil)
 		if expression == "" || fault != nil {
-			return defaults, tree, fault
+			return tree, fault
 		}
 	}
 	requested, fault := given.expression(tree)
 	if fault == nil {
 		fault = rejectFileContent(expression, requested)
 	}
-	return expression, requested, fault
+	return requested, fault
 }
 
 const fileContentKey = "base64Content"
