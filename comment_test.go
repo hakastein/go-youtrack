@@ -38,16 +38,14 @@ func commentWritten(t *testing.T, id, text string) string {
 
 const commentStanding = `{"$type":"IssueComment","deleted":false}`
 
-const commentKeptByteForByte = "  First\r\nSecond\rThird   \n---\n~~~\n\u0085\xe2\x80\xa8\xef\xbb\xbf\U0001F600\n  "
-
 type commentWrite func(ctx context.Context, comments *youtrack.CommentsService, text string) (*youtrack.Node, error)
 
 func commentCreatedOnAnIssue(ctx context.Context, comments *youtrack.CommentsService, text string) (*youtrack.Node, error) {
-	return comments.Create(ctx, "DEV-7", text, &youtrack.WriteOptions{Fields: "id"})
+	return comments.Create(ctx, "DEV-7", text, answeredWith("id"))
 }
 
 func commentUpdatedOnAnIssue(ctx context.Context, comments *youtrack.CommentsService, text string) (*youtrack.Node, error) {
-	return comments.Update(ctx, "DEV-7", "7-12", text, &youtrack.WriteOptions{Fields: "id"})
+	return comments.Update(ctx, "DEV-7", "7-12", text, answeredWith("id"))
 }
 
 func TestCommentsRefuseAnOwnerThatIsNoReadableID(t *testing.T) {
@@ -190,7 +188,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a creation on an issue",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "DEV-7", "Text", &youtrack.WriteOptions{Fields: "id"})
+				_, err := comments.Create(ctx, "DEV-7", "Text", answeredWith("id"))
 				return err
 			},
 			routes: []string{"POST /api/issues/DEV-7/comments"},
@@ -198,7 +196,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a creation on an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "DEV-A-3", "Text", &youtrack.WriteOptions{Fields: "id"})
+				_, err := comments.Create(ctx, "DEV-A-3", "Text", answeredWith("id"))
 				return err
 			},
 			routes: []string{"POST /api/articles/DEV-A-3/comments"},
@@ -206,7 +204,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a rewrite on an issue, which reads the comment first",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Update(ctx, "DEV-7", "7-12", "Text", &youtrack.WriteOptions{Fields: "id"})
+				_, err := comments.Update(ctx, "DEV-7", "7-12", "Text", answeredWith("id"))
 				return err
 			},
 			routes: []string{"GET /api/issues/DEV-7/comments/7-12", "POST /api/issues/DEV-7/comments/7-12"},
@@ -214,7 +212,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a rewrite on an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Update(ctx, "DEV-A-3", "8-5", "Text", &youtrack.WriteOptions{Fields: "id"})
+				_, err := comments.Update(ctx, "DEV-A-3", "8-5", "Text", answeredWith("id"))
 				return err
 			},
 			routes: []string{"POST /api/articles/DEV-A-3/comments/8-5"},
@@ -304,8 +302,8 @@ func TestCommentWritesSendTheTextAsGiven(t *testing.T) {
 		{name: "a vote", text: "+1", write: commentCreatedOnAnIssue},
 		{name: "markup that reads as a tag", text: "[Tag] Title", write: commentCreatedOnAnIssue},
 		{name: "a NUL", text: "First\x00Second", write: commentCreatedOnAnIssue},
-		{name: "a new comment the server keeps byte for byte", text: commentKeptByteForByte, write: commentCreatedOnAnIssue},
-		{name: "a comment rewritten byte for byte", text: commentKeptByteForByte, write: commentUpdatedOnAnIssue},
+		{name: "a new comment the server keeps byte for byte", text: keptByteForByte, write: commentCreatedOnAnIssue},
+		{name: "a comment rewritten byte for byte", text: keptByteForByte, write: commentUpdatedOnAnIssue},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -360,7 +358,7 @@ func TestCommentWritesRefuseAnAnswerThatDisagreesWithTheWrite(t *testing.T) {
 		{
 			name: "a rewrite answered with no id, which the expression does not ask for",
 			write: func(ctx context.Context, comments *youtrack.CommentsService, text string) (*youtrack.Node, error) {
-				return comments.Update(ctx, "DEV-7", "7-12", text, &youtrack.WriteOptions{Fields: "author(login)"})
+				return comments.Update(ctx, "DEV-7", "7-12", text, answeredWith("author(login)"))
 			},
 			written: `{"$type":"IssueComment","author":{"$type":"User","login":"author"},"text":"Other"}`,
 			target:  "/api/issues/DEV-7/comments/7-12?fields=author(login),text",
@@ -431,14 +429,14 @@ func TestCommentWritesCheckMoreThanTheyPrint(t *testing.T) {
 		{
 			name: "a creation",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) (*youtrack.Node, error) {
-				return comments.Create(ctx, "DEV-7", "Text", &youtrack.WriteOptions{Fields: "author(login)"})
+				return comments.Create(ctx, "DEV-7", "Text", answeredWith("author(login)"))
 			},
 			fields: "author(login),id,text",
 		},
 		{
 			name: "a rewrite",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) (*youtrack.Node, error) {
-				return comments.Update(ctx, "DEV-7", "7-12", "Text", &youtrack.WriteOptions{Fields: "author(login)"})
+				return comments.Update(ctx, "DEV-7", "7-12", "Text", answeredWith("author(login)"))
 			},
 			fields: "author(login),text",
 		},
@@ -476,7 +474,7 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 		{
 			name: "a flag only a comment of an issue carries, asked of a new comment of an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "DEV-A-3", "Text", &youtrack.WriteOptions{Fields: "id,deleted"})
+				_, err := comments.Create(ctx, "DEV-A-3", "Text", answeredWith("id,deleted"))
 				return err
 			},
 			method:  http.MethodPost,
@@ -490,7 +488,7 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 		{
 			name: "the owner of a comment of an article, asked of a new comment of an issue",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "DEV-7", "Text", &youtrack.WriteOptions{Fields: "id,article(idReadable)"})
+				_, err := comments.Create(ctx, "DEV-7", "Text", answeredWith("id,article(idReadable)"))
 				return err
 			},
 			method:  http.MethodPost,

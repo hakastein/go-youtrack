@@ -27,20 +27,11 @@ func issueDeletedComment(id string, second int) string {
 		`"created":` + strconv.Itoa(issueCommentsFrom+second*1000) + `,"text":null,"deleted":true}`
 }
 
-func issuePrintedComment(id, created, text string) *youtrack.Node {
-	return youtrack.NewMap(
-		youtrack.Pair{Key: "id", Value: youtrack.NewString(id)},
-		youtrack.Pair{Key: "author", Value: youtrack.NewMap(youtrack.Pair{Key: "login", Value: youtrack.NewString("author")})},
-		youtrack.Pair{Key: "created", Value: youtrack.NewString(created)},
-		youtrack.Pair{Key: "text", Value: youtrack.NewText(text)},
-	)
-}
-
 func TestShowIssuePrintsTheCommentsOldestFirst(t *testing.T) {
 	t.Parallel()
-	early := issuePrintedComment("7-2", "2026-08-31T00:00:00Z", "Early")
-	middle := issuePrintedComment("7-3", "2026-08-31T00:00:01Z", "Middle")
-	late := issuePrintedComment("7-1", "2026-08-31T00:00:03Z", "Late")
+	early := printedComment("7-2", "2026-08-31T00:00:00Z", "Early")
+	middle := printedComment("7-3", "2026-08-31T00:00:01Z", "Middle")
+	late := printedComment("7-1", "2026-08-31T00:00:03Z", "Late")
 	body := `{"$type":"Issue","idReadable":"DEV-1","comments":[` +
 		issueComment("7-3", 1, "Middle") + `,` +
 		issueComment("7-1", 3, "Late") + `,` +

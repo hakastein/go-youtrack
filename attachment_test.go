@@ -175,7 +175,7 @@ func TestCreateAttachmentSendsTheNameAsWritten(t *testing.T) {
 			server := fake.Serve(t, fake.JSON(http.StatusOK, attachmentFiledOnce(tc.file, 1)))
 
 			_, err := client(t, server).Attachments.Create(t.Context(), "DEV-1", attachmentFile(tc.file, "x"),
-				&youtrack.WriteOptions{Fields: "id"})
+				answeredWith("id"))
 
 			require.NoError(t, err)
 			assert.Equal(t, []attachmentPart{{
@@ -219,7 +219,7 @@ func TestCreateAttachmentStreamsTheFileAsOnePart(t *testing.T) {
 			server := fake.Serve(t, fake.JSON(http.StatusOK, tc.filed))
 
 			_, err := client(t, server).Attachments.Create(t.Context(), tc.owner, attachmentFile("one.bin", string(content)),
-				&youtrack.WriteOptions{Fields: "id"})
+				answeredWith("id"))
 
 			require.NoError(t, err)
 			sent := server.Last(t)
@@ -242,7 +242,7 @@ func TestCreateAttachmentAsksForTheNameAndTheSizeItChecks(t *testing.T) {
 	server := fake.Serve(t, fake.JSON(http.StatusOK, attachmentFiledOnce("one.txt", 1)))
 
 	node, err := client(t, server).Attachments.Create(t.Context(), "DEV-1", attachmentFile("one.txt", "x"),
-		&youtrack.WriteOptions{Fields: "id"})
+		answeredWith("id"))
 
 	require.NoError(t, err)
 	assert.Equal(t, youtrack.NewMap(youtrack.Pair{Key: "id", Value: youtrack.NewString("12-9")}), node)
@@ -255,7 +255,7 @@ func TestCreateAttachmentLeavesClosingTheFileToTheCaller(t *testing.T) {
 	content := &closeRecorder{Reader: strings.NewReader("x")}
 
 	_, err := client(t, server).Attachments.Create(t.Context(), "DEV-1", youtrack.File{Name: "one.txt", Content: content},
-		&youtrack.WriteOptions{Fields: "id"})
+		answeredWith("id"))
 
 	require.NoError(t, err)
 	assert.False(t, content.closed)
@@ -282,7 +282,7 @@ func TestCreateAttachmentReturnsOnACancellationWhileAReadOfTheFileHangs(t *testi
 	t.Cleanup(func() { close(release) })
 	file := youtrack.File{Name: "one.txt", Content: stallingFile{cancel: cancel, release: release}}
 
-	_, err := client(t, server).Attachments.Create(ctx, "DEV-1", file, &youtrack.WriteOptions{Fields: "id"})
+	_, err := client(t, server).Attachments.Create(ctx, "DEV-1", file, answeredWith("id"))
 
 	assert.ErrorIs(t, err, context.Canceled)
 	sent := requestTo(http.MethodPost, server, "/api/issues/DEV-1/attachments?fields=id,name,size")
@@ -370,7 +370,7 @@ func TestCreateAttachmentRefusesAnAnswerThatIsNotTheFileThatWentOut(t *testing.T
 			server := fake.Serve(t, fake.JSON(http.StatusOK, tc.body))
 
 			_, err := client(t, server).Attachments.Create(t.Context(), tc.owner, attachmentFile("one.txt", "ytrack"),
-				&youtrack.WriteOptions{Fields: "id"})
+				answeredWith("id"))
 
 			want := youtrack.Error{
 				Code:       youtrack.CodeUpstreamInvalid,
@@ -567,7 +567,7 @@ func TestAttachmentsRefuseTheContentOfAFileInTheFields(t *testing.T) {
 			name: "in what an upload answers with",
 			call: func(ctx context.Context, attachments *youtrack.AttachmentsService) error {
 				_, err := attachments.Create(ctx, "DEV-1", attachmentFile("one.txt", "x"),
-					&youtrack.WriteOptions{Fields: "id,base64Content"})
+					answeredWith("id,base64Content"))
 				return err
 			},
 		},

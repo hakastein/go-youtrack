@@ -16,8 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const articleAndCommentText = "  First\r\nSecond\rThird   \n---\n~~~\n\u0085\xe2\x80\xa8\xef\xbb\xbf\U0001F600\n  "
-
 type articleStep struct{ id, readable string }
 
 var (
@@ -104,8 +102,6 @@ func articleNamed(readable string) *youtrack.Node {
 	return youtrack.NewMap(youtrack.Pair{Key: "idReadable", Value: youtrack.NewString(readable)})
 }
 
-var articleAnsweredWith = &youtrack.WriteOptions{Fields: "idReadable"}
-
 func TestArticleCallsRefuseTheCommentsInTheExpression(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -116,7 +112,7 @@ func TestArticleCallsRefuseTheCommentsInTheExpression(t *testing.T) {
 			name: "an update, added to the default",
 			call: func(ctx context.Context, articles *youtrack.ArticlesService) error {
 				_, err := articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Summary: new("Title")},
-					&youtrack.WriteOptions{Fields: "+comments(text)"})
+					answeredWith("+comments(text)"))
 				return err
 			},
 		},
@@ -124,7 +120,7 @@ func TestArticleCallsRefuseTheCommentsInTheExpression(t *testing.T) {
 			name: "an update, in place of the default",
 			call: func(ctx context.Context, articles *youtrack.ArticlesService) error {
 				_, err := articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Summary: new("Title")},
-					&youtrack.WriteOptions{Fields: "idReadable,comments"})
+					answeredWith("idReadable,comments"))
 				return err
 			},
 		},
@@ -132,7 +128,7 @@ func TestArticleCallsRefuseTheCommentsInTheExpression(t *testing.T) {
 			name: "a creation",
 			call: func(ctx context.Context, articles *youtrack.ArticlesService) error {
 				_, err := articles.Create(ctx, "DEV", &youtrack.ArticleInput{Summary: "Title"},
-					&youtrack.WriteOptions{Fields: "+comments(text)"})
+					answeredWith("+comments(text)"))
 				return err
 			},
 		},
@@ -332,10 +328,10 @@ func TestCreateArticleSendsWhatItWasGiven(t *testing.T) {
 		},
 		{
 			name:  "content the server keeps byte for byte",
-			in:    youtrack.ArticleInput{Summary: "Title", Content: articleAndCommentText},
-			filed: map[string]any{"content": articleAndCommentText},
+			in:    youtrack.ArticleInput{Summary: "Title", Content: keptByteForByte},
+			filed: map[string]any{"content": keptByteForByte},
 			sent: map[string]any{"project": map[string]any{"shortName": "DEV"}, "summary": "Title",
-				"content": articleAndCommentText},
+				"content": keptByteForByte},
 		},
 		{
 			name:  "a parent, by the internal id the read gave",
@@ -351,7 +347,7 @@ func TestCreateArticleSendsWhatItWasGiven(t *testing.T) {
 			server := articleServer(t, map[string]string{"dev-A-1": articleLine("DEV", articleNothingAbove, articleParent)},
 				fake.JSON(http.StatusOK, articleFiled(t, tc.filed)))
 
-			_, err := client(t, server).Articles.Create(t.Context(), "DEV", &tc.in, articleAnsweredWith)
+			_, err := client(t, server).Articles.Create(t.Context(), "DEV", &tc.in, answeredWith("idReadable"))
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.sent, server.LastJSON(t))
@@ -375,9 +371,9 @@ func TestUpdateArticleSendsWhatItWasGiven(t *testing.T) {
 		},
 		{
 			name:  "content alone",
-			in:    youtrack.ArticleUpdate{Content: new(articleAndCommentText)},
-			filed: map[string]any{"content": articleAndCommentText},
-			sent:  map[string]any{"content": articleAndCommentText},
+			in:    youtrack.ArticleUpdate{Content: new(keptByteForByte)},
+			filed: map[string]any{"content": keptByteForByte},
+			sent:  map[string]any{"content": keptByteForByte},
 		},
 		{
 			name:  "a title and content both",
@@ -410,7 +406,7 @@ func TestUpdateArticleSendsWhatItWasGiven(t *testing.T) {
 				"dev-A-1": articleLine("DEV", articleRootAbove, articleParent),
 			}, fake.JSON(http.StatusOK, articleFiled(t, tc.filed)))
 
-			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &tc.in, articleAnsweredWith)
+			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &tc.in, answeredWith("idReadable"))
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.sent, server.LastJSON(t))
@@ -424,7 +420,7 @@ func TestUpdateArticleWritesByTheReadableIDTheReadGave(t *testing.T) {
 		fake.JSON(http.StatusOK, articleFiled(t, nil)))
 
 	_, err := client(t, server).Articles.Update(t.Context(), "dev-A-7", &youtrack.ArticleUpdate{Summary: new("Title")},
-		articleAnsweredWith)
+		answeredWith("idReadable"))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/api/articles/dev-A-7", "/api/articles/DEV-A-7"}, server.Paths())
@@ -441,14 +437,14 @@ func TestArticleWritesCheckMoreThanTheyPrint(t *testing.T) {
 		{
 			name: "a creation",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Create(ctx, "DEV", &youtrack.ArticleInput{Summary: "Title"}, articleAnsweredWith)
+				return articles.Create(ctx, "DEV", &youtrack.ArticleInput{Summary: "Title"}, answeredWith("idReadable"))
 			},
 			fields: "idReadable,summary,content,project(shortName)",
 		},
 		{
 			name: "a creation under a parent",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Create(ctx, "DEV", &youtrack.ArticleInput{Summary: "Title", Parent: "DEV-A-1"}, articleAnsweredWith)
+				return articles.Create(ctx, "DEV", &youtrack.ArticleInput{Summary: "Title", Parent: "DEV-A-1"}, answeredWith("idReadable"))
 			},
 			filed:  map[string]any{"parentArticle": articleFiledUnder(articleParent.readable)},
 			fields: "idReadable,summary,content,project(shortName),parentArticle(idReadable)",
@@ -456,7 +452,7 @@ func TestArticleWritesCheckMoreThanTheyPrint(t *testing.T) {
 		{
 			name: "an update of the title",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Summary: new("Title")}, articleAnsweredWith)
+				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Summary: new("Title")}, answeredWith("idReadable"))
 			},
 			fields: "idReadable,summary",
 		},
@@ -464,7 +460,7 @@ func TestArticleWritesCheckMoreThanTheyPrint(t *testing.T) {
 			name: "an update of the title and content",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
 				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Summary: new("Title"), Content: new("Text")},
-					articleAnsweredWith)
+					answeredWith("idReadable"))
 			},
 			filed:  map[string]any{"content": "Text"},
 			fields: "idReadable,summary,content",
@@ -472,21 +468,21 @@ func TestArticleWritesCheckMoreThanTheyPrint(t *testing.T) {
 		{
 			name: "content taken away",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{ClearContent: true}, articleAnsweredWith)
+				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{ClearContent: true}, answeredWith("idReadable"))
 			},
 			fields: "idReadable,content",
 		},
 		{
 			name: "the parent taken away",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{ClearParent: true}, articleAnsweredWith)
+				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{ClearParent: true}, answeredWith("idReadable"))
 			},
 			fields: "idReadable,parentArticle(idReadable)",
 		},
 		{
 			name: "an update of the parent",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-1")}, articleAnsweredWith)
+				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-1")}, answeredWith("idReadable"))
 			},
 			filed:  map[string]any{"parentArticle": articleFiledUnder(articleParent.readable)},
 			fields: "idReadable,parentArticle(idReadable)",
@@ -589,7 +585,7 @@ func TestCreateArticleRefusesAnAnswerThatDisagreesWithTheWrite(t *testing.T) {
 			server := articleServer(t, map[string]string{"DEV-A-1": articleLine("DEV", articleNothingAbove, articleParent)},
 				fake.JSON(http.StatusOK, articleFiled(t, tc.filed)))
 
-			_, err := client(t, server).Articles.Create(t.Context(), "DEV", &tc.in, articleAnsweredWith)
+			_, err := client(t, server).Articles.Create(t.Context(), "DEV", &tc.in, answeredWith("idReadable"))
 
 			want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, AfterWrite: true, Details: []youtrack.Pair{
 				lastRequest(t, server),
@@ -653,7 +649,7 @@ func TestUpdateArticleRefusesAnAnswerThatDisagreesWithTheWrite(t *testing.T) {
 				"DEV-A-1": articleLine("DEV", articleRootAbove, articleParent),
 			}, fake.JSON(http.StatusOK, articleFiled(t, tc.filed)))
 
-			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &tc.in, articleAnsweredWith)
+			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &tc.in, answeredWith("idReadable"))
 
 			want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, AfterWrite: true, Details: []youtrack.Pair{
 				lastRequest(t, server),
@@ -676,13 +672,13 @@ func TestArticleWritesTakeAProjectInAnyLetterCase(t *testing.T) {
 		{
 			name: "a creation the answer files under the code in capitals",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Create(ctx, "dev", &youtrack.ArticleInput{Summary: "Title"}, articleAnsweredWith)
+				return articles.Create(ctx, "dev", &youtrack.ArticleInput{Summary: "Title"}, answeredWith("idReadable"))
 			},
 		},
 		{
 			name: "a creation under a parent of the code in capitals",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Create(ctx, "dev", &youtrack.ArticleInput{Summary: "Title", Parent: "DEV-A-1"}, articleAnsweredWith)
+				return articles.Create(ctx, "dev", &youtrack.ArticleInput{Summary: "Title", Parent: "DEV-A-1"}, answeredWith("idReadable"))
 			},
 			reads: map[string]string{"DEV-A-1": articleLine("DEV", articleNothingAbove, articleParent)},
 			filed: map[string]any{"parentArticle": articleFiledUnder(articleParent.readable)},
@@ -690,7 +686,7 @@ func TestArticleWritesTakeAProjectInAnyLetterCase(t *testing.T) {
 		{
 			name: "a move under a parent whose code the read spelled otherwise",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-1")}, articleAnsweredWith)
+				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-1")}, answeredWith("idReadable"))
 			},
 			reads: map[string]string{
 				"DEV-A-7": articleLine("DEV", articleNothingAbove, articleWritten),
@@ -938,7 +934,7 @@ func TestUpdateArticleReadsTheLineOnWhereItIsDeeperThanOneRequest(t *testing.T) 
 	}, fake.JSON(http.StatusOK, articleFiled(t, map[string]any{"parentArticle": articleFiledUnder(articleChild.readable)})))
 
 	_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")},
-		articleAnsweredWith)
+		answeredWith("idReadable"))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/api/articles/DEV-A-7", "/api/articles/DEV-A-9", "/api/articles/" + deepest.id,
@@ -1018,19 +1014,11 @@ func articleComment(id string, created int64, text string) map[string]any {
 	}
 }
 
-func articleCommentPrinted(id, created, text string) *youtrack.Node {
-	return youtrack.NewMap(
-		youtrack.Pair{Key: "id", Value: youtrack.NewString(id)},
-		youtrack.Pair{Key: "author", Value: youtrack.NewMap(youtrack.Pair{Key: "login", Value: youtrack.NewString("author")})},
-		youtrack.Pair{Key: "created", Value: youtrack.NewString(created)},
-		youtrack.Pair{Key: "text", Value: youtrack.NewText(text)})
-}
-
 func TestShowArticlePrintsTheCommentsOldestFirst(t *testing.T) {
 	t.Parallel()
-	first := articleCommentPrinted("8-3", "1970-01-01T00:00:01Z", "First")
-	second := articleCommentPrinted("8-2", "1970-01-01T00:00:02Z", "Second")
-	third := articleCommentPrinted("8-1", "1970-01-01T00:00:03Z", "Third")
+	first := printedComment("8-3", "1970-01-01T00:00:01Z", "First")
+	second := printedComment("8-2", "1970-01-01T00:00:02Z", "Second")
+	third := printedComment("8-1", "1970-01-01T00:00:03Z", "Third")
 	tests := []struct {
 		name     string
 		comments youtrack.Comments

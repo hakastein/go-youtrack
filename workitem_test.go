@@ -120,10 +120,6 @@ func workItemMismatch(t *testing.T, server *fake.Server, field string, expected,
 	}
 }
 
-func workItemAsked(fields string) *youtrack.WriteOptions {
-	return &youtrack.WriteOptions{Fields: fields}
-}
-
 func TestListWorkItemsAsksAPageOfTheDefaultFields(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, "[]"))
@@ -284,7 +280,7 @@ func TestCreateWorkItemRefusesWhatItCannotSend(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).WorkItems.Create(t.Context(), "DEV-1", tc.in, workItemAsked(tc.fields))
+			_, err := client(t, fake.ServeNothing(t)).WorkItems.Create(t.Context(), "DEV-1", tc.in, answeredWith(tc.fields))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -328,7 +324,7 @@ func TestUpdateWorkItemRefusesWhatItCannotSend(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := client(t, fake.ServeNothing(t)).WorkItems.Update(t.Context(), "DEV-1", "7-1", tc.in,
-				workItemAsked(tc.fields))
+				answeredWith(tc.fields))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -445,7 +441,7 @@ func TestCreateWorkItemWritesWhatTheCallGives(t *testing.T) {
 			t.Parallel()
 			server := workItemWriting(t, workItemProjectSettings(), tc.answer)
 
-			_, err := client(t, server).WorkItems.Create(t.Context(), "DEV-1", &tc.in, workItemAsked("id"))
+			_, err := client(t, server).WorkItems.Create(t.Context(), "DEV-1", &tc.in, answeredWith("id"))
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.sent, server.Last(t).Body)
@@ -505,7 +501,7 @@ func TestUpdateWorkItemWritesTheNamedPartsAlone(t *testing.T) {
 			t.Parallel()
 			server := workItemWriting(t, workItemProjectSettings(), tc.answer)
 
-			_, err := client(t, server).WorkItems.Update(t.Context(), "DEV-1", "7-1", &tc.in, workItemAsked("id"))
+			_, err := client(t, server).WorkItems.Update(t.Context(), "DEV-1", "7-1", &tc.in, answeredWith("id"))
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.sent, server.Last(t).Body)
@@ -528,7 +524,7 @@ func TestWorkItemWriteAsksForWhatItChecksWhateverWasAskedToPrint(t *testing.T) {
 		{
 			name: "a creation that names no type and no attribute",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Create(ctx, "dev-1", &youtrack.WorkItemInput{Duration: 90 * time.Minute}, workItemAsked("id"))
+				return items.Create(ctx, "dev-1", &youtrack.WorkItemInput{Duration: 90 * time.Minute}, answeredWith("id"))
 			},
 			targets: []string{"/api/issues/dev-1/timeTracking/workItems?fields=id,duration(minutes),date,text,issue(idReadable)"},
 		},
@@ -536,7 +532,7 @@ func TestWorkItemWriteAsksForWhatItChecksWhateverWasAskedToPrint(t *testing.T) {
 			name: "a creation that names a type",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Create(ctx, "dev-1", &youtrack.WorkItemInput{Duration: 90 * time.Minute, Type: "First"},
-					workItemAsked("id"))
+					answeredWith("id"))
 			},
 			answer: workItemAnswer{workType: workItemTypeFirst},
 			targets: []string{
@@ -548,7 +544,7 @@ func TestWorkItemWriteAsksForWhatItChecksWhateverWasAskedToPrint(t *testing.T) {
 			name: "a creation that names a type and an attribute",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Create(ctx, "dev-1", &youtrack.WorkItemInput{Duration: 90 * time.Minute, Type: "First",
-					Attributes: []youtrack.AttributeWrite{{Name: "Mode", Value: "Solo"}}}, workItemAsked("id"))
+					Attributes: []youtrack.AttributeWrite{{Name: "Mode", Value: "Solo"}}}, answeredWith("id"))
 			},
 			answer: workItemAnswer{workType: workItemTypeFirst, attributes: workItemModeSolo},
 			targets: []string{
@@ -560,7 +556,7 @@ func TestWorkItemWriteAsksForWhatItChecksWhateverWasAskedToPrint(t *testing.T) {
 		{
 			name: "an update of the text",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Update(ctx, "dev-1", "7-1", &youtrack.WorkItemUpdate{Text: new("x")}, workItemAsked("id"))
+				return items.Update(ctx, "dev-1", "7-1", &youtrack.WorkItemUpdate{Text: new("x")}, answeredWith("id"))
 			},
 			answer:  workItemAnswer{text: `"x"`},
 			targets: []string{"/api/issues/dev-1/timeTracking/workItems/7-1?fields=id,text"},
@@ -569,7 +565,7 @@ func TestWorkItemWriteAsksForWhatItChecksWhateverWasAskedToPrint(t *testing.T) {
 			name: "an update of how long it is and the day",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Duration: new(90 * time.Minute),
-					Date: new("2026-09-01")}, workItemAsked("id"))
+					Date: new("2026-09-01")}, answeredWith("id"))
 			},
 			answer:  workItemAnswer{date: workItemDayMidnight},
 			targets: []string{workItemOfTheIssue + "?fields=id,duration(minutes),date"},
@@ -577,21 +573,21 @@ func TestWorkItemWriteAsksForWhatItChecksWhateverWasAskedToPrint(t *testing.T) {
 		{
 			name: "an update emptying the text",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{ClearText: true}, workItemAsked("id"))
+				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{ClearText: true}, answeredWith("id"))
 			},
 			targets: []string{workItemOfTheIssue + "?fields=id,text"},
 		},
 		{
 			name: "an update taking the type away",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{ClearType: true}, workItemAsked("id"))
+				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{ClearType: true}, answeredWith("id"))
 			},
 			targets: []string{workItemOfTheIssue + "?fields=id,type(name)"},
 		},
 		{
 			name: "an update of the type",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Update(ctx, "dev-1", "7-1", &youtrack.WorkItemUpdate{Type: new("First")}, workItemAsked("id"))
+				return items.Update(ctx, "dev-1", "7-1", &youtrack.WorkItemUpdate{Type: new("First")}, answeredWith("id"))
 			},
 			answer: workItemAnswer{workType: workItemTypeFirst},
 			targets: []string{
@@ -604,7 +600,7 @@ func TestWorkItemWriteAsksForWhatItChecksWhateverWasAskedToPrint(t *testing.T) {
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Update(ctx, "dev-1", "7-1", &youtrack.WorkItemUpdate{Attributes: []youtrack.AttributeWrite{
 					{Name: "Mode", Clear: true},
-				}}, workItemAsked("id"))
+				}}, answeredWith("id"))
 			},
 			answer: workItemAnswer{attributes: workItemModeEmpty},
 			targets: []string{
@@ -744,7 +740,7 @@ func TestCreateWorkItemRefusesWhatTheServerKeptOtherwise(t *testing.T) {
 				Text:       tc.text,
 				Type:       tc.workType,
 				Attributes: tc.attributes,
-			}, workItemAsked("id"))
+			}, answeredWith("id"))
 
 			assert.Equal(t, workItemMismatch(t, server, tc.field, tc.expected, tc.actual), errorOf(t, err))
 		})
@@ -854,7 +850,7 @@ func TestUpdateWorkItemRefusesWhatTheServerKeptOtherwise(t *testing.T) {
 			t.Parallel()
 			server := workItemWriting(t, workItemProjectSettings(), tc.answer)
 
-			_, err := client(t, server).WorkItems.Update(t.Context(), "DEV-1", "7-1", &tc.in, workItemAsked("id"))
+			_, err := client(t, server).WorkItems.Update(t.Context(), "DEV-1", "7-1", &tc.in, answeredWith("id"))
 
 			assert.Equal(t, workItemMismatch(t, server, tc.field, tc.expected, tc.actual), errorOf(t, err))
 		})
@@ -867,7 +863,7 @@ func TestCreateWorkItemTellsAKeptTypeByItsIDFromOneOfTheSameName(t *testing.T) {
 		workItemAnswer{workType: workItemTypeLowerTwin})
 
 	_, err := client(t, server).WorkItems.Create(t.Context(), "DEV-1",
-		&youtrack.WorkItemInput{Duration: 90 * time.Minute, Type: "TWIN"}, workItemAsked("id"))
+		&youtrack.WorkItemInput{Duration: 90 * time.Minute, Type: "TWIN"}, answeredWith("id"))
 
 	assert.Equal(t, workItemMismatch(t, server, "type", youtrack.NewString("TWIN"), youtrack.NewString("Twin")),
 		errorOf(t, err))
@@ -885,7 +881,7 @@ func TestWorkItemWriteChecksOnlyWhatItWrote(t *testing.T) {
 			name: "a day kept at midnight UTC of the day written",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: 90 * time.Minute, Date: "2026-09-01"},
-					workItemAsked("date"))
+					answeredWith("date"))
 			},
 			answer:  workItemAnswer{date: workItemDayMidnight},
 			printed: youtrack.NewMap(youtrack.Pair{Key: "date", Value: youtrack.NewString("2026-09-01T00:00:00Z")}),
@@ -893,7 +889,7 @@ func TestWorkItemWriteChecksOnlyWhatItWrote(t *testing.T) {
 		{
 			name: "a creation that wrote no day and no text",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: 90 * time.Minute}, workItemAsked("date,text"))
+				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: 90 * time.Minute}, answeredWith("date,text"))
 			},
 			answer: workItemAnswer{date: workItemNextDayMidnight, text: `"first\nsecond"`},
 			printed: youtrack.NewMap(
@@ -904,7 +900,7 @@ func TestWorkItemWriteChecksOnlyWhatItWrote(t *testing.T) {
 			name: "an update that wrote the text alone",
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Text: new("x")},
-					workItemAsked("duration,type(name),date"))
+					answeredWith("duration,type(name),date"))
 			},
 			answer: workItemAnswer{duration: workItemMinutes("45"), workType: workItemTypeSecond,
 				date: workItemNextDayMidnight, text: `"x"`},
@@ -918,7 +914,7 @@ func TestWorkItemWriteChecksOnlyWhatItWrote(t *testing.T) {
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Attributes: []youtrack.AttributeWrite{
 					{Name: "Mode", Clear: true},
-				}}, workItemAsked("id"))
+				}}, answeredWith("id"))
 			},
 			printed: youtrack.NewMap(youtrack.Pair{Key: "id", Value: youtrack.NewString("7-1")}),
 		},
@@ -973,7 +969,7 @@ func TestCreateWorkItemResolvesATypeOfTheProjectByName(t *testing.T) {
 			server := workItemWriting(t, workItemSettings(tc.types, ""), workItemAnswer{workType: tc.kept})
 
 			_, err := client(t, server).WorkItems.Create(t.Context(), "DEV-1",
-				&youtrack.WorkItemInput{Duration: 90 * time.Minute, Type: tc.named}, workItemAsked("id"))
+				&youtrack.WorkItemInput{Duration: 90 * time.Minute, Type: tc.named}, answeredWith("id"))
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.sent, server.Last(t).Body)

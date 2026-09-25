@@ -105,12 +105,12 @@ func issueWriting(t *testing.T, project, classes string, write http.HandlerFunc)
 
 func issueCreate(t *testing.T, server *fake.Server, in youtrack.IssueInput, fields string) (*youtrack.Node, error) {
 	t.Helper()
-	return client(t, server).Issues.Create(t.Context(), "DEV", &in, &youtrack.WriteOptions{Fields: fields})
+	return client(t, server).Issues.Create(t.Context(), "DEV", &in, answeredWith(fields))
 }
 
 func issueUpdate(t *testing.T, server *fake.Server, in youtrack.IssueUpdate, fields string) (*youtrack.Node, error) {
 	t.Helper()
-	return client(t, server).Issues.Update(t.Context(), "DEV-1", &in, &youtrack.WriteOptions{Fields: fields})
+	return client(t, server).Issues.Update(t.Context(), "DEV-1", &in, answeredWith(fields))
 }
 
 func issueFill(name string, values ...string) youtrack.FieldWrite {
@@ -207,7 +207,7 @@ func TestCreateIssueRefusesACallBeforeAnyRequest(t *testing.T) {
 			t.Parallel()
 			issues := client(t, fake.ServeNothing(t)).Issues
 
-			_, err := issues.Create(t.Context(), cmp.Or(tc.project, "DEV"), tc.in, &youtrack.WriteOptions{Fields: tc.expression})
+			_, err := issues.Create(t.Context(), cmp.Or(tc.project, "DEV"), tc.in, answeredWith(tc.expression))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -242,7 +242,7 @@ func TestUpdateIssueRefusesACallBeforeAnyRequest(t *testing.T) {
 			t.Parallel()
 			issues := client(t, fake.ServeNothing(t)).Issues
 
-			_, err := issues.Update(t.Context(), cmp.Or(tc.id, "DEV-1"), tc.in, &youtrack.WriteOptions{Fields: tc.expression})
+			_, err := issues.Update(t.Context(), cmp.Or(tc.id, "DEV-1"), tc.in, answeredWith(tc.expression))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -306,13 +306,13 @@ type issueWrite func(ctx context.Context, issues *youtrack.IssuesService) (*yout
 
 func issueCreating(in youtrack.IssueInput) issueWrite {
 	return func(ctx context.Context, issues *youtrack.IssuesService) (*youtrack.Node, error) {
-		return issues.Create(ctx, "DEV", &in, &youtrack.WriteOptions{Fields: "idReadable"})
+		return issues.Create(ctx, "DEV", &in, answeredWith("idReadable"))
 	}
 }
 
 func issueUpdating(in youtrack.IssueUpdate) issueWrite {
 	return func(ctx context.Context, issues *youtrack.IssuesService) (*youtrack.Node, error) {
-		return issues.Update(ctx, "DEV-1", &in, &youtrack.WriteOptions{Fields: "idReadable"})
+		return issues.Update(ctx, "DEV-1", &in, answeredWith("idReadable"))
 	}
 }
 

@@ -84,3 +84,17 @@ func withNearest(key, written string, nearest ...string) *youtrack.Node {
 		youtrack.Pair{Key: key, Value: youtrack.NewString(written)},
 		youtrack.Pair{Key: "nearest", Value: texts(nearest...)})
 }
+
+func answeredWith(fields string) *youtrack.WriteOptions {
+	return &youtrack.WriteOptions{Fields: fields}
+}
+
+const keptByteForByte = "  First\r\nSecond\rThird   \n---\n~~~\n\u0085\xe2\x80\xa8\xef\xbb\xbf\U0001F600\n  "
+
+func printedComment(id, created, text string) *youtrack.Node {
+	return youtrack.NewMap(
+		youtrack.Pair{Key: "id", Value: youtrack.NewString(id)},
+		youtrack.Pair{Key: "author", Value: youtrack.NewMap(youtrack.Pair{Key: "login", Value: youtrack.NewString("author")})},
+		youtrack.Pair{Key: "created", Value: youtrack.NewString(created)},
+		youtrack.Pair{Key: "text", Value: youtrack.NewText(text)})
+}

@@ -240,7 +240,7 @@ func TestCreateTagSendsTheNameAsWritten(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, `{"$type":"Tag","name":`+tagText(tc.written)+`}`))
 
-			_, err := client(t, server).Tags.Create(t.Context(), tc.written, youtrack.TagSharing{}, &youtrack.WriteOptions{Fields: "name"})
+			_, err := client(t, server).Tags.Create(t.Context(), tc.written, youtrack.TagSharing{}, answeredWith("name"))
 
 			require.NoError(t, err)
 			assert.Equal(t, map[string]any{"name": tc.written}, server.LastJSON(t))
@@ -252,7 +252,7 @@ func TestCreateTagAsksForTheNameItChecks(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, tagOf("10-1", "Early", "first")))
 
-	node, err := client(t, server).Tags.Create(t.Context(), "Early", youtrack.TagSharing{}, &youtrack.WriteOptions{Fields: "owner(login)"})
+	node, err := client(t, server).Tags.Create(t.Context(), "Early", youtrack.TagSharing{}, answeredWith("owner(login)"))
 
 	require.NoError(t, err)
 	assert.Equal(t, youtrack.NewMap(youtrack.Pair{Key: "owner", Value: youtrack.NewMap(
@@ -292,7 +292,7 @@ func TestCreateTagRefusesANameTheServerKeptAsAnother(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, tc.kept))
 
-			_, err := client(t, server).Tags.Create(t.Context(), tc.written, youtrack.TagSharing{}, &youtrack.WriteOptions{Fields: "name"})
+			_, err := client(t, server).Tags.Create(t.Context(), tc.written, youtrack.TagSharing{}, answeredWith("name"))
 
 			want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, AfterWrite: true, Details: []youtrack.Pair{
 				requestTo(http.MethodPost, server, "/api/tags?fields=name"),
@@ -387,7 +387,7 @@ func TestCreateTagWritesEachSetOfGroupsItWasGiven(t *testing.T) {
 				"POST /api/tags":  tagCreationEchoed,
 			})
 
-			_, err := client(t, server).Tags.Create(t.Context(), "Early", tc.sharing, &youtrack.WriteOptions{Fields: "name"})
+			_, err := client(t, server).Tags.Create(t.Context(), "Early", tc.sharing, answeredWith("name"))
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.body, server.LastJSON(t))
@@ -404,7 +404,7 @@ func TestCreateTagAsksForTheGroupsOfEachSetItWrote(t *testing.T) {
 	})
 	sharing := youtrack.TagSharing{VisibleFor: []string{"First"}, TaggableBy: []string{"Second"}}
 
-	_, err := client(t, server).Tags.Create(t.Context(), "Early", sharing, &youtrack.WriteOptions{Fields: "name"})
+	_, err := client(t, server).Tags.Create(t.Context(), "Early", sharing, answeredWith("name"))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
@@ -596,7 +596,7 @@ func TestCreateTagRefusesASetOfGroupsThatCameBackAsAnother(t *testing.T) {
 				"POST /api/tags":  fake.JSON(http.StatusOK, tc.kept),
 			})
 
-			_, err := client(t, server).Tags.Create(t.Context(), "Early", tc.sharing, &youtrack.WriteOptions{Fields: "name"})
+			_, err := client(t, server).Tags.Create(t.Context(), "Early", tc.sharing, answeredWith("name"))
 
 			want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, AfterWrite: true, Details: []youtrack.Pair{
 				requestTo(http.MethodPost, server, "/api/tags?fields="+tc.fields),
@@ -616,7 +616,7 @@ func TestCreateTagTakesASetOfGroupsThatCameBackInAnotherOrder(t *testing.T) {
 	})
 	sharing := youtrack.TagSharing{VisibleFor: []string{"First", "Second"}}
 
-	node, err := client(t, server).Tags.Create(t.Context(), "Early", sharing, &youtrack.WriteOptions{Fields: "name"})
+	node, err := client(t, server).Tags.Create(t.Context(), "Early", sharing, answeredWith("name"))
 
 	require.NoError(t, err)
 	assert.Equal(t, youtrack.NewMap(youtrack.Pair{Key: "name", Value: youtrack.NewString("Early")}), node)

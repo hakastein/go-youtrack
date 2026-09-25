@@ -152,10 +152,6 @@ func linkUnknownPhrase(phrase string, nearest ...string) youtrack.Pair {
 		youtrack.Pair{Key: "nearest", Value: texts(nearest...)}))}
 }
 
-func linkAnswer(fields string) *youtrack.WriteOptions {
-	return &youtrack.WriteOptions{Fields: fields}
-}
-
 type linkCall func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error)
 
 func TestLinkWriteRefusesAPhraseItCannotSend(t *testing.T) {
@@ -217,7 +213,7 @@ func TestLinkRefusesAnExpressionOfTheTargetItCannotSend(t *testing.T) {
 		{
 			name: "a name under a slot of a target issue in an addition",
 			call: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
-				return links.Add(ctx, "DEV-1", "needs", "DEV-2", linkAnswer("+subtasks(direction)"))
+				return links.Add(ctx, "DEV-1", "needs", "DEV-2", answeredWith("+subtasks(direction)"))
 			},
 		},
 	}
@@ -360,7 +356,7 @@ func TestAddLinkWritesToTheSlotThePhraseNames(t *testing.T) {
 			t.Parallel()
 			server := linkServer(t, linkEverySlot(), linkTarget, fake.JSON(http.StatusOK, tc.slot.writtenToTheTarget()))
 
-			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", tc.phrase, "DEV-2", linkAnswer("idReadable"))
+			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", tc.phrase, "DEV-2", answeredWith("idReadable"))
 
 			require.NoError(t, err)
 			assert.Equal(t, "/api/issues/DEV-1/links/"+tc.slot.id+"/issues", server.Last(t).URL.Path)
@@ -377,7 +373,7 @@ func TestAddLinkAsksForTheIssuesAndTheTargetAsAskedOfIt(t *testing.T) {
 	mux.Handle("POST /api/issues/DEV-1/links/5-1t/issues", fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
 	server := fake.Serve(t, mux.ServeHTTP)
 
-	_, err := client(t, server).Links.Add(t.Context(), "dev-1", "needs", "DEV-2", linkAnswer("idReadable"))
+	_, err := client(t, server).Links.Add(t.Context(), "dev-1", "needs", "DEV-2", answeredWith("idReadable"))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
@@ -392,7 +388,7 @@ func TestAddLinkPrintsTheLinksTheWriteLeftTheIssueWith(t *testing.T) {
 	answer := needsSlot.written(needsSlot.listed(linkTarget), tiesSlot.listed(`{"id":"3-4","idReadable":"DEV-4"}`))
 	server := linkServer(t, linkEverySlot(), linkTarget, fake.JSON(http.StatusOK, answer))
 
-	node, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", linkAnswer("idReadable"))
+	node, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", answeredWith("idReadable"))
 
 	require.NoError(t, err)
 	assert.Equal(t, linkDocument(2, 2, false, linkRecords("needs", "DEV-2"), linkRecords("ties", "DEV-4")), node)
@@ -408,7 +404,7 @@ func TestAddLinkResolvesAPhraseTwoSlotsAnswerToByItsSpelling(t *testing.T) {
 		t.Parallel()
 		server := linkServer(t, source, linkTarget, fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
 
-		_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", linkAnswer("idReadable"))
+		_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", answeredWith("idReadable"))
 
 		require.NoError(t, err)
 		assert.Equal(t, "/api/issues/DEV-1/links/5-1t/issues", server.Last(t).URL.Path)
@@ -418,7 +414,7 @@ func TestAddLinkResolvesAPhraseTwoSlotsAnswerToByItsSpelling(t *testing.T) {
 		t.Parallel()
 		server := linkServer(t, source, linkTarget, fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
 
-		_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "NEEDS", "DEV-2", linkAnswer("idReadable"))
+		_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "NEEDS", "DEV-2", answeredWith("idReadable"))
 
 		assert.Equal(t, youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{
 			requestTo(http.MethodGet, server, "/api/issues/DEV-1?fields="+linkSourceFields),
@@ -502,7 +498,7 @@ func TestAddLinkRefusesTwoSlotsUnderOnePhraseAndWritesEveryOther(t *testing.T) {
 		t.Parallel()
 		server := linkServer(t, source, linkTarget, fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
 
-		_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", linkAnswer("idReadable"))
+		_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", answeredWith("idReadable"))
 
 		require.NoError(t, err)
 		assert.Equal(t, "/api/issues/DEV-1/links/5-1t/issues", server.Last(t).URL.Path)
@@ -769,7 +765,7 @@ func TestAddLinkRefusesAnAnswerThatDoesNotHoldTheLink(t *testing.T) {
 			t.Parallel()
 			server := linkServer(t, linkEverySlot(), linkTarget, fake.JSON(http.StatusOK, tc.written))
 
-			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", linkAnswer("idReadable"))
+			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", answeredWith("idReadable"))
 
 			assert.Equal(t, youtrack.Error{
 				Code:       youtrack.CodeUpstreamInvalid,
@@ -787,7 +783,7 @@ func TestAddLinkNamesTheLinkInWhatTheServerSaidAboutTheWrite(t *testing.T) {
 	server := linkServer(t, linkEverySlot(), linkTarget,
 		fake.JSON(http.StatusBadRequest, `{"error":"invalid_properties","error_description":"A cycle"}`))
 
-	_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "NEEDS", "DEV-2", linkAnswer("idReadable"))
+	_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "NEEDS", "DEV-2", answeredWith("idReadable"))
 
 	assert.Equal(t, youtrack.Error{
 		Code: youtrack.CodeRejected,
