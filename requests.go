@@ -66,36 +66,41 @@ func writeEmpty(ctx context.Context, call func(ctx context.Context) (*http.Respo
 }
 
 func (c *Client) write(ctx context.Context, spec *schemas, responseSchema string, requested []requestedField, call func(ctx context.Context, fields string) (*http.Response, error), confirm func(decodedResponse) *Error, output func(decodedResponse) (*Node, *Error)) (*Node, *Error) {
+	return writeAs(ctx, c, spec, responseSchema, requested, call, confirm, output)
+}
+
+func writeAs[T any](ctx context.Context, c *Client, spec *schemas, responseSchema string, requested []requestedField, call func(ctx context.Context, fields string) (*http.Response, error), confirm func(decodedResponse) *Error, output func(decodedResponse) (T, *Error)) (T, *Error) {
+	var none T
 	response, fault := send(ctx, func(ctx context.Context) (*http.Response, error) {
 		return call(ctx, formatFields(requested))
 	})
 	if fault != nil {
-		return nil, fault
+		return none, fault
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, truncatedWriteResponse(response, body, err)
+		return none, truncatedWriteResponse(response, body, err)
 	}
 	if fault := writeFailure(response, body); fault != nil {
-		return nil, fault
+		return none, fault
 	}
 	tree, isJSON := decode(body)
 	if !isJSON {
-		return nil, markWritten(response, shapeFailure(response, body, notOneValue))
+		return none, markWritten(response, shapeFailure(response, body, notOneValue))
 	}
 	decoded, fault := c.validateResponse(spec, responseSchema, requested, response, body, tree)
 	if fault != nil {
-		return nil, markWritten(response, fault)
+		return none, markWritten(response, fault)
 	}
 	if fault := confirm(decoded); fault != nil {
-		return nil, markWritten(response, fault)
+		return none, markWritten(response, fault)
 	}
-	node, fault := output(decoded)
+	value, fault := output(decoded)
 	if fault != nil {
-		return nil, markWritten(response, fault)
+		return none, markWritten(response, fault)
 	}
-	return node, nil
+	return value, nil
 }
 
 func (c *Client) request(ctx context.Context, spec *schemas, responseSchema string, requested []requestedField, call func(ctx context.Context, fields string) (*http.Response, error)) (decodedResponse, *Error) {

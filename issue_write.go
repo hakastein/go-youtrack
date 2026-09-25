@@ -9,55 +9,132 @@ import (
 	"strings"
 )
 
-func CreateIssue(code, summary string, description *string, filled []string, expression string) (Call, *Error) {
-	code, fault := parseProjectCode(code)
-	if fault != nil {
-		return nil, fault
-	}
-	parts, fault := parseIssueCreate(summary, description, filled)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	requested, fault := issueFields(spec, expression, IssueShowFields, issueCommentTarget().commentsOfAWrite())
-	if fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.createIssue(ctx, spec, code, parts, requested)
-	}, nil
+// Values are value keys of the field's type; a field of many values is written whole, and writes of one name add up.
+type FieldWrite struct {
+	Name   string
+	Values []string
+	Clear  bool
 }
 
-func UpdateIssue(id string, summary, description *string, filled, cleared []string, expression string) (Call, *Error) {
+type IssueInput struct {
+	Summary     string
+	Description string
+	Fields      []FieldWrite
+}
+
+// IssueUpdate: a nil part is left as the issue holds it. YouTrack keeps an empty description as none, so an empty
+// Description is refused and ClearDescription empties it.
+type IssueUpdate struct {
+	Summary          *string
+	Description      *string
+	ClearDescription bool
+	Fields           []FieldWrite
+}
+
+// Create checks the call against the metadata of the project before the write: the names and the values of the
+// fields, the fields the project requires and the ones its conditions hide on the new issue.
+func (s *IssuesService) Create(ctx context.Context, project string, in *IssueInput, opts *WriteOptions) (*Node, error) {
+	return result(s.create(ctx, project, optionsOf(in), optionsOf(opts)))
+}
+
+// Update sends a field under the class the issue holds it in, as StateMachineIssueCustomField for a state under a
+// workflow.
+func (s *IssuesService) Update(ctx context.Context, id string, in *IssueUpdate, opts *WriteOptions) (*Node, error) {
+	return result(s.update(ctx, id, optionsOf(in), optionsOf(opts)))
+}
+
+func (s *IssuesService) WriteFields(ctx context.Context, id string, writes []FieldWrite) (*Issue, error) {
+	return result(s.writeFields(ctx, id, writes))
+}
+
+func (s *IssuesService) create(ctx context.Context, project string, in IssueInput, opts WriteOptions) (*Node, *Error) {
+	code, fault := parseProjectCode(project)
+	if fault != nil {
+		return nil, fault
+	}
+	parts, fault := in.parse()
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	requested, fault := issueFields(c.spec, opts.Fields, IssueShowFields, issueCommentTarget().commentsOfAWrite())
+	if fault != nil {
+		return nil, fault
+	}
+	return createIssue(ctx, c, code, parts, issueDocument(c, requested))
+}
+
+func (s *IssuesService) update(ctx context.Context, id string, in IssueUpdate, opts WriteOptions) (*Node, *Error) {
 	id, fault := parseIssueID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	if summary == nil && description == nil && len(filled) == 0 && len(cleared) == 0 {
-		return nil, &Error{Code: CodeBadUsage, Message: nothingToWrite}
-	}
-	parts, fault := parseIssueUpdate(summary, description, filled, cleared)
+	parts, fault := in.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	requested, fault := issueFields(spec, expression, IssueShowFields, issueCommentTarget().commentsOfAWrite())
+	c := s.client
+	requested, fault := issueFields(c.spec, opts.Fields, IssueShowFields, issueCommentTarget().commentsOfAWrite())
 	if fault != nil {
 		return nil, fault
 	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.updateIssue(ctx, spec, id, parts, requested)
-	}, nil
+	return updateIssue(ctx, c, id, parts, issueDocument(c, requested))
 }
 
-const nothingToWrite = "the call writes nothing into the issue: an update is given --summary, --description, " +
-	"--field \"Name=value\" or --clear Name, and a part it is given none of is left as the issue holds it"
+func (s *IssuesService) writeFields(ctx context.Context, id string, writes []FieldWrite) (*Issue, *Error) {
+	id, fault := parseIssueID(id)
+	if fault != nil {
+		return nil, fault
+	}
+	if len(writes) == 0 {
+		return nil, &Error{Code: CodeBadUsage, Message: noFieldToWrite}
+	}
+	named, cleared, fault := parseFieldWrites(writes)
+	if fault != nil {
+		return nil, fault
+	}
+	return updateIssue(ctx, s.client, id, issueInput{named: named, cleared: cleared}, issueRecordAnswer())
+}
 
-const descriptionBothWays = "--description writes the prose of the issue and --clear description empties it, and the " +
-	"call gives both"
+const (
+	nothingToWrite = "the call writes nothing into the issue: an update names at least one part to write, and a " +
+		"part it does not name is left as the issue holds it"
+	noFieldToWrite      = "the call writes no custom field into the issue, and a write of the fields names at least one"
+	descriptionBothWays = "the call both writes the description of the issue and empties it"
+	clearOnCreate       = "the call empties the custom field %s of an issue it files: a field a new issue is given " +
+		"no value for is filed as the project fills it"
+)
 
-func (c *Client) createIssue(ctx context.Context, spec *schemas, code string, parts issueInput, requested []requestedField) (*Node, *Error) {
-	project, fault := c.readProjectMetadata(ctx, spec, code)
+type issueAnswer[T any] struct {
+	fields func(ctx context.Context, verified []requestedField) ([]requestedField, *Error)
+	read   func(decodedResponse) (T, *Error)
+}
+
+func issueDocument(c *Client, requested []requestedField) issueAnswer[*Node] {
+	return issueAnswer[*Node]{
+		fields: func(ctx context.Context, verified []requestedField) ([]requestedField, *Error) {
+			if fault := c.resolveCustomFields(ctx, c.spec, requested); fault != nil {
+				return nil, fault
+			}
+			asked := withFields(requested, verified...)
+			issueBlocks(c.spec, composedIssue(), asked)
+			return asked, nil
+		},
+		read: writeResultNode(requested),
+	}
+}
+
+func issueRecordAnswer() issueAnswer[*Issue] {
+	return issueAnswer[*Issue]{
+		fields: func(_ context.Context, verified []requestedField) ([]requestedField, *Error) {
+			return withFields(issueRecordFields(), verified...), nil
+		},
+		read: readIssue,
+	}
+}
+
+func createIssue(ctx context.Context, c *Client, code string, parts issueInput, answer issueAnswer[*Node]) (*Node, *Error) {
+	project, fault := c.readProjectMetadata(ctx, c.spec, code)
 	if fault != nil {
 		return nil, fault
 	}
@@ -72,38 +149,37 @@ func (c *Client) createIssue(ctx context.Context, spec *schemas, code string, pa
 	if missing := filed.missing(); len(missing) > 0 {
 		return nil, project.fault(CodeMissingRequired, missingMessage, "missing", names(missing))
 	}
-	if fault := c.resolveCustomFields(ctx, spec, requested); fault != nil {
-		return nil, fault
-	}
-	asked := withFields(requested, filed.verifyFields()...)
-	issueBlocks(spec, composedIssue(), asked)
-	body := filed.createBody()
-	return c.write(ctx, spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiCreateIssue(ctx, body, fields)
-	}, filed.verify, writeResultNode(requested))
-}
-
-func (c *Client) updateIssue(ctx context.Context, spec *schemas, id string, parts issueInput, requested []requestedField) (*Node, *Error) {
-	issue, fault := c.readIssueToWrite(ctx, spec, id)
+	asked, fault := answer.fields(ctx, filed.verifyFields())
 	if fault != nil {
 		return nil, fault
+	}
+	body := filed.createBody()
+	return writeAs(ctx, c, c.spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiCreateIssue(ctx, body, fields)
+	}, filed.verify, answer.read)
+}
+
+func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueInput, answer issueAnswer[T]) (T, *Error) {
+	var none T
+	issue, fault := c.readIssueToWrite(ctx, c.spec, id)
+	if fault != nil {
+		return none, fault
 	}
 	changed, fault := parts.resolve(issue.project, issue.fieldTypes)
 	if fault != nil {
-		return nil, fault
+		return none, fault
 	}
 	if emptied := changed.requiredEmptied(); len(emptied) > 0 {
-		return nil, issue.project.fault(CodeMissingRequired, emptiedMessage, "missing", names(emptied))
+		return none, issue.project.fault(CodeMissingRequired, emptiedMessage, "missing", names(emptied))
 	}
-	if fault := c.resolveCustomFields(ctx, spec, requested); fault != nil {
-		return nil, fault
+	asked, fault := answer.fields(ctx, changed.verifyFields())
+	if fault != nil {
+		return none, fault
 	}
-	asked := withFields(requested, changed.verifyFields()...)
-	issueBlocks(spec, composedIssue(), asked)
 	body := changed.updateBody()
-	return c.write(ctx, spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, c.spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateIssue(ctx, issue.readable, body, fields)
-	}, changed.verify, writeResultNode(requested))
+	}, changed.verify, answer.read)
 }
 
 type issueInput struct {
@@ -114,33 +190,40 @@ type issueInput struct {
 	cleared           []string
 }
 
-func parseIssueCreate(summary string, description *string, filled []string) (issueInput, *Error) {
-	if fault := rejectReplacedText(&summary, description, descriptionOfANewIssue); fault != nil {
+func (in IssueInput) parse() (issueInput, *Error) {
+	var description *string
+	if in.Description != "" {
+		description = &in.Description
+	}
+	if fault := rejectReplacedText(&in.Summary, description); fault != nil {
 		return issueInput{}, fault
 	}
-	named, fault := parseFieldValues(filled)
+	named, cleared, fault := parseFieldWrites(in.Fields)
 	if fault != nil {
 		return issueInput{}, fault
 	}
-	return issueInput{summary: &summary, description: description, named: named}, nil
+	if len(cleared) > 0 {
+		return issueInput{}, &Error{Code: CodeBadUsage, Message: fmt.Sprintf(clearOnCreate, quote(cleared[0]))}
+	}
+	return issueInput{summary: &in.Summary, description: description, named: named}, nil
 }
 
-func parseIssueUpdate(summary, description *string, filled, cleared []string) (issueInput, *Error) {
-	emptied, clearsDescription, fault := clearedFields(cleared)
-	if fault != nil {
-		return issueInput{}, fault
+func (in IssueUpdate) parse() (issueInput, *Error) {
+	if in.Summary == nil && in.Description == nil && !in.ClearDescription && len(in.Fields) == 0 {
+		return issueInput{}, &Error{Code: CodeBadUsage, Message: nothingToWrite}
 	}
-	if clearsDescription && description != nil {
+	if in.ClearDescription && in.Description != nil {
 		return issueInput{}, &Error{Code: CodeBadUsage, Message: descriptionBothWays}
 	}
-	if fault := rejectReplacedText(summary, description, descriptionOfAnIssue); fault != nil {
+	if fault := rejectReplacedText(in.Summary, in.Description); fault != nil {
 		return issueInput{}, fault
 	}
-	named, fault := parseFieldValues(filled)
+	named, cleared, fault := parseFieldWrites(in.Fields)
 	if fault != nil {
 		return issueInput{}, fault
 	}
-	return issueInput{summary: summary, description: description, named: named, clearsDescription: clearsDescription, cleared: emptied}, nil
+	return issueInput{summary: in.Summary, description: in.Description, named: named,
+		clearsDescription: in.ClearDescription, cleared: cleared}, nil
 }
 
 type namedValue struct {
@@ -148,69 +231,50 @@ type namedValue struct {
 	value string
 }
 
+func parseFieldWrites(writes []FieldWrite) ([]namedValue, []string, *Error) {
+	var named []namedValue
+	var cleared []string
+	for _, w := range writes {
+		if fault := w.check(); fault != nil {
+			return nil, nil, fault
+		}
+		for _, value := range w.Values {
+			named = append(named, namedValue{name: w.Name, value: value})
+		}
+		if w.Clear {
+			cleared = append(cleared, w.Name)
+		}
+	}
+	return named, cleared, nil
+}
+
 // The name is not trimmed: a project may name a field with a trailing space.
-func parseFieldValues(filled []string) ([]namedValue, *Error) {
-	named := make([]namedValue, 0, len(filled))
-	for _, flag := range filled {
-		name, value, split := strings.Cut(flag, "=")
-		switch {
-		case !split:
-			message := fmt.Sprintf("--field %s holds no =: a custom field is filled by writing its name, an = "+
-				"and the value, as in --field Type=Task", quote(flag))
-			return nil, &Error{Code: CodeBadUsage, Message: message}
-		case name == "":
-			message := fmt.Sprintf("--field %s names no custom field: the name stands before the =", quote(flag))
-			return nil, &Error{Code: CodeBadUsage, Message: message}
-		}
-		if fault := rejectOwnName(flag, name); fault != nil {
-			return nil, fault
-		}
-		named = append(named, namedValue{name: name, value: value})
-	}
-	return named, nil
-}
-
-func clearedFields(cleared []string) ([]string, bool, *Error) {
-	names := make([]string, 0, len(cleared))
-	clearsDescription := false
-	for _, name := range cleared {
-		switch {
-		case name == "":
-			message := `--clear "" names no custom field: it takes the name of the field to empty, as in --clear Assignee`
-			return nil, false, &Error{Code: CodeBadUsage, Message: message}
-		case strings.EqualFold(name, summaryKey):
-			message := fmt.Sprintf("--clear %s names the summary of the issue, which YouTrack files none "+
-				"without: a title is written with --summary and cannot be taken away", quote(name))
-			return nil, false, &Error{Code: CodeBadUsage, Message: message}
-		case strings.EqualFold(name, descriptionKey):
-			clearsDescription = true
-		default:
-			names = append(names, name)
-		}
-	}
-	return names, clearsDescription, nil
-}
-
-func rejectOwnName(flag, name string) *Error {
-	for _, own := range []string{summaryKey, descriptionKey} {
-		if !strings.EqualFold(name, own) {
-			continue
-		}
-		message := fmt.Sprintf("--field %s names the %s of the issue, which is no custom field of it: it is "+
-			"written with --%s", quote(flag), own, own)
+func (w FieldWrite) check() *Error {
+	switch {
+	case w.Name == "":
+		return &Error{Code: CodeBadUsage, Message: "a write of a custom field names no field"}
+	case !w.Clear && len(w.Values) == 0:
+		message := fmt.Sprintf("the write of the custom field %s neither gives it a value nor empties it", quote(w.Name))
 		return &Error{Code: CodeBadUsage, Message: message}
+	}
+	for _, own := range []string{summaryKey, descriptionKey} {
+		if strings.EqualFold(w.Name, own) {
+			message := fmt.Sprintf("the custom field %s names the %s of the issue, which is a part of the issue "+
+				"written on its own and no custom field", quote(w.Name), own)
+			return &Error{Code: CodeBadUsage, Message: message}
+		}
 	}
 	return nil
 }
 
-func rejectReplacedText(summary, description *string, emptyDescription string) *Error {
+func rejectReplacedText(summary, description *string) *Error {
 	if summary != nil {
-		if fault := rejectReplaced("--summary", *summary, summaryEmpty, summaryRewrites()); fault != nil {
+		if fault := rejectReplaced("the summary", *summary, summaryEmpty, summaryRewrites()); fault != nil {
 			return fault
 		}
 	}
 	if description != nil {
-		if fault := rejectReplaced("--description", *description, emptyDescription, descriptionRewrites()); fault != nil {
+		if fault := rejectReplaced("the description", *description, descriptionEmpty, descriptionRewrites()); fault != nil {
 			return fault
 		}
 	}
@@ -232,11 +296,9 @@ func descriptionRewrites() []charReplacement {
 }
 
 const (
-	summaryEmpty           = "is empty, and YouTrack files no issue without a title"
-	descriptionOfANewIssue = "is empty, and YouTrack keeps an empty description as none: leave the flag out to " +
-		"file the issue with no description at all"
-	descriptionOfAnIssue = "is empty, and YouTrack keeps an empty description as none: --clear description " +
-		"empties it outright, and a description the call does not write is left as the issue holds it"
+	summaryEmpty     = "is empty, and YouTrack files no issue without a title"
+	descriptionEmpty = "is empty, and YouTrack keeps an empty description as none: the description is emptied " +
+		"outright by clearing it, and a description the call does not write is left as the issue holds it"
 )
 
 type createIssueBody struct {

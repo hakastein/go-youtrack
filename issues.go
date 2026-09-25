@@ -8,10 +8,12 @@ import (
 	"unicode/utf8"
 )
 
-const IssueShowFields = "idReadable,summary,reporter(login),created,updated,resolved,tags(name),customFields," +
-	"links(issues(idReadable,summary)),description"
-
-const IssueListFields = "idReadable,summary,customFields(State,Type),created"
+// customFields(Name) stands for the value of that field alone, and a bare customFields for every field of the issue.
+const (
+	IssueShowFields = "idReadable,summary,reporter(login),created,updated,resolved,tags(name),customFields," +
+		"links(issues(idReadable,summary)),description"
+	IssueListFields = "idReadable,summary,customFields(State,Type),created"
+)
 
 const (
 	issueSchema   = "Issue"
@@ -23,22 +25,78 @@ const (
 
 const stillCounting = -1
 
-func ListIssues(query string, expression string, page Page, warn WarnFunc) (Call, *Error) {
+// ShowIssueOptions: Fields is a fields= expression, empty for IssueShowFields and +x for them and x. Comments come
+// under comments oldest first, and the zero value asks for none.
+type ShowIssueOptions struct {
+	Fields   string
+	Comments Comments
+}
+
+// ListIssuesOptions: Fields is a fields= expression, empty for IssueListFields and +x for them and x. Warn is handed
+// the parts of the search YouTrack looks for as free text, before the search is sent; nil drops the warning.
+type ListIssuesOptions struct {
+	Fields string
+	Page   Page
+	Warn   func(*Warning)
+}
+
+// Show resolves a custom field named under customFields by its name, then by its translation, among the custom
+// fields of the instance.
+func (s *IssuesService) Show(ctx context.Context, id string, opts *ShowIssueOptions) (*Node, error) {
+	return result(s.show(ctx, id, optionsOf(opts)))
+}
+
+// List sends query to YouTrack as written. total is null when YouTrack has not counted the search after two asks.
+func (s *IssuesService) List(ctx context.Context, query string, opts *ListIssuesOptions) (*Node, error) {
+	return result(s.list(ctx, query, optionsOf(opts)))
+}
+
+// Delete answers with the readable id the server gave just before the deletion, which goes to that id.
+func (s *IssuesService) Delete(ctx context.Context, id string) (*Node, error) {
+	return result(s.delete(ctx, id))
+}
+
+func (s *IssuesService) show(ctx context.Context, id string, opts ShowIssueOptions) (*Node, *Error) {
+	id, fault := parseIssueID(id)
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	requested, fault := issueFields(c.spec, opts.Fields, IssueShowFields, commentsOfAShow)
+	if fault != nil {
+		return nil, fault
+	}
+	if fault := opts.Comments.check(); fault != nil {
+		return nil, fault
+	}
+	return c.showIssue(ctx, c.spec, id, requested, opts.Comments)
+}
+
+func (s *IssuesService) list(ctx context.Context, query string, opts ListIssuesOptions) (*Node, *Error) {
 	if fault := rejectUnreadableQuery(query); fault != nil {
 		return nil, fault
 	}
-	page, fault := page.parse()
+	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	requested, fault := issueFields(spec, expression, IssueListFields, issueCommentTarget().commentsOfAList())
+	c := s.client
+	requested, fault := issueFields(c.spec, opts.Fields, IssueListFields, issueCommentTarget().commentsOfAList())
 	if fault != nil {
 		return nil, fault
 	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listIssues(ctx, spec, query, requested, page, warn)
-	}, nil
+	return c.listIssues(ctx, c.spec, query, requested, page, opts.Warn)
+}
+
+func (s *IssuesService) delete(ctx context.Context, id string) (*Node, *Error) {
+	id, fault := parseIssueID(id)
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	return c.deleteOwner(ctx, c.spec, issueOwner, issueSchema, func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiGetIssue(ctx, id, fields, nil)
+	}, c.apiDeleteIssue)
 }
 
 func issueFields(spec *schemas, expression string, defaults, comments string) ([]requestedField, *Error) {
@@ -61,12 +119,12 @@ func rejectUnreadableQuery(query string) *Error {
 	return &Error{Code: CodeBadUsage, Message: message}
 }
 
-func (c *Client) listIssues(ctx context.Context, spec *schemas, query string, requested []requestedField, page Page, warn WarnFunc) (*Node, *Error) {
+func (c *Client) listIssues(ctx context.Context, spec *schemas, query string, requested []requestedField, page Page, warn func(*Warning)) (*Node, *Error) {
 	marked, fault := c.searchMarkup(ctx, spec, query)
 	if fault != nil {
 		return nil, fault
 	}
-	if warning := freeTextWarning(query, marked); warning != nil {
+	if warning := freeTextWarning(query, marked); warning != nil && warn != nil {
 		warn(warning)
 	}
 	asked, named, fault := c.issueRequest(ctx, spec, requested)
@@ -117,37 +175,6 @@ func (c *Client) countIssues(ctx context.Context, spec *schemas, query string) (
 	return counted(int(found)), nil
 }
 
-func ShowIssue(id string, expression string, comments Comments) (Call, *Error) {
-	id, fault := parseIssueID(id)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	requested, fault := issueFields(spec, expression, IssueShowFields, commentsOfAShow)
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := comments.check(); fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.showIssue(ctx, spec, id, requested, comments)
-	}, nil
-}
-
-func DeleteIssue(id string) (Call, *Error) {
-	id, fault := parseIssueID(id)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.deleteOwner(ctx, spec, issueOwner, issueSchema, func(ctx context.Context, fields string) (*http.Response, error) {
-			return c.apiGetIssue(ctx, id, fields, nil)
-		}, c.apiDeleteIssue)
-	}, nil
-}
-
 func rejectCustomFieldNames(spec *schemas, at, expression string, requested []requestedField) *Error {
 	var fault *Error
 	eachCustomFields(spec, at, requested, func(parents []string, field *requestedField) {
@@ -178,7 +205,8 @@ func rejectBareCustomFields(at, expression, path string) *Error {
 		quote(expression), path)
 	if at != issueSchema {
 		message = fmt.Sprintf("fields %s: %s holds the custom fields of the issue, which are printed whole, so "+
-			"no name stands under it; a custom field is named one by one in ytrack issue show", quote(expression), path)
+			"no name stands under it; a custom field is named one by one only in the fields of an issue read by its id",
+			quote(expression), path)
 	}
 	return &Error{Code: CodeBadUsage, Message: message}
 }

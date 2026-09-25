@@ -102,7 +102,7 @@ func encodeValue(kind FieldType, text string) (Encoded, string) {
 }
 
 func emptyValueReason(kind FieldType) string {
-	const leftAlone = "; a field is emptied by --clear Name and a field the call does not name is left as it stands"
+	const leftAlone = "; a field is emptied by clearing it, and a field the call does not name is left as it stands"
 	switch {
 	case kind.ValueType == StringType || kind.ValueType == TextType:
 		return fmt.Sprintf("YouTrack keeps a %s field it is given nothing for as holding nothing at all",
@@ -129,21 +129,33 @@ func (n converter) readValue(kind FieldType, item any) (*Node, bool, error) {
 }
 
 func (n converter) valueKeys(f issueCustomField) ([]string, *Error) {
-	values, fault := n.valuesOf(f)
+	values, fault := n.fieldValues(f)
 	if fault != nil {
 		return nil, fault
 	}
 	texts := make([]string, 0, len(values))
-	for _, item := range values {
+	for _, value := range values {
+		texts = append(texts, value.Text)
+	}
+	return texts, nil
+}
+
+func (n converter) fieldValues(f issueCustomField) ([]Value, *Error) {
+	items, fault := n.valuesOf(f)
+	if fault != nil {
+		return nil, fault
+	}
+	var values []Value
+	for _, item := range items {
 		value, present, err := f.kind.ReadValue(item)
 		if err != nil {
 			return nil, n.unreadableValue(f, err)
 		}
 		if present {
-			texts = append(texts, value.Text)
+			values = append(values, value)
 		}
 	}
-	return texts, nil
+	return values, nil
 }
 
 const (

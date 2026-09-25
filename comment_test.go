@@ -157,11 +157,9 @@ func TestCommentsOfAShowRefuseANegativeCount(t *testing.T) {
 	}{
 		{
 			name: "of an issue",
-			show: func(context.Context, *youtrack.Client) error {
-				if _, fault := youtrack.ShowIssue("DEV-1", "", youtrack.LastComments(-1)); fault != nil {
-					return fault
-				}
-				return nil
+			show: func(ctx context.Context, c *youtrack.Client) error {
+				_, err := c.Issues.Show(ctx, "DEV-1", &youtrack.ShowIssueOptions{Comments: youtrack.LastComments(-1)})
+				return err
 			},
 		},
 		{
