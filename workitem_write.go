@@ -217,17 +217,15 @@ func (t resolvedWorkType) verify(wrong []mismatch, value any) []mismatch {
 }
 
 func (d workDuration) verify(wrong []mismatch, value any) []mismatch {
-	written := NewString(duration(d.minutes))
-	held, isObject := value.(map[string]any)
-	if isObject {
-		if minutes, isWhole := parseInt64(held[minutesKey]); isWhole {
-			if minutes == d.minutes {
-				return wrong
-			}
-			return append(wrong, mismatch{field: durationKey, expected: written, actual: NewString(duration(minutes))})
-		}
+	minutes, isWhole := parseInt64(memberOf(value, minutesKey))
+	if isWhole && minutes == d.minutes {
+		return wrong
 	}
-	return append(wrong, mismatch{field: durationKey, expected: written, actual: NewNull()})
+	received := NewNull()
+	if isWhole {
+		received = NewString(duration(minutes))
+	}
+	return append(wrong, mismatch{field: durationKey, expected: NewString(duration(d.minutes)), actual: received})
 }
 
 func (d workDate) verify(wrong []mismatch, value any) []mismatch {

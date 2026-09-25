@@ -132,6 +132,13 @@ func emptyMismatch(wrong []mismatch, field string, value any) []mismatch {
 	return append(wrong, mismatch{field: field, expected: NewNull(), actual: rawValueNode(value)})
 }
 
+func emptyObjectMismatch(wrong []mismatch, field string, value any, shownBy string) []mismatch {
+	if value == nil {
+		return wrong
+	}
+	return append(wrong, mismatch{field: field, expected: NewNull(), actual: rawValueNode(memberOf(value, shownBy))})
+}
+
 func mismatchFault(a decodedResponse, wrong []mismatch, identity ...Pair) *Error {
 	if len(wrong) == 0 {
 		return nil

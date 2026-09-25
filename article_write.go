@@ -152,7 +152,7 @@ func (w articleUpdate) verify(a decodedResponse) *Error {
 	case w.parent != nil:
 		wrong = parentMismatch(wrong, w.parent.readable.String(), article[parentArticleKey])
 	case w.clearsParent:
-		wrong = noParentMismatch(wrong, article[parentArticleKey])
+		wrong = emptyObjectMismatch(wrong, parentArticleKey, article[parentArticleKey], idReadableKey)
 	}
 	return mismatchFault(a, wrong, Pair{Key: articleOwner.String(), Value: responseID(a, idReadableKey)})
 }
@@ -221,14 +221,6 @@ func parentMismatch(wrong []mismatch, readable string, value any) []mismatch {
 		return wrong
 	}
 	return append(wrong, mismatch{field: parentArticleKey, expected: NewString(readable), actual: rawValueNode(received)})
-}
-
-func noParentMismatch(wrong []mismatch, value any) []mismatch {
-	if value == nil {
-		return wrong
-	}
-	received := rawValueNode(memberOf(value, idReadableKey))
-	return append(wrong, mismatch{field: parentArticleKey, expected: NewNull(), actual: received})
 }
 
 func memberOf(value any, name string) any {

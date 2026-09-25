@@ -219,9 +219,7 @@ func attributeMismatches(wrong []mismatch, filed []resolvedAttribute, value any)
 			kept = memberOf(received[at], valueKey)
 		}
 		if attribute.value == nil {
-			if kept != nil {
-				wrong = append(wrong, mismatch{field: attribute.name, expected: NewNull(), actual: rawValueNode(memberOf(kept, nameKey))})
-			}
+			wrong = emptyObjectMismatch(wrong, attribute.name, kept, nameKey)
 			continue
 		}
 		if at >= 0 && memberOf(kept, idKey) == attribute.value.id {
