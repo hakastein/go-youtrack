@@ -80,15 +80,15 @@ func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleO
 	if fault := opts.Comments.check(); fault != nil {
 		return nil, fault
 	}
-	held := articleCommentTarget()
-	decoded, fault := c.request(ctx, articleSchema, opts.Comments.merged(held, requested), func(ctx context.Context, fields string) (*http.Response, error) {
+	target := articleCommentTarget()
+	decoded, fault := c.request(ctx, articleSchema, opts.Comments.merged(target, requested), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetArticle(ctx, id, fields)
 	})
 	if fault != nil {
 		return nil, fault
 	}
 	article := decoded.objects[0]
-	own, fault := opts.Comments.pair(held, decoded, article)
+	own, fault := opts.Comments.pair(target, decoded, article)
 	if fault != nil {
 		return nil, fault
 	}

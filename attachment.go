@@ -72,8 +72,8 @@ func attachmentTargetOf(kind ownerKind) attachmentTarget {
 		remove: (*Client).apiDeleteIssueAttachment}
 }
 
-func (h attachmentTarget) listSchema() string {
-	return "[]" + h.schema
+func (t attachmentTarget) listSchema() string {
+	return "[]" + t.schema
 }
 
 func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAttachmentsOptions) (*Node, *Error) {

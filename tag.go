@@ -420,40 +420,40 @@ type tagOp struct {
 	tag    tagID
 }
 
-func (h tagOp) body() []byte {
-	body, _ := json.Marshal(idBody{ID: h.tag.id})
+func (op tagOp) body() []byte {
+	body, _ := json.Marshal(idBody{ID: op.tag.id})
 	return body
 }
 
-func (h tagOp) verify(a decodedResponse) *Error {
-	if received, isText := a.objects[0][idKey].(string); isText && received == h.tag.id {
+func (op tagOp) verify(a decodedResponse) *Error {
+	if received, isText := a.objects[0][idKey].(string); isText && received == op.tag.id {
 		return nil
 	}
 	message := fmt.Sprintf("the tag the %s carries came back under an id other than the one the name resolved to",
-		h.target.kind)
+		op.target.kind)
 	return a.invalid(message)
 }
 
-func (h tagOp) render(key string) func(decodedResponse) (*Node, *Error) {
+func (op tagOp) render(key string) func(decodedResponse) (*Node, *Error) {
 	return func(a decodedResponse) (*Node, *Error) {
 		tag, fault := objectNode(a, printedTagFields(), a.objects[0], nil)
 		if fault != nil {
 			return nil, fault
 		}
-		return h.document(key, tag), nil
+		return op.document(key, tag), nil
 	}
 }
 
-func (h tagOp) document(key string, tag *Node) *Node {
+func (op tagOp) document(key string, tag *Node) *Node {
 	return NewMap(
-		Pair{Key: idReadableKey, Value: NewString(h.on.String())},
+		Pair{Key: idReadableKey, Value: NewString(op.on.String())},
 		Pair{Key: key, Value: tag})
 }
 
-func (h tagOp) withDetails(fault *Error) *Error {
-	named := h.found.withDetails(fault)
+func (op tagOp) withDetails(fault *Error) *Error {
+	named := op.found.withDetails(fault)
 	named.Details = insertAfterRequest(named.Details,
-		Pair{Key: h.target.kind.key(), Value: NewString(h.on.String())})
+		Pair{Key: op.target.kind.key(), Value: NewString(op.on.String())})
 	return named
 }
 

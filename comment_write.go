@@ -20,10 +20,10 @@ func (s *CommentsService) create(ctx context.Context, owner, text string, opts W
 		return nil, fault
 	}
 	c := s.client
-	held := commentTargetOf(at.kind)
+	target := commentTargetOf(at.kind)
 	body := written.body()
-	return writeAs(ctx, c, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.create(c, ctx, at, body, fields)
+	return writeAs(ctx, c, target.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+		return target.create(c, ctx, at, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
 
@@ -45,27 +45,27 @@ func (s *CommentsService) update(ctx context.Context, owner, id, text string, op
 		return nil, fault
 	}
 	c := s.client
-	held := commentTargetOf(at.kind)
-	if held.keepsDeleted {
-		if fault := c.checkCommentNotDeleted(ctx, held, at, which); fault != nil {
+	target := commentTargetOf(at.kind)
+	if target.keepsDeleted {
+		if fault := c.checkCommentNotDeleted(ctx, target, at, which); fault != nil {
 			return nil, fault
 		}
 	}
 	written := commentUpdate{commentCreate: rewritten, at: which}
 	body := written.body()
-	return writeAs(ctx, c, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.update(c, ctx, at, written.at, body, fields)
+	return writeAs(ctx, c, target.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+		return target.update(c, ctx, at, written.at, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
 
-func (c *Client) checkCommentNotDeleted(ctx context.Context, held commentTarget, at owner, comment childID) *Error {
-	a, fault := c.request(ctx, held.comment, []requestedField{{name: deletedKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.get(c, ctx, at, comment, fields)
+func (c *Client) checkCommentNotDeleted(ctx context.Context, target commentTarget, at owner, comment childID) *Error {
+	a, fault := c.request(ctx, target.comment, []requestedField{{name: deletedKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
+		return target.get(c, ctx, at, comment, fields)
 	})
 	if fault != nil {
 		return fault
 	}
-	gone, fault := held.deleted(a, a.objects[0])
+	gone, fault := target.deleted(a, a.objects[0])
 	if fault != nil {
 		return fault
 	}
@@ -89,9 +89,9 @@ func (s *CommentsService) delete(ctx context.Context, owner, id string) (*Node, 
 		return nil, fault
 	}
 	c := s.client
-	held := commentTargetOf(at.kind)
+	target := commentTargetOf(at.kind)
 	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return held.remove(c, ctx, at, which)
+		return target.remove(c, ctx, at, which)
 	}); fault != nil {
 		return nil, fault
 	}

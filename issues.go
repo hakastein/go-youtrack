@@ -261,15 +261,15 @@ func (c *Client) showIssue(ctx context.Context, id string, requested []requested
 	if fault != nil {
 		return nil, fault
 	}
-	held := issueCommentTarget()
-	decoded, fault := c.request(ctx, issueSchema, comments.merged(held, asked), func(ctx context.Context, fields string) (*http.Response, error) {
+	target := issueCommentTarget()
+	decoded, fault := c.request(ctx, issueSchema, comments.merged(target, asked), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, named)
 	})
 	if fault != nil {
 		return nil, fault
 	}
 	issue := decoded.objects[0]
-	own, fault := comments.pair(held, decoded, issue)
+	own, fault := comments.pair(target, decoded, issue)
 	if fault != nil {
 		return nil, fault
 	}

@@ -88,14 +88,14 @@ func (s *CommentsService) list(ctx context.Context, owner string, opts ListComme
 	if fault != nil {
 		return nil, fault
 	}
-	held := commentTargetOf(at.kind)
-	requested, fault := s.client.parseFields(held.comment, opts.Fields, held.listFields)
+	target := commentTargetOf(at.kind)
+	requested, fault := s.client.parseFields(target.comment, opts.Fields, target.listFields)
 	if fault != nil {
 		return nil, fault
 	}
 	c := s.client
-	return c.listPage(ctx, commentsKey, "[]"+held.comment, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
-		return held.list(c, ctx, at, fields, w)
+	return c.listPage(ctx, commentsKey, "[]"+target.comment, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+		return target.list(c, ctx, at, fields, w)
 	})
 }
 
@@ -131,13 +131,13 @@ func commentTargetOf(kind ownerKind) commentTarget {
 	return issueCommentTarget()
 }
 
-func (h commentTarget) reject(spec *schemas, root, expression string, requested []requestedField) *Error {
-	path, written := firstFieldNamed(spec, root, h.schema, commentsKey, requested)
+func (t commentTarget) reject(spec *schemas, root, expression string, requested []requestedField) *Error {
+	path, written := firstFieldNamed(spec, root, t.schema, commentsKey, requested)
 	if !written {
 		return nil
 	}
 	message := fmt.Sprintf("fields %s: %s holds the comments of an %s, which come a record at a time in a list of its "+
-		"comments, and with the %s itself in a read of it that asks for them", quote(expression), path, h.kind, h.kind)
+		"comments, and with the %s itself in a read of it that asks for them", quote(expression), path, t.kind, t.kind)
 	return &Error{Code: CodeBadUsage, Message: message}
 }
 
@@ -149,18 +149,18 @@ func ownFields(expression string) []requestedField {
 	return fields
 }
 
-func (c Comments) merged(h commentTarget, asked []requestedField) []requestedField {
+func (c Comments) merged(target commentTarget, asked []requestedField) []requestedField {
 	if !c.asked() {
 		return asked
 	}
-	return withFields(asked, requestedField{name: commentsKey, children: ownFields(h.listFields)})
+	return withFields(asked, requestedField{name: commentsKey, children: ownFields(target.listFields)})
 }
 
-func (c Comments) pair(h commentTarget, a decodedResponse, holder map[string]any) ([]Pair, *Error) {
+func (c Comments) pair(target commentTarget, a decodedResponse, holder map[string]any) ([]Pair, *Error) {
 	if !c.asked() {
 		return nil, nil
 	}
-	printed, fault := c.of(h, a, holder)
+	printed, fault := c.of(target, a, holder)
 	if fault != nil {
 		return nil, fault
 	}
@@ -172,18 +172,18 @@ type datedComment struct {
 	comment map[string]any
 }
 
-func (c Comments) of(h commentTarget, a decodedResponse, holder map[string]any) (*Node, *Error) {
+func (c Comments) of(target commentTarget, a decodedResponse, holder map[string]any) (*Node, *Error) {
 	received, isList := holder[commentsKey].([]any)
 	if !isList {
-		return nil, a.invalid(fmt.Sprintf("the comments of the %s arrived as something other than an array", h.kind))
+		return nil, a.invalid(fmt.Sprintf("the comments of the %s arrived as something other than an array", target.kind))
 	}
 	kept := make([]datedComment, 0, len(received))
 	for _, item := range received {
 		comment, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, a.invalid(fmt.Sprintf("a comment of the %s arrived as something other than an object", h.kind))
+			return nil, a.invalid(fmt.Sprintf("a comment of the %s arrived as something other than an object", target.kind))
 		}
-		gone, fault := h.deleted(a, comment)
+		gone, fault := target.deleted(a, comment)
 		if fault != nil {
 			return nil, fault
 		}
@@ -204,15 +204,15 @@ func (c Comments) of(h commentTarget, a decodedResponse, holder map[string]any) 
 	for _, written := range kept {
 		objects = append(objects, written.comment)
 	}
-	printed, fault := newConverter(a, wholeRecord).objectsAt(h.comment, ownFields(printedCommentFields), objects)
+	printed, fault := newConverter(a, wholeRecord).objectsAt(target.comment, ownFields(printedCommentFields), objects)
 	if fault != nil {
 		return nil, fault
 	}
 	return NewList(printed...), nil
 }
 
-func (h commentTarget) deleted(a decodedResponse, comment map[string]any) (bool, *Error) {
-	if !h.keepsDeleted {
+func (t commentTarget) deleted(a decodedResponse, comment map[string]any) (bool, *Error) {
+	if !t.keepsDeleted {
 		return false, nil
 	}
 	gone, isFlag := comment[deletedKey].(bool)
