@@ -113,12 +113,8 @@ type issueAnswer[T any] struct {
 func issueDocument(c *Client, requested []requestedField) issueAnswer[*Node] {
 	return issueAnswer[*Node]{
 		fields: func(ctx context.Context, verified []requestedField) ([]requestedField, *Error) {
-			if fault := c.resolveCustomFields(ctx, requested); fault != nil {
-				return nil, fault
-			}
-			asked := withFields(requested, verified...)
-			issueBlocks(c.spec, composedIssue(), asked)
-			return asked, nil
+			asked, _, fault := c.issueRequest(ctx, requested, verified...)
+			return asked, fault
 		},
 		read: writeResultNode(requested),
 	}

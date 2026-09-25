@@ -107,7 +107,7 @@ func issueFields(spec *schemas, expression string, defaults, comments string) ([
 	if fault := issueCommentTarget().reject(spec, written, requested, comments); fault != nil {
 		return nil, fault
 	}
-	return requested, rejectIssueBlocks(spec, composedIssue(), written, requested)
+	return requested, rejectIssueBlocks(spec, issueSchema, written, requested)
 }
 
 func (c *Client) listIssues(ctx context.Context, query string, requested []requestedField, page Page, warn func(*Warning)) (*Node, *Error) {
@@ -118,18 +118,10 @@ func (c *Client) listIssues(ctx context.Context, query string, requested []reque
 	if fault != nil {
 		return nil, fault
 	}
-	selection := list{
-		client:    c,
-		plural:    issuesPlural,
-		schema:    "[]" + issueSchema,
-		requested: requested,
-		page:      page,
-		fetchPage: func(ctx context.Context, fields string, w window) (*http.Response, error) {
-			return c.apiGetIssues(ctx, query, fields, named, w)
-		},
-		sentFields: asked,
-		countTotal: func(ctx context.Context) (count, *Error) { return c.countIssuesWithRetry(ctx, query) },
-	}
+	selection := c.newList(issuesPlural, "[]"+issueSchema, requested, asked, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+		return c.apiGetIssues(ctx, query, fields, named, w)
+	})
+	selection.countTotal = func(ctx context.Context) (count, *Error) { return c.countIssuesWithRetry(ctx, query) }
 	return selection.fetch(ctx)
 }
 
@@ -241,39 +233,30 @@ func expandBareCustomFields(spec *schemas, requested []requestedField) {
 	})
 }
 
-type blockSchema struct{ schema string }
-
-func composedIssue() blockSchema    { return blockSchema{issueSchema} }
-func composedWorkItem() blockSchema { return blockSchema{workItemSchema} }
-
-func composedSchemas() []blockSchema {
-	return []blockSchema{composedIssue(), composedWorkItem()}
-}
-
 func hasIssueBlocks(schema string) bool {
-	return slices.ContainsFunc(composedSchemas(), func(at blockSchema) bool { return at.schema == schema })
+	return schema == issueSchema || schema == workItemSchema
 }
 
-func issueBlocks(spec *schemas, at blockSchema, asked []requestedField) {
+func issueBlocks(spec *schemas, at string, asked []requestedField) {
 	matchTranslatedNames := hasDefaultNames(spec, asked)
-	eachCustomFields(spec, at.schema, asked, func(parents []string, field *requestedField) {
+	eachCustomFields(spec, at, asked, func(parents []string, field *requestedField) {
 		field.children = customFieldsAsked(matchTranslatedNames && len(parents) == 0)
 	})
-	eachIssueLink(spec, at.schema, asked, func(_ []string, field *requestedField) { field.children = linkRequestFields(field.children) })
-	eachAttributes(spec, at.schema, asked, func(_ []string, field *requestedField) { field.children = attributesAsked() })
+	eachIssueLink(spec, at, asked, func(_ []string, field *requestedField) { field.children = linkRequestFields(field.children) })
+	eachAttributes(spec, at, asked, func(_ []string, field *requestedField) { field.children = attributesAsked() })
 }
 
-func rejectIssueBlocks(spec *schemas, at blockSchema, expression string, requested []requestedField) *Error {
-	if fault := rejectQuotedNames(spec, at.schema, expression, requested); fault != nil {
+func rejectIssueBlocks(spec *schemas, at, expression string, requested []requestedField) *Error {
+	if fault := rejectQuotedNames(spec, at, expression, requested); fault != nil {
 		return fault
 	}
-	if fault := rejectCustomFieldNames(spec, at.schema, expression, requested); fault != nil {
+	if fault := rejectCustomFieldNames(spec, at, expression, requested); fault != nil {
 		return fault
 	}
-	if fault := rejectLinkParts(spec, at.schema, expression, requested); fault != nil {
+	if fault := rejectLinkParts(spec, at, expression, requested); fault != nil {
 		return fault
 	}
-	return rejectAttributeNames(spec, at.schema, expression, requested)
+	return rejectAttributeNames(spec, at, expression, requested)
 }
 
 func eachCustomFields(spec *schemas, at string, requested []requestedField, visit func(parents []string, field *requestedField)) {
@@ -318,12 +301,12 @@ func (c *Client) showIssue(ctx context.Context, id string, requested []requested
 	return objectNode(decoded, requested, issue, own)
 }
 
-func (c *Client) issueRequest(ctx context.Context, requested []requestedField) ([]requestedField, []string, *Error) {
+func (c *Client) issueRequest(ctx context.Context, requested []requestedField, own ...requestedField) ([]requestedField, []string, *Error) {
 	if fault := c.resolveCustomFields(ctx, requested); fault != nil {
 		return nil, nil, fault
 	}
-	asked := cloneFields(requested)
-	issueBlocks(c.spec, composedIssue(), asked)
+	asked := withFields(requested, own...)
+	issueBlocks(c.spec, issueSchema, asked)
 	return asked, customFieldsFilter(c.spec, requested), nil
 }
 

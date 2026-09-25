@@ -301,7 +301,7 @@ func (p projectWorkItemTypes) fault(name string, catalogue []fieldInfo) *Error {
 
 func workItemRequestFields(spec *schemas, requested []requestedField) []requestedField {
 	asked := cloneFields(requested)
-	issueBlocks(spec, composedWorkItem(), asked)
+	issueBlocks(spec, workItemSchema, asked)
 	return asked
 }
 
@@ -310,7 +310,7 @@ func workItemFields(spec *schemas, expression string, defaults string) ([]reques
 	if fault != nil {
 		return nil, fault
 	}
-	return requested, rejectIssueBlocks(spec, composedWorkItem(), written, requested)
+	return requested, rejectIssueBlocks(spec, workItemSchema, written, requested)
 }
 
 type minutesBody struct {

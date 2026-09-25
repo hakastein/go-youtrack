@@ -169,7 +169,7 @@ func (n converter) linkDocument(target []requestedField, issue map[string]any) (
 
 func linkRequest(spec *schemas, requested []requestedField) []requestedField {
 	asked := cloneFields(requested)
-	issueBlocks(spec, composedIssue(), asked)
+	issueBlocks(spec, issueSchema, asked)
 	return asked[0].children
 }
 
