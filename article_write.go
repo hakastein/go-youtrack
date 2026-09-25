@@ -2,42 +2,51 @@ package youtrack
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
-type articleCreateInput struct {
-	project  string
-	summary  string
-	content  *string
-	parentID *string
+// ArticleInput is a new article: empty Content files it with no content, and empty Parent at the root of the
+// project rather than under an article of it.
+type ArticleInput struct {
+	Summary string
+	Content string
+	Parent  string
+}
+
+// ArticleUpdate: a nil part stays as the article holds it. ClearContent empties the content and ClearParent moves
+// the article to the root of its project; each is refused beside the part it empties.
+type ArticleUpdate struct {
+	Summary      *string
+	Content      *string
+	Parent       *string
+	ClearContent bool
+	ClearParent  bool
 }
 
 type articleCreate struct {
 	project string
 	summary string
-	content *string
+	content string
 	parent  *articleRef
 }
 
-func parseArticleCreate(code, summary string, content, parent *string) (articleCreateInput, *Error) {
-	if fault := rejectReplaced("--"+summaryKey, summary, summaryOfAnArticle, articleTitleRewrites()); fault != nil {
-		return articleCreateInput{}, fault
+const (
+	titleOfAnArticle   = "the title of the article"
+	contentOfAnArticle = "the content of the article"
+)
+
+func checkArticleInput(in ArticleInput) *Error {
+	if fault := rejectReplaced(titleOfAnArticle, in.Summary, emptyTitle, articleTitleRewrites()); fault != nil {
+		return fault
 	}
-	if content != nil {
-		if fault := rejectReplaced("--"+contentKey, *content, contentOfANewArticle, nil); fault != nil {
-			return articleCreateInput{}, fault
-		}
+	if fault := rejectNoUTF8(contentOfAnArticle, in.Content); fault != nil {
+		return fault
 	}
-	written := articleCreateInput{project: code, summary: summary, content: content}
-	if parent != nil {
-		id, fault := parseArticleID(*parent)
-		if fault != nil {
-			return articleCreateInput{}, fault
-		}
-		written.parentID = &id
+	if in.Parent == "" {
+		return nil
 	}
-	return written, nil
+	_, fault := parseArticleID(in.Parent)
+	return fault
 }
 
 func articleTitleRewrites() []charReplacement {
@@ -48,20 +57,10 @@ func articleTitleRewrites() []charReplacement {
 }
 
 const (
-	summaryOfAnArticle   = "is empty, and YouTrack files no article without a title"
-	contentOfANewArticle = "is empty, and YouTrack keeps empty content as none: leave the flag out to file the " +
-		"article with no content at all"
-	contentOfAnArticle = "is empty, and YouTrack keeps empty content as none: --clear content empties it " +
-		"outright, and content the call does not write is left as the article holds it"
+	emptyTitle   = "is empty, and YouTrack files no article without a title"
+	emptyContent = "is empty, and YouTrack keeps empty content as none: an update empties the content outright " +
+		"when it is asked to, and leaves content it is not given as the article holds it"
 )
-
-type articleUpdateInput struct {
-	summary       *string
-	content       *string
-	clearsContent bool
-	parentID      *string
-	clearsParent  bool
-}
 
 type articleUpdate struct {
 	summary       *string
@@ -71,67 +70,41 @@ type articleUpdate struct {
 	clearsParent  bool
 }
 
-func clearableArticleParts() []clearablePart[articleUpdateInput] {
-	return []clearablePart[articleUpdateInput]{
-		{name: contentKey, empty: func(w *articleUpdateInput) { w.clearsContent = true }},
-		{name: parentKey, empty: func(w *articleUpdateInput) { w.clearsParent = true }},
+func checkArticleUpdate(in ArticleUpdate) *Error {
+	if in.Summary == nil && in.Content == nil && in.Parent == nil && !in.ClearContent && !in.ClearParent {
+		return &Error{Code: CodeBadUsage, Message: nothingToWriteIntoAnArticle}
 	}
-}
-
-func parseArticleUpdate(summary, content, parent *string, cleared []string) (articleUpdateInput, *Error) {
-	written := articleUpdateInput{summary: summary, content: content}
-	if fault := written.parseClear(cleared); fault != nil {
-		return articleUpdateInput{}, fault
+	if in.ClearContent && in.Content != nil {
+		return &Error{Code: CodeBadUsage, Message: contentBothWays}
 	}
-	if written.clearsContent && content != nil {
-		return articleUpdateInput{}, &Error{Code: CodeBadUsage, Message: contentBothWays}
+	if in.ClearParent && in.Parent != nil {
+		return &Error{Code: CodeBadUsage, Message: parentBothWays}
 	}
-	if written.clearsParent && parent != nil {
-		return articleUpdateInput{}, &Error{Code: CodeBadUsage, Message: parentBothWays}
-	}
-	if parent != nil {
-		id, fault := parseArticleID(*parent)
-		if fault != nil {
-			return articleUpdateInput{}, fault
-		}
-		written.parentID = &id
-	}
-	if summary != nil {
-		if fault := rejectReplaced("--"+summaryKey, *summary, summaryOfAnArticle, articleTitleRewrites()); fault != nil {
-			return articleUpdateInput{}, fault
+	if in.Parent != nil {
+		if _, fault := parseArticleID(*in.Parent); fault != nil {
+			return fault
 		}
 	}
-	if content != nil {
-		if fault := rejectReplaced("--"+contentKey, *content, contentOfAnArticle, nil); fault != nil {
-			return articleUpdateInput{}, fault
+	if in.Summary != nil {
+		if fault := rejectReplaced(titleOfAnArticle, *in.Summary, emptyTitle, articleTitleRewrites()); fault != nil {
+			return fault
 		}
 	}
-	return written, nil
-}
-
-func (w *articleUpdateInput) parseClear(cleared []string) *Error {
-	parts := clearableArticleParts()
-	for _, name := range cleared {
-		at := clearablePartIndex(parts, name)
-		if at < 0 {
-			message := fmt.Sprintf("--clear %s names no part of an article a call may empty: it takes %s",
-				quote(name), partsOf(parts))
-			return &Error{Code: CodeBadUsage, Message: message}
+	if in.Content != nil {
+		if fault := rejectReplaced(contentOfAnArticle, *in.Content, emptyContent, nil); fault != nil {
+			return fault
 		}
-		parts[at].empty(w)
 	}
 	return nil
 }
 
-const nothingToWriteIntoAnArticle = "the call writes nothing into the article: an update is given --summary, " +
-	"--content, --parent, --clear content or --clear parent, and a part it is given none of is left as the " +
+const nothingToWriteIntoAnArticle = "the call writes nothing into the article: an update is given a title, content " +
+	"or a parent to write, or content or a parent to take away, and a part it is given none of is left as the " +
 	"article holds it"
 
-const contentBothWays = "--content writes the text of the article and --clear content empties it, and the call " +
-	"gives both"
+const contentBothWays = "the call both writes the content of the article and empties it"
 
-const parentBothWays = "--parent writes the article this one hangs from and --clear parent takes it away, and " +
-	"the call gives both"
+const parentBothWays = "the call both puts the article under a parent and takes its parent away"
 
 type updateArticleBody struct {
 	Summary       *string         `json:"summary,omitempty"`
@@ -207,7 +180,7 @@ func (w articleUpdate) verify(a decodedResponse) *Error {
 type createArticleBody struct {
 	Project       articleProject `json:"project"`
 	Summary       string         `json:"summary"`
-	Content       *string        `json:"content,omitempty"`
+	Content       string         `json:"content,omitempty"`
 	ParentArticle *articleIDBody `json:"parentArticle,omitempty"`
 }
 
@@ -248,8 +221,8 @@ func (w articleCreate) verifyFields() []requestedField {
 func (w articleCreate) verify(a decodedResponse) *Error {
 	article := a.objects[0]
 	wrong := textMismatch(nil, summaryKey, w.summary, article[summaryKey])
-	if w.content != nil {
-		wrong = textMismatch(wrong, contentKey, *w.content, article[contentKey])
+	if w.content != "" {
+		wrong = textMismatch(wrong, contentKey, w.content, article[contentKey])
 	}
 	wrong = projectMismatch(wrong, w.project, article[projectKey])
 	if w.parent != nil {

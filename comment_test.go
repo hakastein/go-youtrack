@@ -153,28 +153,31 @@ func TestCommentsOfAShowRefuseANegativeCount(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
-		show func() (youtrack.Call, *youtrack.Error)
+		show func(ctx context.Context, c *youtrack.Client) error
 	}{
 		{
 			name: "of an issue",
-			show: func() (youtrack.Call, *youtrack.Error) {
-				return youtrack.ShowIssue("DEV-1", "", youtrack.LastComments(-1))
+			show: func(context.Context, *youtrack.Client) error {
+				if _, fault := youtrack.ShowIssue("DEV-1", "", youtrack.LastComments(-1)); fault != nil {
+					return fault
+				}
+				return nil
 			},
 		},
 		{
 			name: "of an article",
-			show: func() (youtrack.Call, *youtrack.Error) {
-				return youtrack.ShowArticle("DEV-A-1", "", youtrack.LastComments(-1))
+			show: func(ctx context.Context, c *youtrack.Client) error {
+				_, err := c.Articles.Show(ctx, "DEV-A-1", &youtrack.ShowArticleOptions{Comments: youtrack.LastComments(-1)})
+				return err
 			},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, fault := tc.show()
+			err := tc.show(t.Context(), client(t, fake.ServeNothing(t)))
 
-			require.NotNil(t, fault)
-			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, fault))
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
 }

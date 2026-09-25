@@ -18,50 +18,136 @@ const (
 	articlesListing = "[]" + articleSchema
 )
 
-func ShowArticle(id string, expression string, comments Comments) (Call, *Error) {
+// ShowArticleOptions: Fields is a fields= expression, empty for ArticleShowFields and +x for them and x. Comments
+// come under comments oldest first, and the zero value asks for none.
+type ShowArticleOptions struct {
+	Fields   string
+	Comments Comments
+}
+
+// ListArticlesOptions: Fields is a fields= expression, empty for ArticleListFields and +x for them and x.
+type ListArticlesOptions struct {
+	Fields string
+	Page   Page
+}
+
+// Show refuses comments named anywhere in Fields: an article brings its comments by Comments alone.
+func (s *ArticlesService) Show(ctx context.Context, id string, opts *ShowArticleOptions) (*Node, error) {
+	return result(s.show(ctx, id, optionsOf(opts)))
+}
+
+// List sends query to YouTrack as written, in the search language of articles; YouTrack finds every article for a
+// query it cannot parse and nothing for an attribute of issues, neither with an error.
+func (s *ArticlesService) List(ctx context.Context, query string, opts *ListArticlesOptions) (*Node, error) {
+	return result(s.list(ctx, query, optionsOf(opts)))
+}
+
+func (s *ArticlesService) Children(ctx context.Context, parent string, opts *ListArticlesOptions) (*Node, error) {
+	return result(s.children(ctx, parent, optionsOf(opts)))
+}
+
+// Create reads the parent first and refuses one of another project: YouTrack would file the article in the project
+// of the parent rather than in project.
+func (s *ArticlesService) Create(ctx context.Context, project string, in *ArticleInput, opts *WriteOptions) (*Node, error) {
+	return result(s.create(ctx, project, optionsOf(in), optionsOf(opts)))
+}
+
+// Update reads the article first and writes it by the readable id the read gave. A new parent is read up to the
+// root of the project and refused when it is of another project, the article itself or an article under it.
+func (s *ArticlesService) Update(ctx context.Context, id string, in *ArticleUpdate, opts *WriteOptions) (*Node, error) {
+	return result(s.update(ctx, id, optionsOf(in), optionsOf(opts)))
+}
+
+// Delete deletes the article with every article under it and answers with the readable id the server gave just
+// before the deletion, which goes to that id.
+func (s *ArticlesService) Delete(ctx context.Context, id string) (*Node, error) {
+	return result(s.delete(ctx, id))
+}
+
+func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleOptions) (*Node, *Error) {
 	id, fault := parseArticleID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	requested, fault := articleFields(spec, expression, ArticleShowFields, commentsOfAShow)
+	c := s.client
+	requested, fault := articleFields(c.spec, opts.Fields, ArticleShowFields, commentsOfAShow)
 	if fault != nil {
 		return nil, fault
 	}
-	if fault := comments.check(); fault != nil {
+	if fault := opts.Comments.check(); fault != nil {
 		return nil, fault
 	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.showArticle(ctx, spec, id, requested, comments)
-	}, nil
+	held := articleCommentTarget()
+	decoded, fault := c.request(ctx, c.spec, articleSchema, opts.Comments.merged(held, requested), func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiGetArticle(ctx, id, fields)
+	})
+	if fault != nil {
+		return nil, fault
+	}
+	article := decoded.objects[0]
+	own, fault := opts.Comments.pair(held, decoded, article)
+	if fault != nil {
+		return nil, fault
+	}
+	return objectNode(decoded, requested, article, own)
 }
 
-func CreateArticle(code, summary string, content, parent *string, expression string) (Call, *Error) {
-	code, fault := parseProjectCode(code)
+func (s *ArticlesService) list(ctx context.Context, query string, opts ListArticlesOptions) (*Node, *Error) {
+	if fault := rejectUnreadableQuery(query); fault != nil {
+		return nil, fault
+	}
+	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	parts, fault := parseArticleCreate(code, summary, content, parent)
+	c := s.client
+	requested, fault := articleFields(c.spec, opts.Fields, ArticleListFields, articleCommentTarget().commentsOfAList())
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	requested, fault := articleFields(spec, expression, ArticleShowFields, articleCommentTarget().commentsOfAWrite())
-	if fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.createArticle(ctx, spec, parts, requested)
-	}, nil
+	return c.listPage(ctx, c.spec, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+		return c.apiGetArticles(ctx, query, fields, w)
+	})
 }
 
-func (c *Client) createArticle(ctx context.Context, spec *schemas, parts articleCreateInput, requested []requestedField) (*Node, *Error) {
-	filed, fault := c.resolveCreateParent(ctx, spec, parts)
+func (s *ArticlesService) children(ctx context.Context, parent string, opts ListArticlesOptions) (*Node, *Error) {
+	parent, fault := parseArticleID(parent)
+	if fault != nil {
+		return nil, fault
+	}
+	page, fault := opts.Page.parse()
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	requested, fault := articleFields(c.spec, opts.Fields, ArticleListFields, articleCommentTarget().commentsOfAList())
+	if fault != nil {
+		return nil, fault
+	}
+	return c.listPage(ctx, c.spec, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+		return c.apiGetArticleChildArticles(ctx, parent, fields, w)
+	})
+}
+
+func (s *ArticlesService) create(ctx context.Context, project string, in ArticleInput, opts WriteOptions) (*Node, *Error) {
+	code, fault := parseProjectCode(project)
+	if fault != nil {
+		return nil, fault
+	}
+	if fault := checkArticleInput(in); fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	requested, fault := articleFields(c.spec, opts.Fields, ArticleShowFields, articleCommentTarget().commentsOfAWrite())
+	if fault != nil {
+		return nil, fault
+	}
+	filed, fault := c.resolveCreateParent(ctx, code, in)
 	if fault != nil {
 		return nil, fault
 	}
 	body := filed.body()
-	return c.write(ctx, spec, articleSchema, withFields(requested, filed.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, c.spec, articleSchema, withFields(requested, filed.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateArticle(ctx, body, fields)
 	}, filed.verify, writeResultNode(requested))
 }
@@ -73,17 +159,17 @@ type articleRef struct {
 	response decodedResponse
 }
 
-func (c *Client) resolveCreateParent(ctx context.Context, spec *schemas, parts articleCreateInput) (articleCreate, *Error) {
-	filed := articleCreate{project: parts.project, summary: parts.summary, content: parts.content}
-	if parts.parentID == nil {
+func (c *Client) resolveCreateParent(ctx context.Context, code string, in ArticleInput) (articleCreate, *Error) {
+	filed := articleCreate{project: code, summary: in.Summary, content: in.Content}
+	if in.Parent == "" {
 		return filed, nil
 	}
-	found, fault := c.readArticleToWrite(ctx, spec, *parts.parentID, parentFlag)
+	found, fault := c.readArticleToWrite(ctx, in.Parent, parentOfAWrite)
 	if fault != nil {
 		return articleCreate{}, fault
 	}
-	if !strings.EqualFold(found.project, parts.project) {
-		return articleCreate{}, found.crossProjectFault(parts.project, createAcrossProjectsMessage)
+	if !strings.EqualFold(found.project, code) {
+		return articleCreate{}, found.crossProjectFault(code, createAcrossProjectsMessage)
 	}
 	filed.parent = &found
 	return filed, nil
@@ -97,8 +183,8 @@ func articleToWriteFields() []requestedField {
 	}
 }
 
-func (c *Client) readArticleToWrite(ctx context.Context, spec *schemas, id, what string) (articleRef, *Error) {
-	a, fault := c.request(ctx, spec, articleSchema, articleToWriteFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+func (c *Client) readArticleToWrite(ctx context.Context, id, what string) (articleRef, *Error) {
+	a, fault := c.request(ctx, c.spec, articleSchema, articleToWriteFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetArticle(ctx, id, fields)
 	})
 	if fault != nil {
@@ -122,7 +208,7 @@ func readArticleToWrite(a decodedResponse, what string) (articleRef, *Error) {
 	return articleRef{id: id, readable: readable, project: code, response: a}, nil
 }
 
-const parentFlag = "--" + parentKey
+const parentOfAWrite = "the parent a write names"
 
 func (p articleRef) crossProjectFault(code, message string) *Error {
 	a := p.response
@@ -136,60 +222,50 @@ func (p articleRef) crossProjectFault(code, message string) *Error {
 }
 
 const (
-	createAcrossProjectsMessage = "--parent names an article of another project, and YouTrack would file the new " +
-		"article in the project of the parent rather than in the one the call names"
-	updateAcrossProjectsMessage = "--parent names an article of another project, and an article hangs from a parent " +
-		"of its own project alone"
+	createAcrossProjectsMessage = "the parent the call names is an article of another project, and YouTrack would " +
+		"file the new article in the project of the parent rather than in the one the call names"
+	updateAcrossProjectsMessage = "the parent the call names is an article of another project, and an article " +
+		"hangs from a parent of its own project alone"
 )
 
-func UpdateArticle(id string, summary, content, parent *string, cleared []string, expression string) (Call, *Error) {
+func (s *ArticlesService) update(ctx context.Context, id string, in ArticleUpdate, opts WriteOptions) (*Node, *Error) {
 	id, fault := parseArticleID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	if summary == nil && content == nil && parent == nil && len(cleared) == 0 {
-		return nil, &Error{Code: CodeBadUsage, Message: nothingToWriteIntoAnArticle}
+	if fault := checkArticleUpdate(in); fault != nil {
+		return nil, fault
 	}
-	parts, fault := parseArticleUpdate(summary, content, parent, cleared)
+	c := s.client
+	requested, fault := articleFields(c.spec, opts.Fields, ArticleShowFields, articleCommentTarget().commentsOfAWrite())
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	requested, fault := articleFields(spec, expression, ArticleShowFields, articleCommentTarget().commentsOfAWrite())
+	article, fault := c.readArticleToWrite(ctx, id, "an update")
 	if fault != nil {
 		return nil, fault
 	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.updateArticle(ctx, spec, id, parts, requested)
-	}, nil
-}
-
-func (c *Client) updateArticle(ctx context.Context, spec *schemas, id string, parts articleUpdateInput, requested []requestedField) (*Node, *Error) {
-	article, fault := c.readArticleToWrite(ctx, spec, id, "an update")
-	if fault != nil {
-		return nil, fault
-	}
-	written, fault := c.resolveUpdateParent(ctx, spec, article, parts)
+	written, fault := c.resolveUpdateParent(ctx, article, in)
 	if fault != nil {
 		return nil, fault
 	}
 	body := written.body()
-	return c.write(ctx, spec, articleSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, c.spec, articleSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateArticle(ctx, article.readable, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
 
-func (c *Client) resolveUpdateParent(ctx context.Context, spec *schemas, article articleRef, parts articleUpdateInput) (articleUpdate, *Error) {
+func (c *Client) resolveUpdateParent(ctx context.Context, article articleRef, in ArticleUpdate) (articleUpdate, *Error) {
 	written := articleUpdate{
-		summary:       parts.summary,
-		content:       parts.content,
-		clearsContent: parts.clearsContent,
-		clearsParent:  parts.clearsParent,
+		summary:       in.Summary,
+		content:       in.Content,
+		clearsContent: in.ClearContent,
+		clearsParent:  in.ClearParent,
 	}
-	if parts.parentID == nil {
+	if in.Parent == nil {
 		return written, nil
 	}
-	parent, line, fault := c.readAncestors(ctx, spec, *parts.parentID)
+	parent, line, fault := c.readAncestors(ctx, *in.Parent)
 	if fault != nil {
 		return articleUpdate{}, fault
 	}
@@ -219,12 +295,12 @@ func ancestorFields() []requestedField {
 	return append(articleToWriteFields(), parentObject...)
 }
 
-func (c *Client) readAncestors(ctx context.Context, spec *schemas, id string) (articleRef, []ancestor, *Error) {
+func (c *Client) readAncestors(ctx context.Context, id string) (articleRef, []ancestor, *Error) {
 	var parent articleRef
 	var line []ancestor
 	seen := map[string]bool{}
 	for at := id; ; {
-		a, fault := c.request(ctx, spec, articleSchema, ancestorFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+		a, fault := c.request(ctx, c.spec, articleSchema, ancestorFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 			return c.apiGetArticle(ctx, at, fields)
 		})
 		if fault != nil {
@@ -232,7 +308,7 @@ func (c *Client) readAncestors(ctx context.Context, spec *schemas, id string) (a
 		}
 		object := a.objects[0]
 		if line == nil {
-			parent, fault = readArticleToWrite(a, parentFlag)
+			parent, fault = readArticleToWrite(a, parentOfAWrite)
 			if fault != nil {
 				return articleRef{}, nil, fault
 			}
@@ -315,76 +391,24 @@ func (p articleRef) checkNoCycle(article articleRef, line []ancestor) *Error {
 		{Key: parentKey, Value: NewString(p.readable.String())},
 		{Key: "chain", Value: NewList(chain...)},
 	}
-	message := "--parent names the article itself or one written under it, and chain runs from the parent up to " +
-		"the article: an article hangs from no line of its own"
+	message := "the parent the call names is the article itself or one written under it, and chain runs from the " +
+		"parent up to the article: an article hangs from no line of its own"
 	return &Error{Code: CodeBadUsage, Message: message, Details: details}
 }
 
-func DeleteArticle(id string) (Call, *Error) {
+func (s *ArticlesService) delete(ctx context.Context, id string) (*Node, *Error) {
 	id, fault := parseArticleID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.deleteOwner(ctx, spec, articleOwner, articleSchema, func(ctx context.Context, fields string) (*http.Response, error) {
-			return c.apiGetArticle(ctx, id, fields)
-		}, c.apiDeleteArticle)
-	}, nil
-}
-
-func ListArticles(query string, expression string, page Page) (Call, *Error) {
-	if fault := rejectUnreadableQuery(query); fault != nil {
-		return nil, fault
-	}
-	page, fault := page.parse()
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	requested, fault := articleFields(spec, expression, ArticleListFields, articleCommentTarget().commentsOfAList())
-	if fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listArticles(ctx, spec, query, requested, page)
-	}, nil
-}
-
-func (c *Client) listArticles(ctx context.Context, spec *schemas, query string, requested []requestedField, page Page) (*Node, *Error) {
-	return c.listPage(ctx, spec, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
-		return c.apiGetArticles(ctx, query, fields, w)
-	})
-}
-
-func ListChildArticles(parent string, expression string, page Page) (Call, *Error) {
-	parent, fault := parseArticleID(parent)
-	if fault != nil {
-		return nil, fault
-	}
-	page, fault = page.parse()
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	requested, fault := articleFields(spec, expression, ArticleListFields, articleCommentTarget().commentsOfAList())
-	if fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listPage(ctx, spec, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
-			return c.apiGetArticleChildArticles(ctx, parent, fields, w)
-		})
-	}, nil
+	c := s.client
+	return c.deleteOwner(ctx, c.spec, articleOwner, articleSchema, func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiGetArticle(ctx, id, fields)
+	}, c.apiDeleteArticle)
 }
 
 func articleFields(spec *schemas, expression string, defaults, because string) ([]requestedField, *Error) {
-	written := defaults
-	requested, fault := parseDefault(defaults, false)
-	if expression != "" {
-		written = expression
-		requested, fault = parseFields(written, defaults)
-	}
+	written, requested, fault := fieldsOrDefault(expression, defaults, false)
 	if fault != nil {
 		return nil, fault
 	}
@@ -392,20 +416,4 @@ func articleFields(spec *schemas, expression string, defaults, because string) (
 		return nil, fault
 	}
 	return requested, nil
-}
-
-func (c *Client) showArticle(ctx context.Context, spec *schemas, id string, requested []requestedField, comments Comments) (*Node, *Error) {
-	held := articleCommentTarget()
-	decoded, fault := c.request(ctx, spec, articleSchema, comments.merged(held, requested), func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiGetArticle(ctx, id, fields)
-	})
-	if fault != nil {
-		return nil, fault
-	}
-	article := decoded.objects[0]
-	own, fault := comments.pair(held, decoded, article)
-	if fault != nil {
-		return nil, fault
-	}
-	return objectNode(decoded, requested, article, own)
 }
