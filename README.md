@@ -1,39 +1,96 @@
 # youtrack
 
-Go-модуль для YouTrack: транспорт по адресу инстанса и постоянному токену, сгенерированный из OpenAPI клиент
-ко всем операциям REST API, таблица типов кастом-полей, чтение задачи со значениями кастом-полей по имени, запись
-кастом-полей с проверкой ответа, бандлы полей проекта и поиск пользователей. Модуль отдаёт значения Go и ошибки
-Go. Потребители: [ytrack](https://github.com/hakastein/ytrack), kraken и TMS.
+Go SDK для YouTrack. Клиент по адресу инстанса и постоянному токену несёт сервисы по сущностям: задачи, статьи,
+комментарии, вложения, связи, теги, записи времени, активности, проекты, кастом-поля и пользователи. Операции
+отдают документ `*Node` — дерево ответа под выражением полей вызывающего — или значения Go там, где потребителю
+нужны типы: задача с кастом-полями, запись полей, метаданные проекта, бандл поля, пользователи. Ошибка одна —
+`*Error` с кодом, который называет, что делать дальше. Потребители: [ytrack](https://github.com/hakastein/ytrack)
+(CLI поверх модуля), kraken и TMS.
 
 ```bash
-go get github.com/hakastein/youtrack@v0.2.0
+go get github.com/hakastein/youtrack@v0.3.0
 ```
 
-Словарь — [`CONTEXT.md`](CONTEXT.md), решения — [`docs/adr/`](docs/adr/), правила для агента — [`AGENTS.md`](AGENTS.md).
+Словарь — [`CONTEXT.md`](CONTEXT.md), решения — [`docs/adr/`](docs/adr/), правила для агента — [`AGENTS.md`](AGENTS.md),
+изменения — [`CHANGELOG.md`](CHANGELOG.md).
 
-## Границы: что в модуле, что остаётся в CLI
-
-| В модуле | В ytrack |
-|---|---|
-| Транспорт: HTTP/1.1, keep-alive выключен, редиректы не выполняются, прокси не читается, ни один запрос не отправляется дважды | Вход: `YTRACK_URL` и `YTRACK_TOKEN`, `~/.ytrack/auth.json`, области, `auth login` |
-| Граница «запрос ушёл»: `Send` и `TransportError.Written` | Документ YAML, словарь кодов ошибок (`bad_usage`, `write_uncertain`, …) и коды возврата |
-| Сгенерированный клиент `ytapi` ко всем операциям REST API, спецификация `api/openapi.json` и overlay к ней | Дерево ответа под `--fields` вызывающего, каталог схем и проверка имён по `$type` |
-| Таблица типов кастом-полей: класс записи, ключ значения и бандл по паре `valueType` и `isMultiValue` | Команды, автодополнение, скрипты команд |
-| Чтение задачи по читаемому id с выражением полей: заголовок, описание, связи, значения кастом-полей по имени и по переводу имени | Предложения ближайших имён при опечатке |
-| Запись кастом-полей: разрешение имён по метаданным проекта, класс из задачи или из таблицы, проверка ответа | Состав запросов и деревьев своих команд, собранный из примитивов модуля: `FieldType.Encode`, `FieldType.ReadValue`, `Metadata` |
-| Метаданные проекта с кэшем на диске; бандл поля проекта: значения с внутренними id и признаком архивности | |
-| Поиск пользователей по началу логина и полного имени | |
-| Фейковый сервер YouTrack `fake` для тестов модуля и его потребителей | |
-
-## Пример
+## Клиент
 
 ```go
-c, err := youtrack.New("https://youtrack.example.org", os.Getenv("YOUTRACK_TOKEN"))
+c, err := youtrack.NewClient("https://youtrack.example.org", os.Getenv("YOUTRACK_TOKEN"))
 if err != nil {
 	return err
 }
+issue, err := c.Issues.Get(ctx, "DEV-13271")
+```
 
-issue, err := c.Issue(ctx, "DEV-13271", "")
+| Сервис | Документ `*Node` | Значения Go |
+|---|---|---|
+| `Issues` | `Show`, `List`, `Create`, `Update`, `Delete` | `Get`, `WriteFields` |
+| `Articles` | `Show`, `List`, `Children`, `Create`, `Update`, `Delete` | |
+| `Comments` | `List`, `Create`, `Update`, `Delete` | |
+| `Attachments` | `List`, `Create`, `Delete` | |
+| `Links` | `List`, `Add`, `Remove` | |
+| `Tags` | `List`, `Create`, `Delete`, `Add`, `Remove` | |
+| `WorkItems` | `List`, `Create`, `Update`, `Delete` | |
+| `Activities` | `List` | |
+| `Projects` | `Show`, `List` | |
+| `Fields` | `Show`, `List` | `Metadata`, `ReadMetadata`, `Bundle` |
+| `Users` | `Show`, `List` | `Me`, `Find` |
+
+Контекст идёт первым аргументом, за ним то, что операция адресует (id задачи, код проекта, фраза связи), вход записи
+и опции указателем на структуру: `nil` — умолчания. Вызов, который нельзя отправить как написан, отвергается до
+первого запроса.
+
+Процессу на один вызов, как CLI, `youtrack.WithMetadataCache(dir)` даёт кэш метаданных проекта на диске: каталог на
+пару адреса и токена (`0700`), файл на проект (`0600`), токена в файлах нет. `Fields.Metadata` отвечает из кэша
+(`FromCache`), `Fields.ReadMetadata` читает сервер и кладёт в кэш, `Fields.Show` и `Fields.Bundle` читают проект
+снова, когда кэш разошёлся с сервером. Долгоживущему процессу кэш не нужен.
+
+## Документ
+
+Документная операция отвечает тем же, что печатает одноимённая подкоманда ytrack: отображение ключей в порядке
+выражения полей, списки, строки, числа как их прислал сервер, многострочный текст (`description`, `text`,
+`content`). Все решения о данных приняты при построении узла, поэтому печать — только байты: `render.YAML` у ytrack
+пишет узел по его аксессорам, `json.Marshal` — JSON в том же порядке.
+
+```go
+doc, err := c.Issues.Show(ctx, "DEV-1", &youtrack.ShowIssueOptions{
+	Fields:   `+customFields("Модуль системы"),attachments(name,url)`,
+	Comments: youtrack.LastComments(3),
+})
+summary, _ := doc.Lookup("summary")
+fmt.Println(summary.Value())
+```
+
+| Узел | `Kind` | `Value` |
+|---|---|---|
+| `NewNull()` | `NullNode` | `""` |
+| `NewString(s)` | `StringNode` | `s` |
+| `NewNumber(n)` | `NumberNode` | число, как его написал сервер |
+| `NewBool(b)` | `BoolNode` | `true` или `false` |
+| `NewText(s)` | `TextNode` | многострочный текст |
+| `NewList(items...)` | `ListNode` | `""`; элементы — `Items()` |
+| `NewMap(pairs...)` | `MapNode` | `""`; пары — `Pairs()`, значение по ключу — `Lookup(key)` |
+
+Ключ пары — имя модуля (грамматика `CheckKey`: ASCII-буквы, цифры, `_` и `$`, не с цифры, не bool и не null для
+YAML 1.1) или имя из данных (`DataPair`, `FromData`): имя кастом-поля, фраза связи.
+
+- **Выражение полей** (`Fields`): пусто — набор по умолчанию операции (`IssueShowFields`, `TagListFields`, …),
+  `+x` — набор и `x`, иначе ровно `x`. Кастом-поле задачи называется в кавычках под `customFields`: `customFields(State,"Статус
+  разработки")`. Имя, которого нет в схеме `$type`, — `unknown_name` с ближайшими именами; запрошенное и не
+  пришедшее — `upstream_invalid` с `missing`.
+- **Страница** (`Page{Skip, Limit}`): `Limit` 0 — `DefaultLimit` (50). Документ списка несёт `total`, `returned`,
+  `truncated` и записи; счётчик, который сервер не назвал, — `null`.
+- **Запись** отвечает документом записанного (`WriteOptions.Fields`), и модуль сверяет ответ с отправленным: расхождение
+  после записи — `upstream_invalid` с `mismatch` и `AfterWrite`.
+- **Предупреждение** (`ListIssuesOptions.Warn`): свободный текст в запросе поиска, который YouTrack ищет словами, а не
+  читает условием, — `*Warning` с `query` и `free_text`.
+
+## Задача и кастом-поля значениями Go
+
+```go
+issue, err := c.Issues.Get(ctx, "DEV-13271")
 if module, ok := issue.Field("Модуль системы"); ok {
 	for _, v := range module.Values {
 		fmt.Println(v.ID, v.Text, v.LocalizedName)
@@ -45,41 +102,20 @@ for _, link := range issue.Links {
 	}
 }
 
-issue, err = c.WriteFields(ctx, "DEV-13271", []youtrack.FieldWrite{
+issue, err = c.Issues.WriteFields(ctx, "DEV-13271", []youtrack.FieldWrite{
 	{Name: "Тестирование", Values: []string{"Пройдено"}},
 	{Name: "Модуль системы", Values: []string{"Инфраструктура. DevOps", "TMS"}},
 	{Name: "Assignee", Clear: true},
 })
 
-bundle, err := c.Bundle(ctx, "DEV", "Модуль системы")
-for _, v := range bundle.Values {
-	fmt.Println(v.ID, v.Name, v.Archived)
-}
-
-metadata, err := c.Metadata(ctx, "DEV")
-for _, f := range metadata.Fields {
-	fmt.Println(f.ID, f.Name, f.Type, f.CanBeEmpty)
-}
-
-users, err := c.Users(ctx, "Колесов", 10)
+bundle, err := c.Fields.Bundle(ctx, "DEV", "Модуль системы")
+users, err := c.Users.Find(ctx, "Колесов", 10)
 ```
 
-Долгоживущему процессу кэш не нужен: `Bundle` читает проект и поле двумя запросами, `Metadata` читает проект.
-Процессу на один вызов, как CLI, `youtrack.WithMetadataCache(dir)` даёт кэш метаданных проекта на диске: каталог
-на пару адреса и токена (`0700`), файл на проект (`0600`), токена в файлах нет. `Metadata` отвечает из кэша
-(`FromCache`), `ReadMetadata` читает сервер и кладёт в кэш. Кэш подтверждает и не отказывает: вызывающий, у
-которого кэш разошёлся с сервером, читает снова `ReadMetadata`; `Bundle` делает это сам.
-
-Потребитель, который собирает запросы к YouTrack сам, как ytrack со своим деревом под `--fields`, берёт у
-модуля знание о полях: `FieldType.Class`, `Encode`, `ReadValue`, `Named`, `Same`, `BundleFields` и
-`ValueKeys`.
-
-Всё, чего типизированные функции не покрывают, доступно через `c.API()`: это сгенерированный клиент
-`ytapi.Client` со всеми операциями REST API поверх того же транспорта и токена. Тело ответа он отдаёт как
-`*http.Response`; запись через него отправляется `youtrack.Send`, чтобы отличить неотправленный запрос от
-запроса с неизвестным исходом.
-
-## Значения
+`Issues.Create`, `Issues.Update` и `Issues.WriteFields` пишут кастом-поля одним путём: имена разрешаются по
+метаданным проекта (по имени, затем по переводу, без учёта регистра), класс берётся с задачи, если поле на ней
+стоит, иначе из таблицы типов, обязательные и скрытые условием поля проверяются до отправки, ответ сверяется с
+записанным. `WriteFields` отвечает `*Issue` вместо документа.
 
 Значение кастом-поля читается и пишется по ключу значения его типа. `Value.Text` — ключ значения текстом,
 `Value.ID` — внутренний id у значения бандла, пользователя и группы, `Value.LocalizedName` — перевод, который
@@ -96,41 +132,65 @@ users, err := c.Users(ctx, "Колесов", 10)
 | `string` | сама строка | строка |
 | `text` | сам текст | `{"text": …}` |
 
-Поле, которого нет в этой таблице (`valueType` вне двадцати пар с `isMultiValue`), модуль читать и писать
-отказывается `*ResponseError`; `FieldType.Known` говорит, знает ли модуль тип.
+Поле вне двадцати пар `valueType` и `isMultiValue` модуль читать и писать отказывается (`upstream_invalid`);
+`FieldType.Known` говорит, знает ли модуль тип. Потребителю, который собирает запросы сам, знание о полях доступно
+примитивами: `FieldType.Class`, `Encode`, `ReadValue`, `Named`, `Same`, `BundleFields` и `ValueKeys`.
 
 ## Ошибки
 
-Каждая ошибка — свой тип, и по нему вызывающий решает, что делать дальше. Все они достаются `errors.As`.
+Каждая ошибка модуля — `*Error`: `Code`, `Message`, `Details` (пары узла: `request`, `upstream_status`,
+`upstream_error`, `upstream_message`, `upstream_body`, `unknown`, `missing`, `invalid`, `mismatch` и другие),
+`AfterWrite` и `Err` — ошибка транспорта под запросом без ответа. `errors.Is` сравнивает по коду с сентинелом.
 
-| Тип | Когда | Что дальше |
-|---|---|---|
-| `*ArgumentError` | аргумент нельзя отправить как написан: адрес, токен, id, код проекта, выражение полей, запись | чинить вызов; инстанс не тронут |
-| `*TransportError` | ответа нет: соединение, таймаут, обрыв тела. `Written` — запрос ушёл, и запись могла пройти | без `Written` повтор безопасен; с `Written` исход записи неизвестен |
-| `*StatusError` | статус не 200: `Code` и `Description` — `error` и `error_description` YouTrack, `Body` — тело. `Uncertain()` — на запись ответил не YouTrack, `Accepted()` — запись принята под 2xx, которое модуль не читает | 400 — исправить значения; 401 и 403 — права; 404 — идентификатор; 5xx — повтор может помочь |
-| `*ResponseError` | ответ не сходится с запросом: не JSON, другая форма, тип поля вне таблицы. `Write` — запись прошла под 200 | повтор не поможет |
-| `*MismatchError` | запись прошла, и поле вернулось не тем, что записано | смотреть `Mismatches`: воркфлоу инстанса мог изменить поле |
-| `*FieldNameError` | имена, которых нет у проекта, или имена сразу нескольких его полей; `Known` — имена полей проекта | чинить имя |
-| `*ValueError` | значения, которые поля их типов принять не могут; ничего не отправлено | чинить значения, все названы сразу |
-| `*RequiredFieldError` | запись опустошает обязательные поля проекта | оставить значение |
-| `*PermissionError` | проект ответил без единого поля: так сервер отвечает токену без права `Permission` | права токена |
-| `*ChangedFieldError` | поле проекта сменилось между чтением проекта и чтением поля | прочитать снова |
+```go
+_, err := c.Issues.Update(ctx, "DEV-1", &youtrack.IssueUpdate{Summary: &summary}, nil)
+var failed *youtrack.Error
+switch {
+case errors.Is(err, youtrack.ErrNotFound):
+	// нет такой задачи
+case errors.As(err, &failed) && failed.MayHaveWritten():
+	// инстанс мог измениться: повторять ли запись, решает вызывающий
+}
+```
+
+| Код | Сентинел | Когда | Что дальше |
+|---|---|---|---|
+| `bad_usage` | `ErrBadUsage` | вызов нельзя отправить как написан, в том числе по метаданным проекта | чинить вызов; инстанс не изменился |
+| `unknown_name` | `ErrUnknownName` | имя не нашлось там, где его искали | чинить имя по `nearest` или `candidates` |
+| `missing_required` | `ErrMissingRequired` | запись оставляет пустыми обязательные поля проекта | заполнить все названные |
+| `not_found` | `ErrNotFound` | сервер ответил `404` | проверить идентификатор |
+| `denied` | `ErrDenied` | `401`/`403` или проект без единого видимого поля | токен и его права |
+| `rejected` | `ErrRejected` | сервер отклонил запрос с `400` | читать `upstream_*`; ничего не записано |
+| `upstream_failed` | `ErrUpstreamFailed` | `5xx` YouTrack, сбой соединения, таймаут, статус вне таблицы | повтор может помочь |
+| `upstream_invalid` | `ErrUpstreamInvalid` | ответ не сходится с запросом | повтор не поможет |
+| `write_uncertain` | `ErrWriteUncertain` | запись ушла, ответа о её исходе нет | решает вызывающий |
+
+`MayHaveWritten()` — `write_uncertain` или `AfterWrite`: у ytrack это код возврата 2. Слова сервера передаются
+дословно под `upstream_*`, прозу модуля вызывающий не разбирает.
+
+## Транспорт и API
+
+Транспорт отправляет каждый запрос один раз: HTTP/1.1, keep-alive выключен, редиректы не выполняются, прокси не
+читается, модуль не повторяет ни чтение, ни запись. Всё, чего сервисы не покрывают, доступно через `c.API()` —
+сгенерированный клиент `ytapi.Client` ко всем операциям REST API поверх того же транспорта и токена. Тело ответа он
+отдаёт как `*http.Response`; запись через него отправляется `youtrack.Send`, который отличает неотправленный
+запрос (`upstream_failed`) от запроса с неизвестным исходом (`write_uncertain`).
 
 ## Тесты
 
-Пакет `fake` — фейковый сервер YouTrack: один `httptest.Server` на тестовый пакет, префикс пути на тест,
-журнал запросов с `Paths`, `Fields`, `Bodies` и `Last`, сборщики ответов `JSON` и `InTurn`, `Unreachable` для
-адреса, на котором никто не слушает, и `ServeAlone` для теста, которому надо перестать слушать между двумя
-запросами. Тесты модуля — контрактные, через экспорт и против этого сервера; тесты потребителей ходят к нему же.
+Пакет `fake` — фейковый сервер YouTrack: один `httptest.Server` на тестовый пакет, префикс пути на тест, журнал
+запросов с `Paths`, `Fields`, `Bodies` и `Last`, сборщики ответов `JSON` и `InTurn`, `Unreachable` для адреса, на
+котором никто не слушает, и `ServeAlone` для теста, которому надо перестать слушать между двумя запросами. Тесты
+модуля — контрактные, через экспорт и против этого сервера; тесты потребителей ходят к нему же.
 
 ```bash
-make go       # gofmt, go vet, go test -race
-make ytapi    # сгенерированный клиент воспроизводится из спецификации и overlay байт в байт
-make openapi  # снять спецификацию с дев-инстанса ytrack (dev/), запиненного на YouTrack 2026.1.13757
+make go        # gofmt, go vet, go test -race
+make generate  # ytapi и каталог схем из спецификации
+make ytapi     # сгенерированное воспроизводится из спецификации и overlay байт в байт
+make openapi   # снять спецификацию с дев-инстанса ytrack (dev/), запиненного на YouTrack 2026.1.13757
 ```
 
 ## Версии
 
-Теги semver. До `v1.0.0` минорная версия может менять API; патч — нет. Изменения по версиям — в
-[`CHANGELOG.md`](CHANGELOG.md). Факты о сервере измерены на YouTrack 2026.1.13757 и записаны в ADR вместе с
-версией.
+Теги semver. До `v1.0.0` минорная версия может менять API; патч — нет. Факты о сервере измерены на YouTrack
+2026.1.13757 и записаны в ADR вместе с версией.
