@@ -108,13 +108,13 @@ func (c *Client) listPage(ctx context.Context, plural, schema string, requested 
 func (c *Client) newList(plural, schema string, requested, sentFields []requestedField, page Page, fetchPage pageFetcher) list {
 	l := list{client: c, plural: plural, schema: schema, requested: requested, sentFields: sentFields, page: page, fetchPage: fetchPage}
 	l.countTotal = func(ctx context.Context) (count, *Error) {
-		ids, fault := c.read(ctx, schema, []requestedField{{name: idKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
+		ids, fault := c.request(ctx, schema, []requestedField{{name: idKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
 			return fetchPage(ctx, fields, allRecords)
 		})
 		if fault != nil {
 			return count{}, fault
 		}
-		return counted(len(ids)), nil
+		return counted(len(ids.objects)), nil
 	}
 	return l
 }

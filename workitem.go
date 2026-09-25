@@ -96,7 +96,7 @@ func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItem
 	asked := withFields(requested, filed.verifyFields()...)
 	issueBlocks(c.spec, composedWorkItem(), asked)
 	body := filed.body()
-	return c.write(ctx, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssueWorkItem(ctx, at, body, fields)
 	}, filed.verify, writeResultNode(requested))
 }
@@ -151,7 +151,7 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 	asked := withFields(requested, changed.verifyFields()...)
 	issueBlocks(c.spec, composedWorkItem(), asked)
 	body := changed.body()
-	return c.write(ctx, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateIssueWorkItem(ctx, owner, at, body, fields)
 	}, changed.verify, writeResultNode(requested))
 }

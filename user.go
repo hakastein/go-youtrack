@@ -70,13 +70,13 @@ func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOpti
 		return nil, fault
 	}
 	c := s.client
-	users, fault := c.read(ctx, userSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	user, fault := c.request(ctx, userSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetUser(ctx, login, fields)
 	})
 	if fault != nil {
 		return nil, noSuchLogin(login, fault)
 	}
-	return users[0], nil
+	return objectNode(user, requested, user.objects[0], nil)
 }
 
 func (s *UsersService) list(ctx context.Context, query string, opts ListUsersOptions) (*Node, *Error) {

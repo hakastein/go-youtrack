@@ -48,10 +48,17 @@ func writeFailure(response *http.Response, body []byte) *Error {
 		details := append(responseDetails(response), bodyDetail(body))
 		return &Error{Code: CodeWriteUncertain, Message: message, Details: details}
 	}
-	if !isJSON && bodyMustBeJSON(response.StatusCode) {
-		return markWritten(response, shapeFailure(response, body, notOneValue))
+	return markWritten(response, answerFailure(response, body, tree, isJSON))
+}
+
+func answerFailure(response *http.Response, body []byte, tree any, isJSON bool) *Error {
+	switch {
+	case !isJSON && !is5xx(response.StatusCode):
+		return shapeFailure(response, body, notOneValue)
+	case response.StatusCode != http.StatusOK:
+		return statusFailure(response, tree, body)
 	}
-	return markWritten(response, statusFailure(response, tree, body))
+	return nil
 }
 
 func isYouTrackError(tree any) bool {
@@ -69,11 +76,8 @@ func markWritten(response *http.Response, fault *Error) *Error {
 }
 
 func statusFailure(response *http.Response, tree any, body []byte) *Error {
-	return statusFault(responseDetails(response), response.StatusCode, tree, body)
-}
-
-func statusFault(details []Pair, status int, tree any, body []byte) *Error {
-	code, named := statusCode(status)
+	code, named := statusCode(response.StatusCode)
+	details := responseDetails(response)
 	said, _ := tree.(map[string]any)
 	carried := 0
 	for _, member := range []struct{ name, key string }{{"error", "upstream_error"}, {"error_description", "upstream_message"}} {
@@ -85,16 +89,12 @@ func statusFault(details []Pair, status int, tree any, body []byte) *Error {
 	if !named || said == nil || len(said) > carried {
 		details = append(details, bodyDetail(body))
 	}
-	message := fmt.Sprintf("the server answered with status %d", status)
+	message := fmt.Sprintf("the server answered with status %d", response.StatusCode)
 	return &Error{Code: code, Message: message, Details: details}
 }
 
 func shapeFailure(response *http.Response, body []byte, message string) *Error {
-	return shapeFault(responseDetails(response), body, message)
-}
-
-func shapeFault(details []Pair, body []byte, message string) *Error {
-	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: append(details, bodyDetail(body))}
+	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: append(responseDetails(response), bodyDetail(body))}
 }
 
 func statusCode(status int) (code Code, named bool) {

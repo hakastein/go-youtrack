@@ -116,7 +116,7 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 	}
 	c := s.client
 	checked := withFields(requested, requestedField{name: nameKey}, requestedField{name: sizeKey})
-	return c.write(ctx, attachmentTargetOf(at.kind).listSchema(), checked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, attachmentTargetOf(at.kind).listSchema(), checked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateAttachment(ctx, at, contentType, body, fields)
 	}, confirmed, writeResultNode(requested))
 }

@@ -147,7 +147,7 @@ func (s *ArticlesService) create(ctx context.Context, project string, in Article
 		return nil, fault
 	}
 	body := filed.body()
-	return c.write(ctx, articleSchema, withFields(requested, filed.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, articleSchema, withFields(requested, filed.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateArticle(ctx, body, fields)
 	}, filed.verify, writeResultNode(requested))
 }
@@ -250,7 +250,7 @@ func (s *ArticlesService) update(ctx context.Context, id string, in ArticleUpdat
 		return nil, fault
 	}
 	body := written.body()
-	return c.write(ctx, articleSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, articleSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateArticle(ctx, article.readable, body, fields)
 	}, written.verify, writeResultNode(requested))
 }

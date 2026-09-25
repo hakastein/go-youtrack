@@ -96,7 +96,7 @@ func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts 
 		return nil, fault
 	}
 	body, _ := json.Marshal(internalIssueIDBody{ID: w.target.id})
-	node, fault := c.write(ctx, issueSchema, linkWriteFields(targetBlocks(c.spec, requested)),
+	node, fault := writeAs(ctx, c, issueSchema, linkWriteFields(targetBlocks(c.spec, requested)),
 		func(ctx context.Context, fields string) (*http.Response, error) {
 			return c.apiAddLinkedIssue(ctx, w.source.readable, w.link.id, body, fields)
 		}, w.verify, w.renderResult(targetFields(requested)))

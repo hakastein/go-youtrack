@@ -41,13 +41,13 @@ func (s *ProjectsService) show(ctx context.Context, code string, opts ShowProjec
 		return nil, fault
 	}
 	c := s.client
-	projects, fault := c.read(ctx, projectSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	project, fault := c.request(ctx, projectSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProject(ctx, code, fields)
 	})
 	if fault != nil {
 		return nil, fault
 	}
-	return projects[0], nil
+	return objectNode(project, requested, project.objects[0], nil)
 }
 
 func (s *ProjectsService) list(ctx context.Context, opts ListProjectsOptions) (*Node, *Error) {

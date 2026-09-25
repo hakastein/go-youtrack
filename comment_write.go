@@ -22,7 +22,7 @@ func (s *CommentsService) create(ctx context.Context, owner, text string, opts W
 	c := s.client
 	held := commentTargetOf(at.kind)
 	body := written.body()
-	return c.write(ctx, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return held.api.create(c, ctx, at, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
@@ -53,7 +53,7 @@ func (s *CommentsService) update(ctx context.Context, owner, id, text string, op
 	}
 	written := commentUpdate{commentCreate: rewritten, at: which}
 	body := written.body()
-	return c.write(ctx, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return held.api.update(c, ctx, at, written.at, body, fields)
 	}, written.verify, writeResultNode(requested))
 }

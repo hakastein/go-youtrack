@@ -22,10 +22,6 @@ func is5xx(status int) bool {
 	return status >= http.StatusInternalServerError && status < 600
 }
 
-func bodyMustBeJSON(status int) bool {
-	return !is5xx(status)
-}
-
 func statusRejectsWrite(status int) bool {
 	return !is2xx(status) && !is5xx(status)
 }
@@ -57,14 +53,6 @@ type decodedResponse struct {
 	address      *url.URL
 }
 
-func (c *Client) read(ctx context.Context, responseSchema string, requested []requestedField, call func(ctx context.Context, fields string) (*http.Response, error)) ([]*Node, *Error) {
-	decoded, fault := c.request(ctx, responseSchema, requested, call)
-	if fault != nil {
-		return nil, fault
-	}
-	return newConverter(decoded, blockLayout).objectsAt(decoded.schema, requested, decoded.objects)
-}
-
 type requestFields struct {
 	sent   []requestedField
 	output []requestedField
@@ -78,28 +66,29 @@ func (c *Client) readList(ctx context.Context, responseSchema string, of request
 	return newConverter(decoded, inlineLayout).objectsAt(decoded.schema, of.output, decoded.objects)
 }
 
-func writeEmpty(ctx context.Context, call func(ctx context.Context) (*http.Response, error)) *Error {
+func sendWrite(ctx context.Context, call func(ctx context.Context) (*http.Response, error)) (*http.Response, []byte, *Error) {
 	response, fault := send(ctx, call)
 	if fault != nil {
-		return fault
+		return nil, nil, fault
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return truncatedWriteResponse(response, body, err)
+		return nil, nil, truncatedWriteResponse(response, body, err)
 	}
-	if fault := writeFailure(response, body); fault != nil {
+	return response, body, writeFailure(response, body)
+}
+
+func writeEmpty(ctx context.Context, call func(ctx context.Context) (*http.Response, error)) *Error {
+	response, body, fault := sendWrite(ctx, call)
+	switch {
+	case fault != nil:
 		return fault
-	}
-	if len(body) > 0 {
+	case len(body) > 0:
 		message := "the answer carries a body, and this call is answered with none"
 		return markWritten(response, shapeFailure(response, body, message))
 	}
 	return nil
-}
-
-func (c *Client) write(ctx context.Context, responseSchema string, requested []requestedField, call func(ctx context.Context, fields string) (*http.Response, error), confirm func(decodedResponse) *Error, output func(decodedResponse) (*Node, *Error)) (*Node, *Error) {
-	return writeAs(ctx, c, responseSchema, requested, call, confirm, output)
 }
 
 func writeAs[T any](ctx context.Context, c *Client, responseSchema string, requested []requestedField, call func(ctx context.Context, fields string) (*http.Response, error), confirm func(decodedResponse) *Error, output func(decodedResponse) (T, *Error)) (T, *Error) {
@@ -108,25 +97,13 @@ func writeAs[T any](ctx context.Context, c *Client, responseSchema string, reque
 	if fault != nil {
 		return none, fault
 	}
-	response, fault := send(ctx, func(ctx context.Context) (*http.Response, error) {
+	response, body, fault := sendWrite(ctx, func(ctx context.Context) (*http.Response, error) {
 		return call(ctx, formatFields(requested))
 	})
 	if fault != nil {
 		return none, fault
 	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return none, truncatedWriteResponse(response, body, err)
-	}
-	if fault := writeFailure(response, body); fault != nil {
-		return none, fault
-	}
-	tree, isJSON := decode(body)
-	if !isJSON {
-		return none, markWritten(response, shapeFailure(response, body, notOneValue))
-	}
-	decoded, fault := c.validateResponse(responseSchema, requested, response, body, tree)
+	decoded, fault := c.decodeResponse(responseSchema, requested, response, body)
 	if fault != nil {
 		return none, markWritten(response, fault)
 	}
@@ -154,19 +131,16 @@ func (c *Client) request(ctx context.Context, responseSchema string, requested [
 	if err != nil {
 		return decodedResponse{}, readFailure(response, err)
 	}
-	tree, isJSON := decode(body)
-	if !isJSON && bodyMustBeJSON(response.StatusCode) {
-		return decodedResponse{}, shapeFailure(response, body, notOneValue)
-	}
-	if response.StatusCode != http.StatusOK {
-		return decodedResponse{}, statusFailure(response, tree, body)
-	}
-	return c.validateResponse(responseSchema, requested, response, body, tree)
+	return c.decodeResponse(responseSchema, requested, response, body)
 }
 
 const notOneValue = "the answer is not one JSON value"
 
-func (c *Client) validateResponse(responseSchema string, requested []requestedField, response *http.Response, body []byte, tree any) (decodedResponse, *Error) {
+func (c *Client) decodeResponse(responseSchema string, requested []requestedField, response *http.Response, body []byte) (decodedResponse, *Error) {
+	tree, isJSON := decode(body)
+	if fault := answerFailure(response, body, tree, isJSON); fault != nil {
+		return decodedResponse{}, fault
+	}
 	expected := parseTypeRef(responseSchema)
 	objects, ok := decodeObjects(tree, expected.list)
 	switch {

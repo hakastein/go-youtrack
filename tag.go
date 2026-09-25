@@ -113,7 +113,7 @@ func (s *TagsService) create(ctx context.Context, name string, sharing TagSharin
 		return nil, fault
 	}
 	body := written.body()
-	return c.write(ctx, tagSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, tagSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateTag(ctx, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
@@ -373,7 +373,7 @@ func (c *Client) addTag(ctx context.Context, at owner, sought tagRef) (*Node, *E
 		return nil, fault
 	}
 	body := hung.body()
-	node, fault := c.write(ctx, tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	node, fault := writeAs(ctx, c, tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiAddTag(ctx, hung.target.kind, hung.on, body, fields)
 	}, hung.verify, hung.render(addedKey))
 	if fault != nil {
