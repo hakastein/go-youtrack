@@ -175,6 +175,23 @@ func TestShowIssueRefusesACustomFieldNameTheCatalogueDoesNotResolve(t *testing.T
 	}
 }
 
+func TestShowIssueNamesTheUnknownAndTheAmbiguousNamesOfOneExpressionTogether(t *testing.T) {
+	t.Parallel()
+	catalogue := issueCatalogue(issueCatalogued("twin", "null"), issueCatalogued("Twin", "null"), issueCatalogued("Named", "null"))
+	server := issueCataloguing(t, catalogue, fake.JSON(http.StatusOK, issueWithFields()))
+
+	_, err := issueShown(t, server, "customFields(Twin,Nmed)", youtrack.Comments{})
+
+	want := youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{
+		requestTo(http.MethodGet, server, issueCatalogueTarget),
+		{Key: "fields", Value: youtrack.NewString("customFields(Twin,Nmed)")},
+		{Key: "unknown", Value: youtrack.NewList(withNearest("field", "customFields(Nmed)", "Named"))},
+		{Key: "ambiguous", Value: youtrack.NewList(issueCandidates("customFields(Twin)", "Twin", "twin"))},
+	}}
+	assert.Equal(t, want, errorOf(t, err))
+	assert.Equal(t, []string{issueCataloguePath}, server.Paths())
+}
+
 func TestShowIssueReadsTheCatalogueOnlyForANameTheCallerWrote(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

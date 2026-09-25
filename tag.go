@@ -737,17 +737,11 @@ func (r *groupResolver) fault() *Error {
 	if r.broken != nil {
 		return r.broken
 	}
-	if len(r.unknown) == 0 && len(r.ambiguous) == 0 {
+	unresolved := unresolvedDetails(r.unknown, r.ambiguous)
+	if unresolved == nil {
 		return nil
 	}
-	var details []Pair
-	if len(r.unknown) > 0 {
-		details = append(details, Pair{Key: "unknown", Value: NewList(r.unknown...)})
-	}
-	if len(r.ambiguous) > 0 {
-		details = append(details, Pair{Key: "ambiguous", Value: NewList(r.ambiguous...)})
-	}
-	return r.shown.response.fault(CodeUnknownName, unresolvedGroups(len(r.unknown), len(r.ambiguous)), details...)
+	return r.shown.response.fault(CodeUnknownName, unresolvedGroups(len(r.unknown), len(r.ambiguous)), unresolved...)
 }
 
 func unresolvedGroups(unknown, ambiguous int) string {

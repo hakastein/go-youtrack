@@ -204,6 +204,17 @@ func nearestEntry(key, written string, nearest []string) *Node {
 	return NewMap(Pair{Key: key, Value: NewString(written)}, Pair{Key: "nearest", Value: textList(nearest)})
 }
 
+func unresolvedDetails(unknown, ambiguous []*Node) []Pair {
+	var details []Pair
+	if len(unknown) > 0 {
+		details = append(details, Pair{Key: "unknown", Value: NewList(unknown...)})
+	}
+	if len(ambiguous) > 0 {
+		details = append(details, Pair{Key: "ambiguous", Value: NewList(ambiguous...)})
+	}
+	return details
+}
+
 type suggestion struct {
 	name string
 	also []string

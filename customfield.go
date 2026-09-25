@@ -448,16 +448,18 @@ func (r *nameResolver) place(name, written string) (int, bool) {
 }
 
 func (r *nameResolver) fault(sent, against Pair, among string) *Error {
-	key, entries, message := "unknown", r.unknown, "the names under unknown are not custom fields of "+among
-	if len(r.unknown) == 0 {
-		key, entries = "ambiguous", r.ambiguous
-		message = "the names under ambiguous are the names of more than one custom field of " + among + " each"
-	}
-	if len(entries) == 0 {
+	unresolved := unresolvedDetails(r.unknown, r.ambiguous)
+	if unresolved == nil {
 		return nil
 	}
-	details := []Pair{sent, against, {Key: key, Value: NewList(entries...)}}
-	return &Error{Code: CodeUnknownName, Message: message, Details: details}
+	message := "the names under unknown are not custom fields of " + among
+	switch {
+	case len(r.unknown) == 0:
+		message = "the names under ambiguous are the names of more than one custom field of " + among + " each"
+	case len(r.ambiguous) > 0:
+		message += ", and each name under ambiguous is the name of more than one"
+	}
+	return &Error{Code: CodeUnknownName, Message: message, Details: append([]Pair{sent, against}, unresolved...)}
 }
 
 func fieldInfoFields() requestedField {
