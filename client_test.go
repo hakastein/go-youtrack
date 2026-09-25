@@ -188,6 +188,45 @@ func breakOff(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func answerCutShort(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, `{"$type":`)
+	controller := http.NewResponseController(w)
+	_ = controller.Flush()
+	if conn, _, err := controller.Hijack(); err == nil {
+		_ = conn.Close()
+	}
+}
+
+func deleteDEV1(ctx context.Context, c *youtrack.Client) error {
+	_, err := c.Issues.Delete(ctx, "DEV-1")
+	return err
+}
+
+func TestClientUnwrapsAnAnswerCutShortToTheFailureOfTheTransport(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		serve http.HandlerFunc
+		call  func(ctx context.Context, c *youtrack.Client) error
+		code  error
+	}{
+		{name: "a read", serve: answerCutShort, call: showDEV, code: youtrack.ErrUpstreamFailed},
+		{name: "a write", serve: fake.InTurn(fake.JSON(http.StatusOK, `{"$type":"Issue","idReadable":"DEV-1"}`), answerCutShort),
+			call: deleteDEV1, code: youtrack.ErrWriteUncertain},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tc.call(t.Context(), client(t, fake.Serve(t, tc.serve)))
+
+			assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+			assert.ErrorIs(t, err, tc.code)
+		})
+	}
+}
+
 func TestSendTellsAWriteThatLeftFromOneThatNeverDid(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

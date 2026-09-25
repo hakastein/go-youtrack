@@ -24,7 +24,7 @@ func transportFailure(err error, written bool) *Error {
 }
 
 func readFailure(response *http.Response, err error) *Error {
-	return &Error{Code: CodeUpstreamFailed, Message: err.Error(), Details: responseDetails(response)}
+	return &Error{Code: CodeUpstreamFailed, Message: err.Error(), Details: responseDetails(response), Err: err}
 }
 
 func truncatedWriteResponse(response *http.Response, body []byte, err error) *Error {
