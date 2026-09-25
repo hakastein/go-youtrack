@@ -185,38 +185,38 @@ func cloneFields(fields []requestedField) []requestedField {
 	return copied
 }
 
-func walkFields(c *schemas, at string, requested []requestedField, parents []string, visit func(declaringSchema string, decl typeRef, path []string, field *requestedField)) {
+func walkFields(spec *schemas, at string, requested []requestedField, parents []string, visit func(declaringSchema string, decl typeRef, path []string, field *requestedField)) {
 	for i := range requested {
 		field := &requested[i]
-		decl, _ := c.declaration(at, field.name)
+		decl, _ := spec.declaration(at, field.name)
 		visit(at, decl, parents, field)
 		if decl.schema == "" {
 			continue
 		}
 		childPath := append(slices.Clip(parents), field.name)
-		walkFields(c, decl.schema, field.children, childPath, visit)
+		walkFields(spec, decl.schema, field.children, childPath, visit)
 	}
 }
 
-func fieldsNamed(c *schemas, at, schema, name string, requested []requestedField, visit func(parents []string, field *requestedField)) {
-	walkFields(c, at, requested, nil, func(declaringSchema string, _ typeRef, path []string, field *requestedField) {
+func fieldsNamed(spec *schemas, at, schema, name string, requested []requestedField, visit func(parents []string, field *requestedField)) {
+	walkFields(spec, at, requested, nil, func(declaringSchema string, _ typeRef, path []string, field *requestedField) {
 		if declaringSchema == schema && field.name == name {
 			visit(path, field)
 		}
 	})
 }
 
-func fieldsOfType(c *schemas, at, schema string, requested []requestedField, visit func(parents []string, field *requestedField)) {
-	walkFields(c, at, requested, nil, func(_ string, decl typeRef, path []string, field *requestedField) {
+func fieldsOfType(spec *schemas, at, schema string, requested []requestedField, visit func(parents []string, field *requestedField)) {
+	walkFields(spec, at, requested, nil, func(_ string, decl typeRef, path []string, field *requestedField) {
 		if decl.schema == schema {
 			visit(path, field)
 		}
 	})
 }
 
-func firstFieldNamed(c *schemas, at, schema, name string, requested []requestedField) (string, bool) {
+func firstFieldNamed(spec *schemas, at, schema, name string, requested []requestedField) (string, bool) {
 	first, found := "", false
-	fieldsNamed(c, at, schema, name, requested, func(path []string, field *requestedField) {
+	fieldsNamed(spec, at, schema, name, requested, func(path []string, field *requestedField) {
 		if !found {
 			first, found = fieldPath(path, field.name), true
 		}

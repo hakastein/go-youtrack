@@ -30,7 +30,7 @@ type schemaSet struct {
 }
 
 type schemaResolver struct {
-	schemas    *schemas
+	spec       *schemas
 	schemaSets map[*fieldNode]schemaSet
 }
 
@@ -41,23 +41,23 @@ func checkMissingFields(spec *schemas, response *http.Response, responseSchema s
 	if len(absences) == 0 {
 		return nil
 	}
-	j := newSchemaResolver(spec, responseSchema, root)
+	resolver := newSchemaResolver(spec, responseSchema, root)
 	var missing, unknown []*Node
 	listed := map[string]bool{}
-	for _, a := range absences {
-		code := j.classify(a)
+	for _, absence := range absences {
+		code := resolver.classify(absence)
 		if code == absenceAccepted {
 			continue
 		}
-		field := fieldPath(a.at.path(), a.name)
+		field := fieldPath(absence.at.path(), absence.name)
 		if listed[string(code)+" "+field] {
 			continue
 		}
 		listed[string(code)+" "+field] = true
 		if code == CodeUpstreamInvalid {
-			missing = append(missing, missingEntry(field, a))
+			missing = append(missing, missingEntry(field, absence))
 		} else {
-			unknown = append(unknown, nearestEntry(fieldKey, field, nearestNames(a.name, j.schemaSets[a.at].names)))
+			unknown = append(unknown, nearestEntry(fieldKey, field, nearestNames(absence.name, resolver.schemaSets[absence.at].names)))
 		}
 	}
 	details := []Pair{
@@ -78,10 +78,10 @@ func checkMissingFields(spec *schemas, response *http.Response, responseSchema s
 }
 
 func findMissingFields(requested []requestedField, tree any) (*fieldNode, []missingField) {
-	var s missingFieldCollector
+	var collector missingFieldCollector
 	root := newFieldNode(nil, requestedField{children: requested})
-	s.visit(root, tree)
-	return root, s.absences
+	collector.visit(root, tree)
+	return root, collector.absences
 }
 
 type missingFieldCollector struct {
@@ -89,102 +89,102 @@ type missingFieldCollector struct {
 }
 
 func newFieldNode(parent *fieldNode, field requestedField) *fieldNode {
-	p := &fieldNode{parent: parent, field: field}
+	node := &fieldNode{parent: parent, field: field}
 	for _, child := range field.children {
-		p.children = append(p.children, newFieldNode(p, child))
+		node.children = append(node.children, newFieldNode(node, child))
 	}
-	return p
+	return node
 }
 
-func (p *fieldNode) path() []string {
-	if p.parent == nil {
+func (node *fieldNode) path() []string {
+	if node.parent == nil {
 		return nil
 	}
-	return append(p.parent.path(), p.field.name)
+	return append(node.parent.path(), node.field.name)
 }
 
-func (s *missingFieldCollector) visit(p *fieldNode, value any) {
+func (collector *missingFieldCollector) visit(node *fieldNode, value any) {
 	switch value := value.(type) {
 	case nil:
 	case []any:
 		for _, item := range value {
-			s.visit(p, item)
+			collector.visit(node, item)
 		}
 	case map[string]any:
 		objectType, hasType := value["$type"].(string)
-		if hasType && !slices.Contains(p.seenTypes, objectType) {
-			p.seenTypes = append(p.seenTypes, objectType)
+		if hasType && !slices.Contains(node.seenTypes, objectType) {
+			node.seenTypes = append(node.seenTypes, objectType)
 		}
-		for i, field := range p.field.children {
+		for i, field := range node.field.children {
 			child, ok := value[field.name]
 			switch {
 			case !ok:
-				s.absences = append(s.absences, missingField{at: p, name: field.name, objectType: objectType, hasType: hasType, askedByDefault: fromDefault(field)})
+				collector.absences = append(collector.absences, missingField{at: node, name: field.name, objectType: objectType, hasType: hasType, askedByDefault: fromDefault(field)})
 			case field.children != nil && !field.normalized:
-				s.visit(p.children[i], child)
+				collector.visit(node.children[i], child)
 			}
 		}
 	default:
-		for _, field := range p.field.children {
-			s.absences = append(s.absences, missingField{at: p, name: field.name, scalar: true, askedByDefault: fromDefault(field)})
+		for _, field := range node.field.children {
+			collector.absences = append(collector.absences, missingField{at: node, name: field.name, scalar: true, askedByDefault: fromDefault(field)})
 		}
 	}
 }
 
-func newSchemaResolver(schemas *schemas, responseSchema string, root *fieldNode) schemaResolver {
-	j := schemaResolver{schemas: schemas, schemaSets: map[*fieldNode]schemaSet{}}
-	top := schemas.subtree(responseSchema)
-	j.assignSchemas(root, schemaSet{schemas: top, names: schemas.names(top)})
-	return j
+func newSchemaResolver(spec *schemas, responseSchema string, root *fieldNode) schemaResolver {
+	resolver := schemaResolver{spec: spec, schemaSets: map[*fieldNode]schemaSet{}}
+	top := spec.subtree(responseSchema)
+	resolver.assignSchemas(root, schemaSet{schemas: top, names: spec.names(top)})
+	return resolver
 }
 
-func (j schemaResolver) assignSchemas(p *fieldNode, f schemaSet) {
-	j.schemaSets[p] = f
-	for _, child := range p.children {
-		j.assignSchemas(child, j.childSchemas(f, child))
+func (resolver schemaResolver) assignSchemas(node *fieldNode, set schemaSet) {
+	resolver.schemaSets[node] = set
+	for _, child := range node.children {
+		resolver.assignSchemas(child, resolver.childSchemas(set, child))
 	}
 }
 
-func (j schemaResolver) childSchemas(parentSet schemaSet, p *fieldNode) schemaSet {
+func (resolver schemaResolver) childSchemas(parentSet schemaSet, node *fieldNode) schemaSet {
 	var schemas []string
 	untyped := false
 	for _, owner := range parentSet.schemas {
-		decl, declared := j.schemas.declaration(owner, p.field.name)
+		decl, declared := resolver.spec.declaration(owner, node.field.name)
 		switch {
 		case decl.schema != "":
-			schemas = append(schemas, j.schemas.subtree(decl.schema)...)
+			schemas = append(schemas, resolver.spec.subtree(decl.schema)...)
 		case declared:
 			untyped = true
 		}
 	}
 	if untyped || schemas == nil {
-		schemas = append(schemas, j.schemas.hierarchies(p.seenTypes)...)
+		schemas = append(schemas, resolver.spec.hierarchies(node.seenTypes)...)
 	}
-	for _, schema := range p.field.extraSchemas {
-		schemas = append(schemas, j.schemas.subtree(schema)...)
+	for _, schema := range node.field.extraSchemas {
+		schemas = append(schemas, resolver.spec.subtree(schema)...)
 	}
-	return schemaSet{schemas: schemas, names: j.schemas.names(schemas), untyped: untyped}
+	return schemaSet{schemas: schemas, names: resolver.spec.names(schemas), untyped: untyped}
 }
 
-func (j schemaResolver) classify(a missingField) Code {
-	here := j.schemaSets[a.at]
-	typeBelongsHere := slices.Contains(here.schemas, a.objectType)
+func (resolver schemaResolver) classify(absence missingField) Code {
+	here := resolver.schemaSets[absence.at]
+	typeBelongsHere := slices.Contains(here.schemas, absence.objectType)
 	switch {
-	case typeBelongsHere && j.declares(a.objectType, a.name):
+	case typeBelongsHere && resolver.declares(absence.objectType, absence.name):
 		return CodeUpstreamInvalid
-	case !slices.Contains(here.names, a.name):
-		if a.askedByDefault {
+	case !slices.Contains(here.names, absence.name):
+		if absence.askedByDefault {
 			return CodeUpstreamInvalid
 		}
 		return CodeUnknownName
-	case typeBelongsHere, a.scalar && here.untyped:
+	case typeBelongsHere, absence.scalar && here.untyped:
 		return absenceAccepted
 	}
 	return CodeUpstreamInvalid
 }
 
-func (j schemaResolver) declares(schema, name string) bool {
-	_, ok := j.schemas.declaration(schema, name)
+func (resolver schemaResolver) declares(schema, name string) bool {
+	_, ok := resolver.spec.declaration(schema, name)
 	return ok
 }
 
@@ -192,10 +192,10 @@ func fieldPath(parents []string, name string) string {
 	return strings.Join(append(slices.Clip(parents), name), "(") + strings.Repeat(")", len(parents))
 }
 
-func missingEntry(field string, a missingField) *Node {
+func missingEntry(field string, absence missingField) *Node {
 	schema := NewNull()
-	if a.hasType {
-		schema = NewString(a.objectType)
+	if absence.hasType {
+		schema = NewString(absence.objectType)
 	}
 	return NewMap(Pair{Key: fieldKey, Value: NewString(field)}, Pair{Key: typeKey, Value: schema})
 }
@@ -216,13 +216,13 @@ func nearest(asked string, among []suggestion, fallback []string) []string {
 	}
 	lowered := []rune(strings.ToLower(asked))
 	var near []candidate
-	for _, s := range among {
-		d := distance(lowered, []rune(strings.ToLower(s.name)))
-		for _, form := range s.also {
-			d = min(d, distance(lowered, []rune(strings.ToLower(form))))
+	for _, suggested := range among {
+		closest := distance(lowered, []rune(strings.ToLower(suggested.name)))
+		for _, form := range suggested.also {
+			closest = min(closest, distance(lowered, []rune(strings.ToLower(form))))
 		}
-		if d <= 2 {
-			near = append(near, candidate{name: s.name, distance: d})
+		if closest <= 2 {
+			near = append(near, candidate{name: suggested.name, distance: closest})
 		}
 	}
 	if len(near) == 0 {
@@ -232,8 +232,8 @@ func nearest(asked string, among []suggestion, fallback []string) []string {
 		return cmp.Or(cmp.Compare(a.distance, b.distance), strings.Compare(a.name, b.name))
 	})
 	names := make([]string, 0, min(len(near), 5))
-	for _, c := range near[:min(len(near), 5)] {
-		names = append(names, c.name)
+	for _, kept := range near[:min(len(near), 5)] {
+		names = append(names, kept.name)
 	}
 	return names
 }

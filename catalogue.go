@@ -26,15 +26,15 @@ type typeRef struct {
 
 func parseTypeRef(written string) typeRef {
 	written, list := strings.CutPrefix(written, "[]")
-	e := typeRef{list: list}
+	ref := typeRef{list: list}
 	switch {
 	case written == "{}":
 	case strings.HasPrefix(written, "!"):
-		e.kind = written
+		ref.kind = written
 	default:
-		e.schema = written
+		ref.schema = written
 	}
-	return e
+	return ref
 }
 
 type schemas struct {
@@ -53,8 +53,8 @@ func loadSchemas() *schemas {
 	return &schemas{byName: byName, children: children}
 }
 
-func (c *schemas) declaration(name, property string) (typeRef, bool) {
-	for s, ok := c.byName[name]; ok; s, ok = c.byName[s.parent] {
+func (spec *schemas) declaration(name, property string) (typeRef, bool) {
+	for s, ok := spec.byName[name]; ok; s, ok = spec.byName[s.parent] {
 		if written, declared := s.properties[property]; declared {
 			return parseTypeRef(written), true
 		}
@@ -62,12 +62,12 @@ func (c *schemas) declaration(name, property string) (typeRef, bool) {
 	return typeRef{}, false
 }
 
-func (c *schemas) isSubtypeOf(name, ancestor string) bool {
+func (spec *schemas) isSubtypeOf(name, ancestor string) bool {
 	for {
 		if name == ancestor {
 			return true
 		}
-		s, known := c.byName[name]
+		s, known := spec.byName[name]
 		if !known || s.parent == "" {
 			return false
 		}
@@ -75,22 +75,22 @@ func (c *schemas) isSubtypeOf(name, ancestor string) bool {
 	}
 }
 
-func (c *schemas) subtree(name string) []string {
+func (spec *schemas) subtree(name string) []string {
 	set := []string{name}
 	for i := 0; i < len(set); i++ {
-		set = append(set, c.children[set[i]]...)
+		set = append(set, spec.children[set[i]]...)
 	}
 	return set
 }
 
-func (c *schemas) hierarchies(named []string) []string {
+func (spec *schemas) hierarchies(named []string) []string {
 	var roots []string
 	for _, name := range named {
-		if _, known := c.byName[name]; !known {
+		if _, known := spec.byName[name]; !known {
 			continue
 		}
-		for c.byName[name].parent != "" {
-			name = c.byName[name].parent
+		for spec.byName[name].parent != "" {
+			name = spec.byName[name].parent
 		}
 		if !slices.Contains(roots, name) {
 			roots = append(roots, name)
@@ -98,15 +98,15 @@ func (c *schemas) hierarchies(named []string) []string {
 	}
 	var set []string
 	for _, root := range roots {
-		set = append(set, c.subtree(root)...)
+		set = append(set, spec.subtree(root)...)
 	}
 	return set
 }
 
-func (c *schemas) names(set []string) []string {
+func (spec *schemas) names(set []string) []string {
 	var names []string
 	for _, name := range set {
-		for s, ok := c.byName[name]; ok; s, ok = c.byName[s.parent] {
+		for s, ok := spec.byName[name]; ok; s, ok = spec.byName[s.parent] {
 			names = slices.AppendSeq(names, maps.Keys(s.properties))
 		}
 	}

@@ -155,7 +155,7 @@ func activityValueSchemas() []string {
 }
 
 func rejectUnknownValueNames(spec *schemas, root, expression string, requested []requestedField) *Error {
-	j := schemaResolver{schemas: spec}
+	resolver := schemaResolver{spec: spec}
 	activity := schemaSet{schemas: spec.subtree(root)}
 	var unknown []*Node
 	for _, field := range requested {
@@ -163,7 +163,7 @@ func rejectUnknownValueNames(spec *schemas, root, expression string, requested [
 			continue
 		}
 		field.extraSchemas = activityValueSchemas()
-		names := j.childSchemas(activity, &fieldNode{field: field}).names
+		names := resolver.childSchemas(activity, &fieldNode{field: field}).names
 		for _, child := range field.children {
 			if !slices.Contains(names, child.name) {
 				unknown = append(unknown, nearestEntry(fieldKey, fieldPath([]string{field.name}, child.name), nearestNames(child.name, names)))

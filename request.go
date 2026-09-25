@@ -49,7 +49,7 @@ type decodedResponse struct {
 	httpResponse *http.Response
 	body         []byte
 	schema       string
-	schemas      *schemas
+	spec         *schemas
 	address      *url.URL
 }
 
@@ -152,7 +152,7 @@ func (c *Client) decodeResponse(responseSchema string, requested []requestedFiel
 	if fault := checkMissingFields(c.spec, response, expected.schema, requested, tree); fault != nil {
 		return decodedResponse{}, fault
 	}
-	return decodedResponse{objects: objects, httpResponse: response, body: body, schema: expected.schema, schemas: c.spec, address: c.address}, nil
+	return decodedResponse{objects: objects, httpResponse: response, body: body, schema: expected.schema, spec: c.spec, address: c.address}, nil
 }
 
 func decodeObjects(tree any, isList bool) ([]map[string]any, bool) {

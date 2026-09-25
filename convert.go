@@ -84,10 +84,10 @@ func (n converter) pairs(schema string, requested []requestedField, object map[s
 }
 
 func (n converter) property(schema string, field requestedField, value any) (*Node, *Error) {
-	if n.response.schemas.isInstanceURL(schema, field.name) {
+	if n.response.spec.isInstanceURL(schema, field.name) {
 		return n.resolveInstancePath(field, value)
 	}
-	decl, _ := n.response.schemas.declaration(schema, field.name)
+	decl, _ := n.response.spec.declaration(schema, field.name)
 	return n.value(decl, field, value)
 }
 
@@ -160,14 +160,14 @@ const (
 	iconURLKey              = "iconUrl"
 )
 
-func (c *schemas) isInstanceURL(schema, property string) bool {
+func (spec *schemas) isInstanceURL(schema, property string) bool {
 	switch property {
 	case urlKey, thumbnailURLKey:
-		return c.isSubtypeOf(schema, issueAttachmentSchema) || c.isSubtypeOf(schema, articleAttachmentSchema)
+		return spec.isSubtypeOf(schema, issueAttachmentSchema) || spec.isSubtypeOf(schema, articleAttachmentSchema)
 	case avatarURLKey:
-		return c.isSubtypeOf(schema, userSchema)
+		return spec.isSubtypeOf(schema, userSchema)
 	case iconURLKey:
-		return c.isSubtypeOf(schema, projectSchema)
+		return spec.isSubtypeOf(schema, projectSchema)
 	}
 	return false
 }
@@ -244,21 +244,21 @@ func (n converter) durationNode(value any) (*Node, *Error) {
 	return NewString(duration(count)), nil
 }
 
-func (c *schemas) askDurationsByMinutes(responseSchema string, requested []requestedField) ([]requestedField, *Error) {
+func (spec *schemas) askDurationsByMinutes(responseSchema string, requested []requestedField) ([]requestedField, *Error) {
 	asked := cloneFields(requested)
-	return asked, c.durationsUnder(c.subtree(parseTypeRef(responseSchema).schema), asked, nil)
+	return asked, spec.durationsUnder(spec.subtree(parseTypeRef(responseSchema).schema), asked, nil)
 }
 
-func (c *schemas) durationsUnder(owners []string, fields []requestedField, parents []string) *Error {
+func (spec *schemas) durationsUnder(owners []string, fields []requestedField, parents []string) *Error {
 	for i := range fields {
 		field := &fields[i]
-		inner, duration, onlyDuration := c.declarationsOf(owners, *field)
+		inner, duration, onlyDuration := spec.declarationsOf(owners, *field)
 		if onlyDuration && field.children != nil {
 			message := fmt.Sprintf("%s is printed as the ISO 8601 period of the minutes it holds, as in PT1H30M, so "+
 				"no name stands under it", fieldPath(parents, field.name))
 			return &Error{Code: CodeBadUsage, Message: message}
 		}
-		if fault := c.durationsUnder(inner, field.children, append(slices.Clip(parents), field.name)); fault != nil {
+		if fault := spec.durationsUnder(inner, field.children, append(slices.Clip(parents), field.name)); fault != nil {
 			return fault
 		}
 		if duration {
@@ -268,11 +268,11 @@ func (c *schemas) durationsUnder(owners []string, fields []requestedField, paren
 	return nil
 }
 
-func (c *schemas) declarationsOf(owners []string, field requestedField) (inner []string, duration, onlyDuration bool) {
+func (spec *schemas) declarationsOf(owners []string, field requestedField) (inner []string, duration, onlyDuration bool) {
 	other := false
 	declared := slices.Clone(field.extraSchemas)
 	for _, owner := range owners {
-		decl, found := c.declaration(owner, field.name)
+		decl, found := spec.declaration(owner, field.name)
 		switch {
 		case !found:
 			continue
@@ -286,7 +286,7 @@ func (c *schemas) declarationsOf(owners []string, field requestedField) (inner [
 		}
 	}
 	for _, schema := range declared {
-		for _, name := range c.subtree(schema) {
+		for _, name := range spec.subtree(schema) {
 			if !slices.Contains(inner, name) {
 				inner = append(inner, name)
 			}
