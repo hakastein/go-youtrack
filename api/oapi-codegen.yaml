@@ -1,0 +1,11 @@
+package: ytapi
+generate:
+  models: true
+  client: true
+output: ytapi/ytapi.gen.go
+output-options:
+  user-templates:
+    client-with-responses.tmpl: api/client-with-responses.tmpl
+  overlay:
+    path: api/overlay.yaml
+    strict: true

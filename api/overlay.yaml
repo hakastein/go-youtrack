@@ -1,0 +1,190 @@
+overlay: 1.0.0
+info:
+  title: YouTrack REST API for internal/ytapi
+  version: 1.0.0
+actions:
+  # Both this and inherited $type map to Go field Type.
+  - target: $.components.schemas.IssueWorkItem.allOf[1].properties.type
+    update:
+      x-go-name: WorkItemType
+  - target: $.paths['/admin/projects/{id}'].get
+    update:
+      operationId: GetProject
+  - target: $.paths['/admin/projects'].get
+    update:
+      operationId: GetProjects
+  - target: $.paths['/admin/projects/{id}/customFields'].get
+    update:
+      operationId: GetProjectCustomFields
+  - target: $.paths['/admin/projects/{id}/customFields/{projectCustomFieldId}'].get
+    update:
+      operationId: GetProjectCustomField
+  - target: $.paths['/admin/customFieldSettings/customFields'].get
+    update:
+      operationId: GetCustomFields
+  - target: $.paths['/issues/{id}'].get
+    update:
+      operationId: GetIssue
+  # Spec omits customFields (server takes one parameter per name, not a single string).
+  - target: $.paths['/issues/{id}'].get.parameters
+    update:
+      - name: customFields
+        in: query
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+  - target: $.paths['/issues/{id}'].delete
+    update:
+      operationId: DeleteIssue
+  - target: $.paths['/issues'].post
+    update:
+      operationId: CreateIssue
+  - target: $.paths['/issues/{id}'].post
+    update:
+      operationId: UpdateIssue
+  - target: $.paths['/issues/{id}/links/{issueLinkId}/issues'].post
+    update:
+      operationId: AddLinkedIssue
+  - target: $.paths['/issues/{id}/links/{issueLinkId}/issues/{issueId}'].delete
+    update:
+      operationId: RemoveLinkedIssue
+  - target: $.paths['/issues'].get.parameters[?(@.name=='customFields')]
+    update:
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+  - target: $.paths['/issuesGetter/count'].post
+    update:
+      operationId: CountIssues
+  - target: $.paths['/search/assist'].post
+    update:
+      operationId: AssistSearch
+  - target: $.paths['/users/me'].get
+    update:
+      operationId: GetCurrentUser
+  - target: $.paths['/users/{id}'].get
+    update:
+      operationId: GetUser
+  - target: $.paths['/users'].get.parameters
+    update:
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
+  - target: $.paths['/articles/{id}'].get
+    update:
+      operationId: GetArticle
+  - target: $.paths['/articles/{id}'].delete
+    update:
+      operationId: DeleteArticle
+  - target: $.paths['/articles'].post
+    update:
+      operationId: CreateArticle
+  - target: $.paths['/articles/{id}'].post
+    update:
+      operationId: UpdateArticle
+  - target: $.paths['/issues/{id}/comments'].get
+    update:
+      operationId: GetIssueComments
+  - target: $.paths['/issues/{id}/activities'].get
+    update:
+      operationId: GetIssueActivities
+  - target: $.paths['/articles/{id}/comments'].get
+    update:
+      operationId: GetArticleComments
+  - target: $.paths['/articles/{id}/childArticles'].get
+    update:
+      operationId: GetArticleChildArticles
+  - target: $.paths['/issues/{id}/comments'].post
+    update:
+      operationId: CreateIssueComment
+  - target: $.paths['/articles/{id}/comments'].post
+    update:
+      operationId: CreateArticleComment
+  - target: $.paths['/issues/{id}/comments/{issueCommentId}'].get
+    update:
+      operationId: GetIssueComment
+  - target: $.paths['/issues/{id}/comments/{issueCommentId}'].post
+    update:
+      operationId: UpdateIssueComment
+  - target: $.paths['/articles/{id}/comments/{articleCommentId}'].post
+    update:
+      operationId: UpdateArticleComment
+  - target: $.paths['/issues/{id}/comments/{issueCommentId}'].delete
+    update:
+      operationId: DeleteIssueComment
+  - target: $.paths['/articles/{id}/comments/{articleCommentId}'].delete
+    update:
+      operationId: DeleteArticleComment
+  - target: $.paths['/issues/{id}/timeTracking/workItems'].get
+    update:
+      operationId: GetIssueWorkItems
+  - target: $.paths['/issues/{id}/timeTracking/workItems'].post
+    update:
+      operationId: CreateIssueWorkItem
+  - target: $.paths['/issues/{id}/timeTracking/workItems/{issueWorkItemId}'].post
+    update:
+      operationId: UpdateIssueWorkItem
+  - target: $.paths['/issues/{id}/timeTracking/workItems/{issueWorkItemId}'].get
+    update:
+      operationId: GetIssueWorkItem
+  - target: $.paths['/issues/{id}/timeTracking/workItems/{issueWorkItemId}'].delete
+    update:
+      operationId: DeleteIssueWorkItem
+  - target: $.paths['/issues/{id}/attachments'].get
+    update:
+      operationId: GetIssueAttachments
+  - target: $.paths['/articles/{id}/attachments'].get
+    update:
+      operationId: GetArticleAttachments
+  - target: $.paths['/issues/{id}/attachments'].post
+    update:
+      operationId: CreateIssueAttachment
+  - target: $.paths['/articles/{id}/attachments'].post
+    update:
+      operationId: CreateArticleAttachment
+  - target: $.paths['/issues/{id}/attachments/{issueAttachmentId}'].get
+    update:
+      operationId: GetIssueAttachment
+  - target: $.paths['/articles/{id}/attachments/{articleAttachmentId}'].get
+    update:
+      operationId: GetArticleAttachment
+  - target: $.paths['/issues/{id}/attachments/{issueAttachmentId}'].delete
+    update:
+      operationId: DeleteIssueAttachment
+  - target: $.paths['/articles/{id}/attachments/{articleAttachmentId}'].delete
+    update:
+      operationId: DeleteArticleAttachment
+  - target: $.paths['/tags'].post
+    update:
+      operationId: CreateTag
+  - target: $.paths['/tags/{id}'].delete
+    update:
+      operationId: DeleteTag
+  - target: $.paths['/issues/{id}/tags'].post
+    update:
+      operationId: AddIssueTag
+  - target: $.paths['/articles/{id}/tags'].post
+    update:
+      operationId: AddArticleTag
+  - target: $.paths['/issues/{id}/tags/{tagId}'].delete
+    update:
+      operationId: RemoveIssueTag
+  - target: $.paths['/articles/{id}/tags/{tagId}'].delete
+    update:
+      operationId: RemoveArticleTag
+  - target: $.paths['/articles'].get.parameters
+    update:
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
