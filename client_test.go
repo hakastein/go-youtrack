@@ -80,13 +80,19 @@ func TestClientReachesTheInstanceUnderAPathOfTheAddress(t *testing.T) {
 
 func TestClientDoesNotFollowARedirect(t *testing.T) {
 	t.Parallel()
-	server := fake.Serve(t, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/elsewhere", http.StatusFound)
+	server := fake.Serve(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "/elsewhere")
+		w.WriteHeader(http.StatusFound)
 	})
 
 	err := showDEV(t.Context(), client(t, server))
 
-	require.Error(t, err)
+	want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
+		lastRequest(t, server),
+		{Key: "upstream_status", Value: number(http.StatusFound)},
+		{Key: "upstream_body", Value: youtrack.NewString("")},
+	}}
+	assert.Equal(t, want, errorOf(t, err))
 	assert.Equal(t, []string{"/api/admin/projects/DEV"}, server.Paths())
 }
 

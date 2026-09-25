@@ -2,7 +2,6 @@ package youtrack_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -11,28 +10,31 @@ import (
 	"github.com/hakastein/youtrack"
 )
 
-func TestAnErrorIsItsCode(t *testing.T) {
+func TestAnErrorIsItsCodeAndNoOther(t *testing.T) {
 	t.Parallel()
-	sentinels := map[youtrack.Code]error{
-		youtrack.CodeBadUsage:        youtrack.ErrBadUsage,
-		youtrack.CodeUnknownName:     youtrack.ErrUnknownName,
-		youtrack.CodeMissingRequired: youtrack.ErrMissingRequired,
-		youtrack.CodeNotFound:        youtrack.ErrNotFound,
-		youtrack.CodeDenied:          youtrack.ErrDenied,
-		youtrack.CodeRejected:        youtrack.ErrRejected,
-		youtrack.CodeUpstreamFailed:  youtrack.ErrUpstreamFailed,
-		youtrack.CodeUpstreamInvalid: youtrack.ErrUpstreamInvalid,
-		youtrack.CodeWriteUncertain:  youtrack.ErrWriteUncertain,
+	tests := []struct {
+		code     youtrack.Code
+		sentinel error
+		other    error
+	}{
+		{code: youtrack.CodeBadUsage, sentinel: youtrack.ErrBadUsage, other: youtrack.ErrUnknownName},
+		{code: youtrack.CodeUnknownName, sentinel: youtrack.ErrUnknownName, other: youtrack.ErrMissingRequired},
+		{code: youtrack.CodeMissingRequired, sentinel: youtrack.ErrMissingRequired, other: youtrack.ErrNotFound},
+		{code: youtrack.CodeNotFound, sentinel: youtrack.ErrNotFound, other: youtrack.ErrDenied},
+		{code: youtrack.CodeDenied, sentinel: youtrack.ErrDenied, other: youtrack.ErrRejected},
+		{code: youtrack.CodeRejected, sentinel: youtrack.ErrRejected, other: youtrack.ErrUpstreamFailed},
+		{code: youtrack.CodeUpstreamFailed, sentinel: youtrack.ErrUpstreamFailed, other: youtrack.ErrUpstreamInvalid},
+		{code: youtrack.CodeUpstreamInvalid, sentinel: youtrack.ErrUpstreamInvalid, other: youtrack.ErrWriteUncertain},
+		{code: youtrack.CodeWriteUncertain, sentinel: youtrack.ErrWriteUncertain, other: youtrack.ErrBadUsage},
 	}
-	for code, sentinel := range sentinels {
-		t.Run(string(code), func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(string(tc.code), func(t *testing.T) {
 			t.Parallel()
-			err := fmt.Errorf("wrapped: %w", &youtrack.Error{Code: code, Message: "First", AfterWrite: true})
 
-			for other, unlike := range sentinels {
-				assert.Equal(t, other == code, errors.Is(err, unlike), "errors.Is %s", other)
-			}
-			assert.ErrorIs(t, err, sentinel)
+			err := fmt.Errorf("wrapped: %w", &youtrack.Error{Code: tc.code, Message: "First", AfterWrite: true})
+
+			assert.ErrorIs(t, err, tc.sentinel)
+			assert.NotErrorIs(t, err, tc.other)
 		})
 	}
 }
