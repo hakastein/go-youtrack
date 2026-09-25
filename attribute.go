@@ -9,7 +9,6 @@ import (
 const (
 	attributesKey           = "attributes"
 	workItemAttributeSchema = "WorkItemAttribute"
-	attributeValueKey       = "value"
 )
 
 // Name and Value resolve in any letter case, an exact spelling settling a tie; Clear takes no Value.
@@ -23,7 +22,7 @@ func attributesAsked() []requestedField {
 	return []requestedField{
 		{name: idKey},
 		{name: nameKey},
-		{name: attributeValueKey, children: []requestedField{{name: idKey}, {name: nameKey}}},
+		{name: valueKey, children: []requestedField{{name: idKey}, {name: nameKey}}},
 	}
 }
 
@@ -61,7 +60,7 @@ func (n converter) attributes(value any) (*Node, *Error) {
 		}
 		named[name] = true
 		held := NewNull()
-		if value := memberOf(item, attributeValueKey); value != nil {
+		if value := memberOf(item, valueKey); value != nil {
 			valueName, isText := memberOf(value, nameKey).(string)
 			if !isText {
 				return nil, n.response.invalid(fmt.Sprintf("the value of the attribute %s arrived without a name", quote(name)))
@@ -151,7 +150,7 @@ func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]res
 		if !found {
 			unknown = append(unknown, NewMap(
 				Pair{Key: "attribute", Value: NewString(attribute.name)},
-				Pair{Key: attributeValueKey, Value: NewString(asked.Value)},
+				Pair{Key: valueKey, Value: NewString(asked.Value)},
 				Pair{Key: "nearest", Value: textList(nearestNamed(asked.Value, values))}))
 			continue
 		}
@@ -213,7 +212,7 @@ func attributeMismatches(wrong []mismatch, filed []resolvedAttribute, value any)
 		at := slices.IndexFunc(received, func(item any) bool { return memberOf(item, idKey) == attribute.id })
 		var kept any
 		if at >= 0 {
-			kept = memberOf(received[at], attributeValueKey)
+			kept = memberOf(received[at], valueKey)
 		}
 		if attribute.value == nil {
 			if kept != nil {

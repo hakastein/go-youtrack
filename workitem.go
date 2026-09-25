@@ -17,7 +17,6 @@ const (
 	workItemsListing        = "[]" + workItemSchema
 	durationKey             = "duration"
 	dateKey                 = "date"
-	typeKey                 = "type"
 	workItemNoun            = "work item"
 	workItemOwnerNoun       = "the issue"
 	pluginsKey              = "plugins"

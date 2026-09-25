@@ -15,11 +15,11 @@ const (
 )
 
 const (
-	issueSchema   = "Issue"
-	idReadableKey = "idReadable"
-	issuesPlural  = "issues"
-	countSchema   = "IssueCountResponse"
-	countKey      = "count"
+	issueSchema    = "Issue"
+	issuesPlural   = "issues"
+	countSchema    = "IssueCountResponse"
+	countKey       = "count"
+	descriptionKey = "description"
 )
 
 const stillCounting = -1

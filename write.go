@@ -16,13 +16,6 @@ type WriteOptions struct {
 }
 
 const (
-	summaryKey          = "summary"
-	descriptionKey      = "description"
-	contentKey          = "content"
-	projectKey          = "project"
-	shortNameKey        = "shortName"
-	parentArticleKey    = "parentArticle"
-	parentKey           = "parent"
 	projectSchema       = "Project"
 	fieldBasedCondition = "FieldBasedCondition"
 )
@@ -123,7 +116,7 @@ func mismatchFault(a decodedResponse, wrong []mismatch, identity ...Pair) *Error
 	entries := make([]*Node, 0, len(wrong))
 	for _, m := range wrong {
 		entries = append(entries, NewMap(
-			Pair{Key: "field", Value: NewString(m.field)},
+			Pair{Key: fieldKey, Value: NewString(m.field)},
 			Pair{Key: "expected", Value: m.expected},
 			Pair{Key: "actual", Value: m.actual}))
 	}

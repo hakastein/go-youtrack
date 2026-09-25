@@ -8,9 +8,26 @@ import (
 )
 
 const (
-	idKey        = "id"
-	fieldTypeKey = "fieldType"
-	valueTypeKey = "valueType"
+	idKey            = "id"
+	idReadableKey    = "idReadable"
+	nameKey          = "name"
+	localizedNameKey = "localizedName"
+	loginKey         = "login"
+	minutesKey       = "minutes"
+	textKey          = "text"
+	valueKey         = "value"
+	fieldKey         = "field"
+	typeKey          = "type"
+	fieldTypeKey     = "fieldType"
+	valueTypeKey     = "valueType"
+	customFieldsKey  = "customFields"
+	ordinalKey       = "ordinal"
+	canBeEmptyKey    = "canBeEmpty"
+	summaryKey       = "summary"
+	projectKey       = "project"
+	shortNameKey     = "shortName"
+	addedKey         = "added"
+	removedKey       = "removed"
 )
 
 type requestedField struct {

@@ -13,9 +13,12 @@ const ArticleShowFields = "idReadable,summary,reporter(login),created,updated,ta
 const ArticleListFields = "idReadable,summary"
 
 const (
-	articleSchema   = "Article"
-	articlesPlural  = "articles"
-	articlesListing = "[]" + articleSchema
+	articleSchema    = "Article"
+	articlesPlural   = "articles"
+	articlesListing  = "[]" + articleSchema
+	contentKey       = "content"
+	parentArticleKey = "parentArticle"
+	parentKey        = "parent"
 )
 
 // ShowArticleOptions: Fields is a fields= expression, empty for ArticleShowFields and +x for them and x. Comments

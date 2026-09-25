@@ -199,13 +199,6 @@ type fieldKind struct {
 	bundle    bool
 }
 
-const (
-	nameKey    = "name"
-	loginKey   = "login"
-	minutesKey = "minutes"
-	textKey    = "text"
-)
-
 func fieldKinds() []fieldKind {
 	return []fieldKind{
 		{valueType: EnumType, multi: false, class: "SingleEnumIssueCustomField", member: nameKey, bundle: true},
@@ -477,8 +470,6 @@ func (k fieldKind) keyText(held any) (string, bool) {
 	text, isText := held.(string)
 	return text, isText
 }
-
-const localizedNameKey = "localizedName"
 
 func (k fieldKind) shape() string {
 	switch k.form {

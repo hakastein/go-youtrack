@@ -99,7 +99,7 @@ func (s *IssuesService) get(ctx context.Context, id string) (*Issue, *Error) {
 }
 
 func issueRecordFields() []requestedField {
-	named := requestedField{name: "value", children: []requestedField{{name: idKey}, {name: localizedNameKey}}}
+	named := requestedField{name: valueKey, children: []requestedField{{name: idKey}, {name: localizedNameKey}}}
 	return []requestedField{
 		{name: idKey},
 		{name: idReadableKey},

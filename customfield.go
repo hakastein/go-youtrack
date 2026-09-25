@@ -158,23 +158,20 @@ func (n converter) fieldValues(f issueCustomField) ([]Value, *Error) {
 	return values, nil
 }
 
-const (
-	customFieldsKey   = "customFields"
-	customFieldSchema = "IssueCustomField"
-)
+const customFieldSchema = "IssueCustomField"
 
 func customFieldsAsked(translated bool) []requestedField {
 	held := []requestedField{{name: fieldTypeKey, children: []requestedField{{name: valueTypeKey}, {name: "isMultiValue"}}}}
 	if translated {
-		held = append(held, requestedField{name: "localizedName"})
+		held = append(held, requestedField{name: localizedNameKey})
 	}
 	return []requestedField{
 		{name: nameKey},
-		{name: "value", children: valueKeyFields()},
+		{name: valueKey, children: valueKeyFields()},
 		{name: "projectCustomField", children: []requestedField{
 			{name: idKey},
-			{name: "ordinal"},
-			{name: "field", children: held},
+			{name: ordinalKey},
+			{name: fieldKey, children: held},
 		}},
 	}
 }
@@ -314,7 +311,7 @@ func (n converter) readCustomField(item any) (issueCustomField, *Error) {
 	if !whole {
 		return issueCustomField{}, n.response.invalid(brokenBinding(name))
 	}
-	ordinal, isWhole := parseInt64(place["ordinal"])
+	ordinal, isWhole := parseInt64(place[ordinalKey])
 	if !isWhole {
 		message := fmt.Sprintf("the place of the custom field %s among the fields of the project is no whole number", quote(name))
 		return issueCustomField{}, n.response.invalid(message)
@@ -322,7 +319,7 @@ func (n converter) readCustomField(item any) (issueCustomField, *Error) {
 	if !named.kind.Known() {
 		return issueCustomField{}, n.response.invalid(unmodelled(named.kind))
 	}
-	return issueCustomField{name: name, value: object["value"], kind: named.kind, ordinal: ordinal,
+	return issueCustomField{name: name, value: object[valueKey], kind: named.kind, ordinal: ordinal,
 		binding: binding, localizedName: named.localizedName}, nil
 }
 
@@ -336,7 +333,7 @@ func readBinding(place map[string]any) (binding string, named fieldInfo, ok bool
 	if !isText {
 		return "", fieldInfo{}, false
 	}
-	field, isObject := place["field"].(map[string]any)
+	field, isObject := place[fieldKey].(map[string]any)
 	if !isObject {
 		return "", fieldInfo{}, false
 	}
@@ -349,7 +346,7 @@ func readBinding(place map[string]any) (binding string, named fieldInfo, ok bool
 	if !isText || !isFlag {
 		return "", fieldInfo{}, false
 	}
-	translated, isName := readLocalized(field["localizedName"])
+	translated, isName := readLocalized(field[localizedNameKey])
 	if !isName {
 		return "", fieldInfo{}, false
 	}
@@ -415,7 +412,7 @@ const customFieldCatalogue = "[]CustomField"
 const brokenCatalogue = "a custom field of the instance is named in some shape other than text"
 
 func catalogueFields() []requestedField {
-	return []requestedField{{name: nameKey}, {name: "localizedName"}}
+	return []requestedField{{name: nameKey}, {name: localizedNameKey}}
 }
 
 func (c *Client) customFieldCatalogue(ctx context.Context) (decodedResponse, []fieldInfo, *Error) {
@@ -441,7 +438,7 @@ func readCatalogueEntry(object map[string]any) (fieldInfo, bool) {
 	if !isText {
 		return fieldInfo{}, false
 	}
-	translated, isName := readLocalized(object["localizedName"])
+	translated, isName := readLocalized(object[localizedNameKey])
 	if !isName {
 		return fieldInfo{}, false
 	}
@@ -515,10 +512,10 @@ func (r *nameResolver) place(name, written string) (int, bool) {
 		return places[0], true
 	case r.reported[written]:
 	case len(places) == 0:
-		r.unknown = append(r.unknown, nearestEntry("field", written, nearestNamed(name, r.catalogue)))
+		r.unknown = append(r.unknown, nearestEntry(fieldKey, written, nearestNamed(name, r.catalogue)))
 	default:
 		r.ambiguous = append(r.ambiguous, NewMap(
-			Pair{Key: "field", Value: NewString(written)},
+			Pair{Key: fieldKey, Value: NewString(written)},
 			Pair{Key: "candidates", Value: textList(canonical(pick(r.catalogue, places)))}))
 	}
 	r.reported[written] = true
@@ -539,15 +536,15 @@ func (r *nameResolver) fault(sent, against Pair, among string) *Error {
 }
 
 func fieldInfoFields() requestedField {
-	return requestedField{name: "field", children: []requestedField{
+	return requestedField{name: fieldKey, children: []requestedField{
 		{name: nameKey},
-		{name: "localizedName"},
+		{name: localizedNameKey},
 		{name: fieldTypeKey, children: []requestedField{{name: valueTypeKey}, {name: "isMultiValue"}}},
 	}}
 }
 
 func readFieldInfo(object map[string]any) (fieldInfo, bool) {
-	field, isObject := object["field"].(map[string]any)
+	field, isObject := object[fieldKey].(map[string]any)
 	if !isObject {
 		return fieldInfo{}, false
 	}
@@ -567,7 +564,7 @@ func readFieldInfo(object map[string]any) (fieldInfo, bool) {
 	if !isBool {
 		return fieldInfo{}, false
 	}
-	translated, isName := readLocalized(field["localizedName"])
+	translated, isName := readLocalized(field[localizedNameKey])
 	if !isName {
 		return fieldInfo{}, false
 	}

@@ -19,9 +19,6 @@ const (
 	customFilterField = "CustomFilterField"
 	activitiesPlural  = "activities"
 	categoryKey       = "category"
-	addedKey          = "added"
-	removedKey        = "removed"
-	fieldKey          = "field"
 	customFieldKey    = "customField"
 	timestampKey      = "timestamp"
 )
@@ -182,7 +179,7 @@ func rejectUnknownValueNames(spec *schemas, expression string, requested []reque
 		names := j.childSchemas(activity, &fieldNode{field: field}).names
 		for _, child := range field.children {
 			if !slices.Contains(names, child.name) {
-				unknown = append(unknown, nearestEntry("field", fieldPath([]string{field.name}, child.name), nearestNames(child.name, names)))
+				unknown = append(unknown, nearestEntry(fieldKey, fieldPath([]string{field.name}, child.name), nearestNames(child.name, names)))
 			}
 		}
 	}

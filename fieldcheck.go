@@ -57,7 +57,7 @@ func checkMissingFields(spec *schemas, response *http.Response, responseSchema s
 		if code == CodeUpstreamInvalid {
 			missing = append(missing, missingEntry(field, a))
 		} else {
-			unknown = append(unknown, nearestEntry("field", field, nearestNames(a.name, j.schemaSets[a.at].names)))
+			unknown = append(unknown, nearestEntry(fieldKey, field, nearestNames(a.name, j.schemaSets[a.at].names)))
 		}
 	}
 	details := []Pair{
@@ -197,7 +197,7 @@ func missingEntry(field string, a missingField) *Node {
 	if a.hasType {
 		schema = NewString(a.objectType)
 	}
-	return NewMap(Pair{Key: "field", Value: NewString(field)}, Pair{Key: "type", Value: schema})
+	return NewMap(Pair{Key: fieldKey, Value: NewString(field)}, Pair{Key: typeKey, Value: schema})
 }
 
 func nearestEntry(key, written string, nearest []string) *Node {

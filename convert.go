@@ -198,7 +198,7 @@ func (n converter) invalidURL(field requestedField, value any) *Error {
 	at := fieldPath(n.at, field.name)
 	message := fmt.Sprintf("%s is an address of the instance, and what arrived for it is no absolute path", at)
 	return n.response.fault(CodeUpstreamInvalid, message,
-		Pair{Key: "field", Value: NewString(at)},
+		Pair{Key: fieldKey, Value: NewString(at)},
 		Pair{Key: "upstream_value", Value: rawValueNode(value)})
 }
 

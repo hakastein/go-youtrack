@@ -13,8 +13,6 @@ const FieldListFields = "field(name,localizedName,fieldType(valueType,isMultiVal
 
 const projectRead = "jetbrains.jetpass.project-read"
 
-const ordinalKey = "ordinal"
-
 // ListFieldsOptions: Fields is a fields= expression, empty for FieldListFields and +x for them and x.
 type ListFieldsOptions struct {
 	Fields string
@@ -205,8 +203,8 @@ func (n fieldInfo) verifyUnchanged(a decodedResponse, code string) *Error {
 		return nil
 	}
 	details := append(responseDetails(a.httpResponse),
-		Pair{Key: "project", Value: NewString(code)},
-		Pair{Key: "field", Value: NewString(n.name)},
+		Pair{Key: projectKey, Value: NewString(code)},
+		Pair{Key: fieldKey, Value: NewString(n.name)},
 		bodyDetail(a.body))
 	message := "the custom field the id addresses is no longer the one the name resolved to"
 	return &Error{Code: CodeUpstreamFailed, Message: message, Details: details}
@@ -262,6 +260,6 @@ func sortedByOrdinal(decoded decodedResponse) ([]map[string]any, *Error) {
 func noFields(a decodedResponse, code string) *Error {
 	message := "not one custom field of the project arrived, and a token without the right under permission is sent an empty list"
 	return a.fault(CodeDenied, message,
-		Pair{Key: "project", Value: NewString(code)},
+		Pair{Key: projectKey, Value: NewString(code)},
 		Pair{Key: "permission", Value: NewString(projectRead)})
 }

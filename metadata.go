@@ -68,12 +68,10 @@ func (s *FieldsService) readMetadata(ctx context.Context, project string) (*Meta
 	return &Metadata{Fields: fields}, decoded.sent(), nil
 }
 
-const canBeEmptyKey = "canBeEmpty"
-
 func projectFields() []requestedField {
 	return []requestedField{
 		{name: idKey},
-		{name: "shortName"},
+		{name: shortNameKey},
 		{name: customFieldsKey, children: []requestedField{{name: idKey}, {name: ordinalKey}, {name: canBeEmptyKey}, fieldInfoFields()}},
 	}
 }

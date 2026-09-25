@@ -163,7 +163,7 @@ func (h commentTarget) reject(spec *schemas, expression string, requested []requ
 func commentOutputFields() []requestedField {
 	return []requestedField{
 		{name: idKey},
-		{name: "author", children: []requestedField{{name: "login"}}},
+		{name: "author", children: []requestedField{{name: loginKey}}},
 		{name: "created"},
 		{name: textKey},
 	}

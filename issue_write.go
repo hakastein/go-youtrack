@@ -484,15 +484,15 @@ type fieldCondition struct {
 func writeMetadataFields() []requestedField {
 	return []requestedField{
 		{name: idKey},
-		{name: "shortName"},
+		{name: shortNameKey},
 		{name: customFieldsKey, children: []requestedField{
 			{name: idKey},
-			{name: "canBeEmpty"},
+			{name: canBeEmptyKey},
 			{name: "defaultValues", children: []requestedField{{name: nameKey}}},
 			{name: "condition", children: []requestedField{
 				{name: "$type"},
 				{name: "showForNullValue"},
-				{name: "field", children: []requestedField{{name: idKey}}},
+				{name: fieldKey, children: []requestedField{{name: idKey}}},
 				{name: "values", children: []requestedField{{name: nameKey}}},
 			}},
 			fieldInfoFields(),
@@ -524,7 +524,7 @@ func issueToWriteFields() []requestedField {
 			{name: nameKey},
 			{name: "projectCustomField", children: []requestedField{{name: idKey}}},
 		}},
-		{name: "project", children: writeMetadataFields()},
+		{name: projectKey, children: writeMetadataFields()},
 	}
 }
 
@@ -539,7 +539,7 @@ func (c *Client) readIssueToWrite(ctx context.Context, id string) (issueForUpdat
 	if fault != nil {
 		return issueForUpdate{}, fault
 	}
-	held, isObject := a.objects[0]["project"].(map[string]any)
+	held, isObject := a.objects[0][projectKey].(map[string]any)
 	if !isObject {
 		return issueForUpdate{}, a.invalid("the project of the issue is not a JSON object")
 	}
@@ -589,7 +589,7 @@ const brokenProject = "the id or the short name of the project is not text"
 
 func readWriteMetadata(a decodedResponse, project map[string]any) (projectMetadata, *Error) {
 	id, isText := project[idKey].(string)
-	code, isName := project["shortName"].(string)
+	code, isName := project[shortNameKey].(string)
 	if !isText || !isName {
 		return projectMetadata{}, a.invalid(brokenProject)
 	}
@@ -615,7 +615,7 @@ func readWriteMetadata(a decodedResponse, project map[string]any) (projectMetada
 func readProjectField(object map[string]any) (projectField, bool) {
 	id, isText := object[idKey].(string)
 	named, isNamed := readFieldInfo(object)
-	canBeEmpty, isFlag := object["canBeEmpty"].(bool)
+	canBeEmpty, isFlag := object[canBeEmptyKey].(bool)
 	if !isText || !isNamed || !isFlag {
 		return projectField{}, false
 	}
@@ -675,7 +675,7 @@ func readCondition(value any) (fieldCondition, bool) {
 		return fieldCondition{}, false
 	}
 	controls := ""
-	if watched, isObject := object["field"].(map[string]any); isObject {
+	if watched, isObject := object[fieldKey].(map[string]any); isObject {
 		if controls, isText = watched[idKey].(string); !isText {
 			return fieldCondition{}, false
 		}
@@ -765,8 +765,8 @@ func (p projectMetadata) encodeValues(given [][]string, emptied []bool, issueFie
 
 func invalidEntry(field, value, reason string) *Node {
 	return NewMap(
-		Pair{Key: "field", Value: NewString(field)},
-		Pair{Key: "value", Value: NewString(value)},
+		Pair{Key: fieldKey, Value: NewString(field)},
+		Pair{Key: valueKey, Value: NewString(value)},
 		Pair{Key: "reason", Value: NewString(reason)})
 }
 
@@ -809,7 +809,7 @@ const (
 )
 
 func (p projectMetadata) fault(code Code, message, key string, entries *Node) *Error {
-	return p.response.fault(code, message, Pair{Key: "project", Value: NewString(p.code)}, Pair{Key: key, Value: entries})
+	return p.response.fault(code, message, Pair{Key: projectKey, Value: NewString(p.code)}, Pair{Key: key, Value: entries})
 }
 
 func invalidEntries(hidden []hiddenField) *Node {
