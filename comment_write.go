@@ -126,11 +126,7 @@ func (w commentCreate) verifyFields() []requestedField {
 }
 
 func (w commentCreate) verifyText(a decodedResponse, named *Node) *Error {
-	wrong := textMismatch(nil, textKey, w.text, a.objects[0][textKey])
-	if len(wrong) == 0 {
-		return nil
-	}
-	return mismatchFault(a, knownAs(commentKey, named), wrong)
+	return mismatchFault(a, textMismatch(nil, textKey, w.text, a.objects[0][textKey]), Pair{Key: commentKey, Value: named})
 }
 
 func (w commentCreate) verify(a decodedResponse) *Error {

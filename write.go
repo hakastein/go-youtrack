@@ -104,7 +104,10 @@ func emptyMismatch(wrong []mismatch, field string, value any) []mismatch {
 	return append(wrong, mismatch{field: field, expected: NewNull(), actual: rawValueNode(value)})
 }
 
-func mismatchFault(a decodedResponse, identity []Pair, wrong []mismatch) *Error {
+func mismatchFault(a decodedResponse, wrong []mismatch, identity ...Pair) *Error {
+	if len(wrong) == 0 {
+		return nil
+	}
 	entries := make([]*Node, 0, len(wrong))
 	for _, m := range wrong {
 		entries = append(entries, NewMap(
@@ -114,10 +117,6 @@ func mismatchFault(a decodedResponse, identity []Pair, wrong []mismatch) *Error 
 	}
 	message := "the write went through and the values under mismatch came back as something other than what was written"
 	return a.fault(CodeUpstreamInvalid, message, append(identity, Pair{Key: "mismatch", Value: NewList(entries...)})...)
-}
-
-func knownAs(named string, id *Node) []Pair {
-	return []Pair{{Key: named, Value: id}}
 }
 
 func responseID(a decodedResponse, name string) *Node {

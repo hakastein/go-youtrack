@@ -171,10 +171,7 @@ func (w articleUpdate) verify(a decodedResponse) *Error {
 	case w.clearsParent:
 		wrong = noParentMismatch(wrong, article[parentArticleKey])
 	}
-	if len(wrong) == 0 {
-		return nil
-	}
-	return mismatchFault(a, knownAs(articleOwner.String(), responseID(a, idReadableKey)), wrong)
+	return mismatchFault(a, wrong, Pair{Key: articleOwner.String(), Value: responseID(a, idReadableKey)})
 }
 
 type createArticleBody struct {
@@ -228,10 +225,7 @@ func (w articleCreate) verify(a decodedResponse) *Error {
 	if w.parent != nil {
 		wrong = parentMismatch(wrong, w.parent.readable.String(), article[parentArticleKey])
 	}
-	if len(wrong) == 0 {
-		return nil
-	}
-	return mismatchFault(a, knownAs(articleOwner.String(), responseID(a, idReadableKey)), wrong)
+	return mismatchFault(a, wrong, Pair{Key: articleOwner.String(), Value: responseID(a, idReadableKey)})
 }
 
 func projectMismatch(wrong []mismatch, code string, value any) []mismatch {

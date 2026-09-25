@@ -223,10 +223,7 @@ func (w tagCreate) verify(a decodedResponse) *Error {
 	wrong = sharingMismatch(wrong, readSharingKey, w.groups.readSharing, tag[readSharingKey])
 	wrong = sharingMismatch(wrong, updateSharingKey, w.groups.updateSharing, tag[updateSharingKey])
 	wrong = sharingMismatch(wrong, tagSharingKey, w.groups.tagSharing, tag[tagSharingKey])
-	if len(wrong) == 0 {
-		return nil
-	}
-	return mismatchFault(a, knownAs(tagKey, NewString(w.name)), wrong)
+	return mismatchFault(a, wrong, Pair{Key: tagKey, Value: NewString(w.name)})
 }
 
 func sharingMismatch(wrong []mismatch, set string, written []groupID, value any) []mismatch {

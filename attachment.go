@@ -275,10 +275,7 @@ func verifyUpload(a decodedResponse, name string, sent int64) *Error {
 	filed := a.objects[0]
 	wrong := textMismatch(nil, nameKey, name, filed[nameKey])
 	wrong = sizeMismatch(wrong, sent, filed[sizeKey])
-	if len(wrong) == 0 {
-		return nil
-	}
-	return mismatchFault(a, knownAs(attachmentKey, responseID(a, idKey)), wrong)
+	return mismatchFault(a, wrong, Pair{Key: attachmentKey, Value: responseID(a, idKey)})
 }
 
 func checkFile(file File) *Error {

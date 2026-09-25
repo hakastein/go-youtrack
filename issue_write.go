@@ -416,13 +416,10 @@ func (w issueWrite) verify(a decodedResponse) *Error {
 		wrong = emptyMismatch(wrong, descriptionKey, issue[descriptionKey])
 	}
 	wrong, fault := w.verifyCustomFields(a, wrong)
-	switch {
-	case fault != nil:
+	if fault != nil {
 		return fault
-	case len(wrong) == 0:
-		return nil
 	}
-	return mismatchFault(a, knownAs(issueOwner.String(), responseID(a, idReadableKey)), wrong)
+	return mismatchFault(a, wrong, Pair{Key: issueOwner.String(), Value: responseID(a, idReadableKey)})
 }
 
 func (w issueWrite) verifyCustomFields(a decodedResponse, wrong []mismatch) ([]mismatch, *Error) {

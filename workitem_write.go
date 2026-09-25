@@ -184,10 +184,7 @@ func verifyWorkItem(a decodedResponse, wrong []mismatch, workType *resolvedWorkT
 		wrong = workType.verify(wrong, a.objects[0][typeKey])
 	}
 	wrong = attributeMismatches(wrong, attributes, a.objects[0][attributesKey])
-	if len(wrong) == 0 {
-		return nil
-	}
-	return mismatchFault(a, identity, wrong)
+	return mismatchFault(a, wrong, identity...)
 }
 
 func (w workItemCreate) verifyFields() []requestedField {
