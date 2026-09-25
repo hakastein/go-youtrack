@@ -1,12 +1,14 @@
 package youtrack_test
 
 import (
-	"net/http"
+	"encoding/json"
 	"net/url"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hakastein/youtrack"
@@ -19,18 +21,30 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func client(t *testing.T, server *fake.Server, options ...youtrack.Option) *youtrack.Client {
+func client(t *testing.T, server *fake.Server, opts ...youtrack.Option) *youtrack.Client {
 	t.Helper()
-	c, err := youtrack.New(server.URL, fake.Token, options...)
+	c, err := youtrack.NewClient(server.URL, fake.Token, opts...)
 	require.NoError(t, err)
 	return c
 }
 
-func requestTo(method string, server *fake.Server, target string) youtrack.Request {
-	return youtrack.Request{Method: method, URL: server.URL + target}
+// The prose of a message is not compared: it changes without the behaviour changing.
+func errorOf(t *testing.T, err error) youtrack.Error {
+	t.Helper()
+	var failed *youtrack.Error
+	require.ErrorAs(t, err, &failed)
+	assert.NotEmpty(t, failed.Message)
+	kept := *failed
+	kept.Message = ""
+	kept.Err = nil
+	return kept
 }
 
-func lastRequest(t *testing.T, server *fake.Server) youtrack.Request {
+func requestTo(method string, server *fake.Server, target string) youtrack.Pair {
+	return youtrack.Pair{Key: "request", Value: youtrack.NewString(method + " " + server.URL + target)}
+}
+
+func lastRequest(t *testing.T, server *fake.Server) youtrack.Pair {
 	t.Helper()
 	sent := server.Last(t)
 	query, err := url.QueryUnescape(sent.URL.RawQuery)
@@ -38,44 +52,29 @@ func lastRequest(t *testing.T, server *fake.Server) youtrack.Request {
 	return requestTo(sent.Method, server, sent.URL.Path+"?"+query)
 }
 
-func requestAt(t *testing.T, server *fake.Server, n int) youtrack.Request {
-	t.Helper()
-	sent := server.Request(t, n)
-	query, err := url.QueryUnescape(sent.URL.RawQuery)
-	require.NoError(t, err)
-	return requestTo(sent.Method, server, sent.URL.Path+"?"+query)
+func unreadable(request youtrack.Pair, body string) youtrack.Error {
+	return youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
+		request,
+		{Key: "upstream_status", Value: youtrack.NewNumber("200")},
+		{Key: "upstream_body", Value: youtrack.NewString(body)},
+	}}
 }
 
-func invalidAnswer(request youtrack.Request, body string) youtrack.ResponseError {
-	return youtrack.ResponseError{Request: request, Status: http.StatusOK, Body: []byte(body)}
+func mismatch(field string, expected, actual *youtrack.Node) *youtrack.Node {
+	return youtrack.NewMap(
+		youtrack.Pair{Key: "field", Value: youtrack.NewString(field)},
+		youtrack.Pair{Key: "expected", Value: expected},
+		youtrack.Pair{Key: "actual", Value: actual})
 }
 
-// The prose of a reason is not compared: it changes without the behaviour changing.
-func withoutReason(err youtrack.ResponseError) youtrack.ResponseError {
-	err.Reason = ""
-	return err
+func number(n int) *youtrack.Node {
+	return youtrack.NewNumber(json.Number(strconv.Itoa(n)))
 }
 
-func responseErrorOf(t *testing.T, err error) youtrack.ResponseError {
-	t.Helper()
-	var failed *youtrack.ResponseError
-	require.ErrorAs(t, err, &failed)
-	require.NotEmpty(t, failed.Reason)
-	return withoutReason(*failed)
-}
-
-func argumentErrorOf(t *testing.T, err error) youtrack.ArgumentError {
-	t.Helper()
-	var failed *youtrack.ArgumentError
-	require.ErrorAs(t, err, &failed)
-	require.NotEmpty(t, failed.Reason)
-	failed.Reason = ""
-	return *failed
-}
-
-func statusErrorOf(t *testing.T, err error) youtrack.StatusError {
-	t.Helper()
-	var failed *youtrack.StatusError
-	require.ErrorAs(t, err, &failed)
-	return *failed
+func texts(values ...string) *youtrack.Node {
+	items := make([]*youtrack.Node, 0, len(values))
+	for _, value := range values {
+		items = append(items, youtrack.NewString(value))
+	}
+	return youtrack.NewList(items...)
 }

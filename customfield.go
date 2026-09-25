@@ -1,0 +1,640 @@
+package youtrack
+
+import (
+	"cmp"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"slices"
+	"strconv"
+	"strings"
+)
+
+type fieldInfo struct {
+	name          string
+	localizedName string
+	kind          FieldType
+}
+
+func readLocalized(value any) (string, bool) {
+	switch name := value.(type) {
+	case string:
+		return name, true
+	case nil:
+		return "", true
+	}
+	return "", false
+}
+
+func (n fieldInfo) translatedAs(name string) bool {
+	return n.localizedName != "" && strings.EqualFold(name, n.localizedName)
+}
+
+func (n fieldInfo) translations() []string {
+	if n.localizedName == "" {
+		return nil
+	}
+	return []string{n.localizedName}
+}
+
+func findMatches(name string, catalogue []fieldInfo) []int {
+	var byName, byTranslation []int
+	for at, field := range catalogue {
+		switch {
+		case strings.EqualFold(name, field.name):
+			byName = append(byName, at)
+		case field.translatedAs(name):
+			byTranslation = append(byTranslation, at)
+		}
+	}
+	if len(byName) > 0 {
+		return byName
+	}
+	return byTranslation
+}
+
+func pick(catalogue []fieldInfo, places []int) []fieldInfo {
+	found := make([]fieldInfo, 0, len(places))
+	for _, at := range places {
+		found = append(found, catalogue[at])
+	}
+	return found
+}
+
+func nearestNamed(name string, catalogue []fieldInfo) []string {
+	among := make([]suggestion, 0, len(catalogue))
+	for _, field := range catalogue {
+		among = append(among, suggestion{name: field.name, also: field.translations()})
+	}
+	return nearest(name, among, canonical(catalogue))
+}
+
+func canonical(catalogue []fieldInfo) []string {
+	names := make([]string, 0, len(catalogue))
+	for _, field := range catalogue {
+		names = append(names, field.name)
+	}
+	slices.Sort(names)
+	return names
+}
+
+type customField struct {
+	id   string
+	info fieldInfo
+}
+
+const (
+	brokenField     = "a custom field of the project is not a JSON object"
+	brokenFieldInfo = "the name or the type of a custom field is not of the shape the specification gives it"
+)
+
+func encodeValue(kind FieldType, text string) (Encoded, string) {
+	if text == "" {
+		return Encoded{}, emptyValueReason(kind)
+	}
+	k, known := kind.kind()
+	if !known {
+		return Encoded{}, unmodelled(kind)
+	}
+	encoded, reason := k.encode(text)
+	return Encoded{Body: encoded.body, Key: encoded.key}, reason
+}
+
+func emptyValueReason(kind FieldType) string {
+	const leftAlone = "; a field is emptied by --clear Name and a field the call does not name is left as it stands"
+	switch {
+	case kind.ValueType == StringType || kind.ValueType == TextType:
+		return fmt.Sprintf("YouTrack keeps a %s field it is given nothing for as holding nothing at all",
+			kind.ValueType) + leftAlone
+	case kind.Named():
+		return fmt.Sprintf("a value of a %s field is a name, and no value is named by nothing", kind.ValueType) + leftAlone
+	}
+	return fmt.Sprintf("no value of a %s field is empty", kind.ValueType) + leftAlone
+}
+
+func (n converter) readValue(kind FieldType, item any) (*Node, bool, error) {
+	value, present, err := kind.ReadValue(item)
+	if err != nil || !present {
+		return nil, present, err
+	}
+	number, isNumber := item.(json.Number)
+	switch {
+	case isNumber && (kind.ValueType == IntegerType || kind.ValueType == FloatType):
+		return NewNumber(number), true, nil
+	case kind.ValueType == TextType:
+		return n.textNode(value.Text), true, nil
+	}
+	return NewString(value.Text), true, nil
+}
+
+func (n converter) valueKeys(f issueCustomField) ([]string, *Error) {
+	values, fault := n.valuesOf(f)
+	if fault != nil {
+		return nil, fault
+	}
+	texts := make([]string, 0, len(values))
+	for _, item := range values {
+		value, present, err := f.kind.ReadValue(item)
+		if err != nil {
+			return nil, n.unreadableValue(f, err)
+		}
+		if present {
+			texts = append(texts, value.Text)
+		}
+	}
+	return texts, nil
+}
+
+const (
+	customFieldsKey   = "customFields"
+	customFieldSchema = "IssueCustomField"
+)
+
+func customFieldsAsked(translated bool) []requestedField {
+	held := []requestedField{{name: fieldTypeKey, children: []requestedField{{name: valueTypeKey}, {name: "isMultiValue"}}}}
+	if translated {
+		held = append(held, requestedField{name: "localizedName"})
+	}
+	return []requestedField{
+		{name: nameKey},
+		{name: "value", children: valueKeyFields()},
+		{name: "projectCustomField", children: []requestedField{
+			{name: idKey},
+			{name: "ordinal"},
+			{name: "field", children: held},
+		}},
+	}
+}
+
+func valueKeyFields() []requestedField {
+	var members []requestedField
+	for _, key := range ValueKeys() {
+		members = append(members, requestedField{name: key})
+	}
+	return members
+}
+
+type issueCustomField struct {
+	name          string
+	value         any
+	kind          FieldType
+	ordinal       int64
+	binding       string
+	localizedName string
+}
+
+func (n converter) customFields(asked requestedField, value any) (*Node, *Error) {
+	fields, fault := n.readCustomFields(value)
+	if fault != nil {
+		return nil, fault
+	}
+	if asked.children == nil {
+		return n.allFieldsNode(fields)
+	}
+	return n.selectedFieldsNode(asked.children, fields)
+}
+
+func (n converter) readCustomFields(value any) ([]issueCustomField, *Error) {
+	received, isList := value.([]any)
+	if !isList {
+		return nil, n.malformed("the custom fields of the issue arrived as something other than an array")
+	}
+	fields := make([]issueCustomField, 0, len(received))
+	named := make(map[string]bool, len(received))
+	for _, item := range received {
+		field, fault := n.readCustomField(item)
+		if fault != nil {
+			return nil, fault
+		}
+		if named[field.name] {
+			return nil, n.malformed(fmt.Sprintf("two custom fields of the issue are named %s", quote(field.name)))
+		}
+		named[field.name] = true
+		fields = append(fields, field)
+	}
+	return fields, nil
+}
+
+func (n converter) allFieldsNode(fields []issueCustomField) (*Node, *Error) {
+	slices.SortStableFunc(fields, inProjectOrder)
+	pairs := make([]Pair, 0, len(fields))
+	for _, field := range fields {
+		printed, present, fault := n.valueNode(field)
+		if fault != nil {
+			return nil, fault
+		}
+		if present {
+			pairs = append(pairs, DataPair(field.name, printed))
+		}
+	}
+	return NewMap(pairs...), nil
+}
+
+func (n converter) selectedFieldsNode(asked []requestedField, fields []issueCustomField) (*Node, *Error) {
+	onIssue := make([]fieldInfo, 0, len(fields))
+	for _, field := range fields {
+		onIssue = append(onIssue, fieldInfo{name: field.name, localizedName: field.localizedName})
+	}
+	pairs := make([]Pair, 0, len(asked))
+	for _, name := range asked {
+		matched := findMatches(name.name, onIssue)
+		if len(matched) == 0 {
+			continue
+		}
+		field := fields[matched[0]]
+		printed, present, fault := n.valueNode(field)
+		if fault != nil {
+			return nil, fault
+		}
+		if !present {
+			printed = emptyValue(field.kind)
+		}
+		pairs = append(pairs, DataPair(field.name, printed))
+	}
+	return NewMap(pairs...), nil
+}
+
+func emptyValue(kind FieldType) *Node {
+	if kind.Multi {
+		return NewList()
+	}
+	return NewNull()
+}
+
+func inProjectOrder(a, b issueCustomField) int {
+	return cmp.Or(cmp.Compare(a.ordinal, b.ordinal), compareBindings(a.binding, b.binding))
+}
+
+func compareBindings(a, b string) int {
+	first, isNumbered := bindingNumbers(a)
+	second, alsoNumbered := bindingNumbers(b)
+	if !isNumbered || !alsoNumbered {
+		return strings.Compare(a, b)
+	}
+	return cmp.Or(cmp.Compare(first[0], second[0]), cmp.Compare(first[1], second[1]))
+}
+
+func bindingNumbers(id string) ([2]int, bool) {
+	before, after, dashed := strings.Cut(id, "-")
+	if !dashed {
+		return [2]int{}, false
+	}
+	first, firstErr := strconv.Atoi(before)
+	second, secondErr := strconv.Atoi(after)
+	if firstErr != nil || secondErr != nil {
+		return [2]int{}, false
+	}
+	return [2]int{first, second}, true
+}
+
+func (n converter) readCustomField(item any) (issueCustomField, *Error) {
+	object, isObject := item.(map[string]any)
+	if !isObject {
+		return issueCustomField{}, n.malformed("a custom field of the issue is not a JSON object")
+	}
+	name, isText := object[nameKey].(string)
+	if !isText {
+		return issueCustomField{}, n.malformed("the name of a custom field of the issue is not text")
+	}
+	place, _ := object["projectCustomField"].(map[string]any)
+	binding, named, whole := readBinding(place)
+	if !whole {
+		return issueCustomField{}, n.malformed(brokenBinding(name))
+	}
+	ordinal, isWhole := parseInt64(place["ordinal"])
+	if !isWhole {
+		message := fmt.Sprintf("the place of the custom field %s among the fields of the project is no whole number", quote(name))
+		return issueCustomField{}, n.malformed(message)
+	}
+	if !named.kind.Known() {
+		return issueCustomField{}, n.malformed(unmodelledType(named))
+	}
+	return issueCustomField{name: name, value: object["value"], kind: named.kind, ordinal: ordinal,
+		binding: binding, localizedName: named.localizedName}, nil
+}
+
+func brokenBinding(name string) string {
+	return fmt.Sprintf("the project's field the custom field %s stands for is not of the shape the "+
+		"specification gives it", quote(name))
+}
+
+func readBinding(place map[string]any) (binding string, named fieldInfo, ok bool) {
+	binding, isText := place[idKey].(string)
+	if !isText {
+		return "", fieldInfo{}, false
+	}
+	field, isObject := place["field"].(map[string]any)
+	if !isObject {
+		return "", fieldInfo{}, false
+	}
+	kind, isObject := field[fieldTypeKey].(map[string]any)
+	if !isObject {
+		return "", fieldInfo{}, false
+	}
+	valueType, isText := kind[valueTypeKey].(string)
+	isMultiValue, isFlag := kind["isMultiValue"].(bool)
+	if !isText || !isFlag {
+		return "", fieldInfo{}, false
+	}
+	translated, isName := readLocalized(field["localizedName"])
+	if !isName {
+		return "", fieldInfo{}, false
+	}
+	fieldType := FieldType{ValueType: ValueType(valueType), Multi: isMultiValue}
+	return binding, fieldInfo{localizedName: translated, kind: fieldType}, true
+}
+
+func (n converter) valuesOf(f issueCustomField) ([]any, *Error) {
+	values, isList := f.value.([]any)
+	switch {
+	case f.value == nil:
+		return nil, nil
+	case isList && !f.kind.Multi:
+		return nil, n.malformed(fmt.Sprintf("the custom field %s holds one value by its type and arrived as a list", quote(f.name)))
+	case !isList && f.kind.Multi:
+		message := fmt.Sprintf("the custom field %s holds more than one value by its type and arrived as "+
+			"something other than a list", quote(f.name))
+		return nil, n.malformed(message)
+	case !isList:
+		return []any{f.value}, nil
+	}
+	return values, nil
+}
+
+func (n converter) valueNode(f issueCustomField) (*Node, bool, *Error) {
+	values, fault := n.valuesOf(f)
+	if fault != nil {
+		return nil, false, fault
+	}
+	items := make([]*Node, 0, len(values))
+	for _, value := range values {
+		node, present, fault := n.valueKeyNode(f, value)
+		if fault != nil {
+			return nil, false, fault
+		}
+		if present {
+			items = append(items, node)
+		}
+	}
+	switch {
+	case len(items) == 0:
+		return nil, false, nil
+	case !f.kind.Multi:
+		return items[0], true, nil
+	}
+	return NewList(items...), true, nil
+}
+
+func (n converter) valueKeyNode(f issueCustomField, item any) (*Node, bool, *Error) {
+	node, present, err := n.readValue(f.kind, item)
+	if err != nil {
+		return nil, false, n.unreadableValue(f, err)
+	}
+	return node, present, nil
+}
+
+func (n converter) unreadableValue(f issueCustomField, err error) *Error {
+	return n.malformed(fmt.Sprintf("custom field %s: %v", quote(f.name), err))
+}
+
+const customFieldCatalogue = "[]CustomField"
+
+const brokenCatalogue = "a custom field of the instance is named in some shape other than text"
+
+func catalogueFields() []requestedField {
+	return []requestedField{{name: nameKey}, {name: "localizedName"}}
+}
+
+func (c *Client) customFieldCatalogue(ctx context.Context, spec *schemas) (decodedResponse, []fieldInfo, *Error) {
+	a, fault := c.request(ctx, spec, customFieldCatalogue, catalogueFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiGetCustomFields(ctx, fields, topAll)
+	})
+	if fault != nil {
+		return decodedResponse{}, nil, fault
+	}
+	catalogue := make([]fieldInfo, 0, len(a.objects))
+	for _, object := range a.objects {
+		found, ok := readCatalogueEntry(object)
+		if !ok {
+			return decodedResponse{}, nil, shapeFailure(a.httpResponse, a.body, brokenCatalogue)
+		}
+		catalogue = append(catalogue, found)
+	}
+	return a, catalogue, nil
+}
+
+func readCatalogueEntry(object map[string]any) (fieldInfo, bool) {
+	name, isText := object[nameKey].(string)
+	if !isText {
+		return fieldInfo{}, false
+	}
+	translated, isName := readLocalized(object["localizedName"])
+	if !isName {
+		return fieldInfo{}, false
+	}
+	return fieldInfo{name: name, localizedName: translated}, true
+}
+
+func (c *Client) resolveCustomFields(ctx context.Context, spec *schemas, requested []requestedField) *Error {
+	named := namedCustomFields(spec, requested)
+	if named == nil || !slices.ContainsFunc(named.children, fromCaller) {
+		return nil
+	}
+	a, catalogue, fault := c.customFieldCatalogue(ctx, spec)
+	if fault != nil {
+		return fault
+	}
+	resolved, fault := resolveNames(a, requested, named.children, catalogue)
+	if fault != nil {
+		return fault
+	}
+	named.children = resolved
+	return nil
+}
+
+func fromCaller(name requestedField) bool {
+	return name.fromCaller
+}
+
+func fromDefault(name requestedField) bool {
+	return !name.fromCaller
+}
+
+func hasDefaultNames(spec *schemas, requested []requestedField) bool {
+	named := namedCustomFields(spec, requested)
+	return named != nil && slices.ContainsFunc(named.children, fromDefault)
+}
+
+func resolveNames(a decodedResponse, requested, asked []requestedField, catalogue []fieldInfo) ([]requestedField, *Error) {
+	var resolved []requestedField
+	var unknown, ambiguous []*Node
+	for _, name := range asked {
+		if !fromCaller(name) {
+			resolved = merge(resolved, name)
+			continue
+		}
+		places := findMatches(name.name, catalogue)
+		written := fieldPath([]string{customFieldsKey}, formatName(name))
+		switch {
+		case len(places) == 0:
+			unknown = append(unknown, unknownEntry(written, nearestNamed(name.name, catalogue)))
+		case len(places) > 1:
+			ambiguous = append(ambiguous, ambiguousEntry(written, canonical(pick(catalogue, places))))
+		default:
+			resolved = merge(resolved, requestedField{name: catalogue[places[0]].name, fromCaller: true})
+		}
+	}
+	switch {
+	case len(unknown) > 0:
+		message := "the names under unknown are not custom fields of the instance"
+		return nil, unresolvedNames(a, requested, "unknown", message, unknown)
+	case len(ambiguous) > 0:
+		message := "the names under ambiguous are the names of more than one custom field of the instance each"
+		return nil, unresolvedNames(a, requested, "ambiguous", message, ambiguous)
+	}
+	return resolved, nil
+}
+
+func unresolvedNames(a decodedResponse, requested []requestedField, key, message string, entries []*Node) *Error {
+	against := Pair{Key: "fields", Value: NewString(formatFields(requested))}
+	sent := requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted())
+	return unknownNames(sent, against, key, message, entries)
+}
+
+func unknownNames(sent, against Pair, key, message string, entries []*Node) *Error {
+	details := []Pair{
+		sent,
+		against,
+		{Key: key, Value: NewList(entries...)},
+	}
+	return &Error{Code: CodeUnknownName, Message: message, Details: details}
+}
+
+func ambiguousEntry(field string, candidates []string) *Node {
+	names := make([]*Node, 0, len(candidates))
+	for _, name := range candidates {
+		names = append(names, NewString(name))
+	}
+	return NewMap(
+		Pair{Key: "field", Value: NewString(field)},
+		Pair{Key: "candidates", Value: NewList(names...)})
+}
+
+func defaultFields(n fieldInfo) (string, bool) {
+	switch {
+	case !n.kind.Known():
+		return "", false
+	case n.kind.BundleFields() == "":
+		return FieldListFields, true
+	}
+	return FieldListFields + "," + n.kind.BundleFields(), true
+}
+
+func fieldsToPrint(expression string, n fieldInfo) (requested []requestedField, modelled bool, fault *Error) {
+	defaults := ""
+	if expression == "" || extendsDefault(expression) {
+		if defaults, modelled = defaultFields(n); !modelled {
+			return nil, false, nil
+		}
+	}
+	_, requested, fault = fieldsOrDefault(expression, defaults, false)
+	return requested, true, fault
+}
+
+func unmodelledType(n fieldInfo) string {
+	return fmt.Sprintf("valueType %s with isMultiValue %t is not one of the twenty custom-field types ytrack models",
+		quote(string(n.kind.ValueType)), n.kind.Multi)
+}
+
+func fieldInfoFields() requestedField {
+	return requestedField{name: "field", children: []requestedField{
+		{name: nameKey},
+		{name: "localizedName"},
+		{name: fieldTypeKey, children: []requestedField{{name: valueTypeKey}, {name: "isMultiValue"}}},
+	}}
+}
+
+func readFieldInfo(object map[string]any) (fieldInfo, bool) {
+	field, isObject := object["field"].(map[string]any)
+	if !isObject {
+		return fieldInfo{}, false
+	}
+	name, isText := field[nameKey].(string)
+	if !isText {
+		return fieldInfo{}, false
+	}
+	kind, isObject := field[fieldTypeKey].(map[string]any)
+	if !isObject {
+		return fieldInfo{}, false
+	}
+	valueType, isText := kind[valueTypeKey].(string)
+	if !isText {
+		return fieldInfo{}, false
+	}
+	isMultiValue, isBool := kind["isMultiValue"].(bool)
+	if !isBool {
+		return fieldInfo{}, false
+	}
+	translated, isName := readLocalized(field["localizedName"])
+	if !isName {
+		return fieldInfo{}, false
+	}
+	fieldType := FieldType{ValueType: ValueType(valueType), Multi: isMultiValue}
+	return fieldInfo{name: name, localizedName: translated, kind: fieldType}, true
+}
+
+func lookUp(name string, fields []customField) (customField, bool) {
+	places := findMatches(name, fieldInfos(fields))
+	if len(places) != 1 {
+		return customField{}, false
+	}
+	return fields[places[0]], true
+}
+
+func unresolved(sent Request, code, name string, fields []customField) *Error {
+	catalogue := fieldInfos(fields)
+	if places := findMatches(name, catalogue); len(places) > 0 {
+		message := "the name under unknown belongs to more than one custom field of the project"
+		return unknownField(sent, code, name, canonical(pick(catalogue, places)), message)
+	}
+	message := "the name under unknown is not a custom field of the project"
+	return unknownField(sent, code, name, nearestNamed(name, catalogue), message)
+}
+
+func unknownField(sent Request, code, name string, nearest []string, message string) *Error {
+	against := Pair{Key: "project", Value: NewString(code)}
+	return unknownNames(sentRequest(sent), against, "unknown", message, []*Node{unknownEntry(name, nearest)})
+}
+
+func fieldInfos(fields []customField) []fieldInfo {
+	catalogue := make([]fieldInfo, 0, len(fields))
+	for _, field := range fields {
+		catalogue = append(catalogue, field.info)
+	}
+	return catalogue
+}
+
+func (f customField) hasValidID() bool {
+	return isInternalID(f.id)
+}
+
+func invalidFieldID(id string) string {
+	return fmt.Sprintf("the id %s of a custom field is not two numbers with a dash between them", quote(id))
+}
+
+func (n fieldInfo) verifyUnchanged(a decodedResponse, code string) *Error {
+	answered, ok := readFieldInfo(a.objects[0])
+	if !ok {
+		return shapeFailure(a.httpResponse, a.body, brokenFieldInfo)
+	}
+	if answered == n {
+		return nil
+	}
+	details := append(responseDetails(a.httpResponse),
+		Pair{Key: "project", Value: NewString(code)},
+		Pair{Key: "field", Value: NewString(n.name)},
+		bodyDetail(a.body))
+	message := "the custom field the id addresses is no longer the one the name resolved to"
+	return &Error{Code: CodeUpstreamFailed, Message: message, Details: details}
+}

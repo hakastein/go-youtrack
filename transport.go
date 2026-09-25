@@ -34,9 +34,14 @@ func (c *Client) authorize(_ context.Context, request *http.Request) error {
 	return nil
 }
 
-// Send sends a write through call and tells a request that never left from one the server may have acted
-// on: a *TransportError with Written set is a write whose outcome is unknown.
+// Send sends a write through call, as through a function of API, and tells a request that never left from one
+// the server may have acted on: a failure after the request left is a *Error of CodeWriteUncertain, one before it
+// of CodeUpstreamFailed.
 func Send(ctx context.Context, call func(ctx context.Context) (*http.Response, error)) (*http.Response, error) {
+	return result(send(ctx, call))
+}
+
+func send(ctx context.Context, call func(ctx context.Context) (*http.Response, error)) (*http.Response, *Error) {
 	// net/http tells an unsent request only by an unexported error, and a server does not act on a partial one.
 	var requestWritten atomic.Bool
 	traced := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
@@ -48,7 +53,7 @@ func Send(ctx context.Context, call func(ctx context.Context) (*http.Response, e
 	})
 	response, err := call(traced)
 	if err != nil {
-		return nil, transportError(err, requestWritten.Load())
+		return nil, transportFailure(err, requestWritten.Load())
 	}
 	return response, nil
 }

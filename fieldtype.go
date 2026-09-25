@@ -110,22 +110,32 @@ func ValueKeys() []string {
 	return keys
 }
 
+// Value is one value of a custom field. Text is the value key of the field's type: the name of a bundle
+// value or group, the login of a user, a period as PT1H30M, a day as 2026-09-16, a moment in UTC, a number in
+// its shortest decimal form, or the string or text itself. ID is the internal id of a bundle value, user or
+// group, and LocalizedName the translation the interface shows for a bundle value; both are empty otherwise.
+type Value struct {
+	ID            string
+	Text          string
+	LocalizedName string
+}
+
 // Encoded is a value ready to be written: the JSON under value and the value key it was written as.
 type Encoded struct {
 	Body any
 	Key  string
 }
 
-// Encode turns a value key into what a write sends for a field of this type; a value the type cannot hold is an
-// *ArgumentError with the reason.
+// Encode turns a value key into what a write sends for a field of this type; a value the type cannot hold is a
+// *Error of CodeBadUsage that says why.
 func (t FieldType) Encode(text string) (Encoded, error) {
 	k, known := t.kind()
 	if !known {
-		return Encoded{}, &ArgumentError{Argument: "value", Value: text, Reason: "is written into a field of the type " + unmodelled(t)}
+		return Encoded{}, &Error{Code: CodeBadUsage, Message: fmt.Sprintf("value %s is written into a field of the type %s", quote(text), unmodelled(t))}
 	}
 	encoded, reason := k.encode(text)
 	if reason != "" {
-		return Encoded{}, &ArgumentError{Argument: "value", Value: text, Reason: reason}
+		return Encoded{}, &Error{Code: CodeBadUsage, Message: fmt.Sprintf("value %s: %s", quote(text), reason)}
 	}
 	return Encoded{Body: encoded.body, Key: encoded.key}, nil
 }
@@ -229,14 +239,6 @@ func (t FieldType) kind() (fieldKind, bool) {
 		}
 	}
 	return fieldKind{}, false
-}
-
-func valueMembers() []field {
-	var members []field
-	for _, key := range ValueKeys() {
-		members = append(members, field{name: key})
-	}
-	return append(members, field{name: idKey}, field{name: localizedNameKey})
 }
 
 // A named value is one the server resolves by name, fixing its letter case on the way.
@@ -414,7 +416,7 @@ func jsonNumber(text string) (json.Number, bool) {
 
 func encodeString(text string) (encodedValue, string) {
 	if !utf8.ValidString(text) {
-		return encodedValue{}, noUTF8
+		return encodedValue{}, notUTF8
 	}
 	for _, rewritten := range stringFieldRewrites() {
 		if strings.ContainsRune(text, rewritten.rune) {
@@ -427,7 +429,7 @@ func encodeString(text string) (encodedValue, string) {
 	return encodedValue{body: text, key: text}, ""
 }
 
-const noUTF8 = "the value is no valid UTF-8, and every byte of it that is none would reach YouTrack as �"
+const notUTF8 = "the value is no valid UTF-8, and every byte of it that is none would reach YouTrack as �"
 
 type charReplacement struct {
 	rune rune
@@ -448,7 +450,7 @@ func trimmedByYouTrack(r rune) bool {
 
 func encodeText(text string) (encodedValue, string) {
 	if !utf8.ValidString(text) {
-		return encodedValue{}, noUTF8
+		return encodedValue{}, notUTF8
 	}
 	return encodedValue{body: map[string]string{textKey: text}, key: text}, ""
 }

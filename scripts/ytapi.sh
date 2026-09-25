@@ -24,7 +24,7 @@ git ls-files -z --cached --others --exclude-standard | existing_only |
 	tar --null -cf - -T - | tar -xf - -C "$copy"
 cd "$copy"
 
-rm -rf ytapi
+rm -rf ytapi catalogue.gen.go
 if ! go generate ./...; then
 	echo "FAIL  go generate"
 	exit 1
@@ -65,6 +65,10 @@ outputs_match() {
 	diff -rq "$tree/ytapi" "$copy/ytapi"
 }
 
+catalogue_matches() {
+	diff -q "$tree/catalogue.gen.go" "$copy/catalogue.gen.go"
+}
+
 # Внутри модуля сгенерированный клиент виден только из адаптера: там все проверки отправки.
 only_the_adapter_imports_ytapi() {
 	local importers
@@ -75,6 +79,7 @@ only_the_adapter_imports_ytapi() {
 # oapi-codegen выходит с 0 и на несобираемом пакете, и на пустом ClientInterface.
 check "go build ./ytapi" go build ./ytapi
 check "выхлоп в дереве совпадает с тем, что дают входы" outputs_match
+check "каталог схем в дереве совпадает с тем, что даёт спецификация" catalogue_matches
 check "ClientWithResponses в выхлопе нет" stub_applied
 check "ClientInterface не меньше $min_methods методов" interface_floor
 check "ytapi внутри модуля импортирует только $adapter" only_the_adapter_imports_ytapi
