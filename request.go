@@ -53,19 +53,6 @@ type decodedResponse struct {
 	address      *url.URL
 }
 
-type requestFields struct {
-	sent   []requestedField
-	output []requestedField
-}
-
-func (c *Client) readList(ctx context.Context, responseSchema string, of requestFields, call func(ctx context.Context, fields string) (*http.Response, error)) ([]*Node, *Error) {
-	decoded, fault := c.request(ctx, responseSchema, of.sent, call)
-	if fault != nil {
-		return nil, fault
-	}
-	return newConverter(decoded, listRecord).objectsAt(decoded.schema, of.output, decoded.objects)
-}
-
 func sendWrite(ctx context.Context, call func(ctx context.Context) (*http.Response, error)) (*http.Response, []byte, *Error) {
 	response, fault := send(ctx, call)
 	if fault != nil {

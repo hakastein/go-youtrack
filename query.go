@@ -16,6 +16,8 @@ const (
 	freeTextKey       = "free_text"
 )
 
+const queryNoun = "the query"
+
 const freeTextStyle = "text"
 
 const freeTextMessage = "part of the search names no field of the instance and is looked for as text"

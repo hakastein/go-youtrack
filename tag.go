@@ -84,30 +84,30 @@ func (s *TagsService) Remove(ctx context.Context, owner, name string, opts *TagO
 }
 
 func (s *TagsService) list(ctx context.Context, opts ListTagsOptions) (*Node, *Error) {
+	c := s.client
 	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(tagSchema, opts.Fields, TagListFields)
+	requested, fault := c.parseFields(tagSchema, opts.Fields, TagListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	return c.listPage(ctx, tagsPlural, "[]"+tagSchema, requested, page, c.apiGetTags)
 }
 
 func (s *TagsService) create(ctx context.Context, name string, sharing TagSharing, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	if fault := rejectNoTagName(name); fault != nil {
 		return nil, fault
 	}
 	if fault := sharing.rejectNoGroupName(); fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(tagSchema, opts.Fields, TagCreateFields)
+	requested, fault := c.parseFields(tagSchema, opts.Fields, TagCreateFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	written, fault := c.resolveTagCreate(ctx, name, sharing)
 	if fault != nil {
 		return nil, fault
@@ -263,11 +263,11 @@ func sameIDsInAnyOrder(sent, received []string) bool {
 }
 
 func (s *TagsService) delete(ctx context.Context, name string, opts TagOptions) (*Node, *Error) {
+	c := s.client
 	sought, fault := parseTagRef(name, opts)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	found, fault := c.resolveTag(ctx, sought)
 	if fault != nil {
 		return nil, fault
@@ -340,6 +340,7 @@ func tagTargetOf(kind ownerKind) tagTarget {
 }
 
 func (s *TagsService) tagging(ctx context.Context, id, name string, opts TagOptions, write func(*Client, context.Context, owner, tagRef) (*Node, *Error)) (*Node, *Error) {
+	c := s.client
 	at, fault := parseOwner(id)
 	if fault != nil {
 		return nil, fault
@@ -348,7 +349,7 @@ func (s *TagsService) tagging(ctx context.Context, id, name string, opts TagOpti
 	if fault != nil {
 		return nil, fault
 	}
-	return write(s.client, ctx, at, sought)
+	return write(c, ctx, at, sought)
 }
 
 func (c *Client) addTag(ctx context.Context, at owner, sought tagRef) (*Node, *Error) {
@@ -359,7 +360,7 @@ func (c *Client) addTag(ctx context.Context, at owner, sought tagRef) (*Node, *E
 	body := hung.body()
 	node, fault := writeAs(ctx, c, tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return hung.target.add(c, ctx, hung.on, body, fields)
-	}, hung.verify, hung.render(addedKey))
+	}, hung.verify, hung.render)
 	if fault != nil {
 		return nil, hung.withDetails(fault)
 	}
@@ -434,14 +435,12 @@ func (op tagOp) verify(a decodedResponse) *Error {
 	return a.invalid(message)
 }
 
-func (op tagOp) render(key string) func(decodedResponse) (*Node, *Error) {
-	return func(a decodedResponse) (*Node, *Error) {
-		tag, fault := objectNode(a, printedTagFields(), a.objects[0], nil)
-		if fault != nil {
-			return nil, fault
-		}
-		return op.document(key, tag), nil
+func (op tagOp) render(a decodedResponse) (*Node, *Error) {
+	tag, fault := objectNode(a, printedTagFields(), a.objects[0], nil)
+	if fault != nil {
+		return nil, fault
 	}
+	return op.document(addedKey, tag), nil
 }
 
 func (op tagOp) document(key string, tag *Node) *Node {
@@ -566,24 +565,24 @@ func sortedNames[E named](shown []E) []string {
 func noTagNamed(a decodedResponse, name string, shown []tagCandidate) *Error {
 	entry := nearestEntry(tagKey, name, nearestNames(name, sortedNames(shown)))
 	message := "the name under unknown is no tag this token is shown"
-	return a.fault(CodeUnknownName, message, Pair{Key: "unknown", Value: NewList(entry)})
+	return a.fault(CodeUnknownName, message, Pair{Key: unknownKey, Value: NewList(entry)})
 }
 
 func severalTagsNamed(a decodedResponse, name string, shown []tagCandidate, candidates []int) *Error {
 	entry := NewMap(
 		Pair{Key: tagKey, Value: NewString(name)},
-		Pair{Key: "candidates", Value: tagsListed(shown, candidates)})
+		Pair{Key: candidatesKey, Value: tagsListed(shown, candidates)})
 	message := "the name under ambiguous is the name of more than one tag this token is shown"
-	return a.fault(CodeUnknownName, message, Pair{Key: "ambiguous", Value: NewList(entry)})
+	return a.fault(CodeUnknownName, message, Pair{Key: ambiguousKey, Value: NewList(entry)})
 }
 
 func noTagOfThatOwner(a decodedResponse, sought tagRef, shown []tagCandidate, named []int) *Error {
 	entry := NewMap(
 		Pair{Key: tagKey, Value: NewString(sought.name)},
 		Pair{Key: ownedByKey, Value: NewString(sought.owner)},
-		Pair{Key: "candidates", Value: tagsListed(shown, named)})
+		Pair{Key: candidatesKey, Value: tagsListed(shown, named)})
 	message := "no tag this token is shown under the name under unknown belongs to the login beside it"
-	return a.fault(CodeUnknownName, message, Pair{Key: "unknown", Value: NewList(entry)})
+	return a.fault(CodeUnknownName, message, Pair{Key: unknownKey, Value: NewList(entry)})
 }
 
 func tagsListed(shown []tagCandidate, at []int) *Node {
@@ -715,7 +714,7 @@ func (r *groupResolver) resolveOne(name string) (groupID, bool) {
 	if !found {
 		r.ambiguous = append(r.ambiguous, NewMap(
 			Pair{Key: groupKey, Value: NewString(name)},
-			Pair{Key: "candidates", Value: textList(sortedNames(candidates))}))
+			Pair{Key: candidatesKey, Value: textList(sortedNames(candidates))}))
 		return groupID{}, false
 	}
 	return r.validID(group)

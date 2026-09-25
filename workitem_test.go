@@ -815,6 +815,14 @@ func TestUpdateWorkItemRefusesWhatTheServerKeptOtherwise(t *testing.T) {
 			actual:   youtrack.NewString("First"),
 		},
 		{
+			name:     "a type left with no name after it was taken away",
+			in:       youtrack.WorkItemUpdate{ClearType: true},
+			answer:   workItemAnswer{workType: `{"$type":"WorkItemType","id":"8-1","name":null}`},
+			field:    "type",
+			expected: youtrack.NewNull(),
+			actual:   youtrack.NewNull(),
+		},
+		{
 			name:     "another type of the project",
 			in:       youtrack.WorkItemUpdate{Type: new("First")},
 			answer:   workItemAnswer{workType: workItemTypeSecond},

@@ -10,6 +10,8 @@ const (
 	ProjectListFields = "shortName,name"
 )
 
+const projectsPlural = "projects"
+
 // ShowProjectOptions: Fields is a fields= expression, empty for ProjectShowFields and +x for them and x.
 type ShowProjectOptions struct {
 	Fields string
@@ -31,15 +33,15 @@ func (s *ProjectsService) List(ctx context.Context, opts *ListProjectsOptions) (
 }
 
 func (s *ProjectsService) show(ctx context.Context, code string, opts ShowProjectOptions) (*Node, *Error) {
+	c := s.client
 	code, fault := parseProjectCode(code)
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(projectSchema, opts.Fields, ProjectShowFields)
+	requested, fault := c.parseFields(projectSchema, opts.Fields, ProjectShowFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	project, fault := c.request(ctx, projectSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProject(ctx, code, fields)
 	})
@@ -50,16 +52,16 @@ func (s *ProjectsService) show(ctx context.Context, code string, opts ShowProjec
 }
 
 func (s *ProjectsService) list(ctx context.Context, opts ListProjectsOptions) (*Node, *Error) {
+	c := s.client
 	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(projectSchema, opts.Fields, ProjectListFields)
+	requested, fault := c.parseFields(projectSchema, opts.Fields, ProjectListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
-	return c.listPage(ctx, "projects", "[]"+projectSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, projectsPlural, "[]"+projectSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetProjects(ctx, fields, w)
 	})
 }

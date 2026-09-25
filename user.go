@@ -61,15 +61,15 @@ func (s *UsersService) Find(ctx context.Context, query string, limit int) ([]Use
 }
 
 func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOptions) (*Node, *Error) {
+	c := s.client
 	login, fault := parseLogin(login)
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(userSchema, opts.Fields, UserShowFields)
+	requested, fault := c.parseFields(userSchema, opts.Fields, UserShowFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	user, fault := c.request(ctx, userSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetUser(ctx, login, fields)
 	})
@@ -80,18 +80,18 @@ func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOpti
 }
 
 func (s *UsersService) list(ctx context.Context, query string, opts ListUsersOptions) (*Node, *Error) {
-	if fault := rejectRewritten("the query", query); fault != nil {
+	c := s.client
+	if fault := rejectRewritten(queryNoun, query); fault != nil {
 		return nil, fault
 	}
 	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(userSchema, opts.Fields, UserListFields)
+	requested, fault := c.parseFields(userSchema, opts.Fields, UserListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	return c.listPage(ctx, usersPlural, "[]"+userSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetUsers(ctx, query, fields, w)
 	})
@@ -113,14 +113,14 @@ func (s *UsersService) me(ctx context.Context) (*User, *Error) {
 }
 
 func (s *UsersService) find(ctx context.Context, query string, limit int) ([]User, *Error) {
-	if fault := rejectRewritten("the query", query); fault != nil {
+	c := s.client
+	if fault := rejectRewritten(queryNoun, query); fault != nil {
 		return nil, fault
 	}
 	page, fault := Page{Limit: limit}.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	a, fault := c.request(ctx, "[]"+userSchema, userFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetUsers(ctx, query, fields, page.window())
 	})

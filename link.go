@@ -16,6 +16,8 @@ const (
 	directionKey            = "direction"
 	linkTypeKey             = "linkType"
 	issuesSizeKey           = "issuesSize"
+	phraseKey               = "phrase"
+	targetKey               = "target"
 	sourceToTarget          = "sourceToTarget"
 	targetToSource          = "targetToSource"
 	localizedSourceToTarget = "localizedSourceToTarget"
@@ -55,11 +57,11 @@ func issueLinkFields() []string {
 }
 
 func (s *LinksService) list(ctx context.Context, id string, opts ListLinksOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(issueSchema, opts.Fields, LinkListFields, linksKey, issuesKey)
 	if fault != nil {
 		return nil, fault
@@ -75,11 +77,11 @@ func (s *LinksService) list(ctx context.Context, id string, opts ListLinksOption
 }
 
 func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	id, target, fault := parseLinkWrite(id, phrase, target)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(issueSchema, opts.Fields, LinkListFields, linksKey, issuesKey)
 	if fault != nil {
 		return nil, fault
@@ -100,11 +102,11 @@ func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts 
 }
 
 func (s *LinksService) remove(ctx context.Context, id, phrase, target string) (*Node, *Error) {
+	c := s.client
 	id, target, fault := parseLinkWrite(id, phrase, target)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	w, fault := c.prepareLinkWrite(ctx, id, phrase, target)
 	if fault != nil {
 		return nil, fault
@@ -315,23 +317,30 @@ func (n converter) targets(link map[string]any) ([]map[string]any, *Error) {
 }
 
 func (n converter) phrase(link map[string]any) (string, *Error) {
-	direction, isText := link[directionKey].(string)
-	if !isText {
-		return "", n.response.invalid("the direction of a link of the issue is not text")
+	direction, kind, fault := n.linkEnd(link)
+	if fault != nil {
+		return "", fault
 	}
-	kind, isObject := link[linkTypeKey].(map[string]any)
-	if !isObject {
-		return "", n.response.invalid("the type of a link of the issue is not a JSON object")
-	}
-	read := phraseKeys(direction)[0]
-	phrase, isText := kind[read].(string)
-	if !isText {
-		return "", n.response.invalid(fmt.Sprintf("the %s of a link type of the issue is not text", read))
+	phrase, _, fault := n.linkNames(direction, kind)
+	if fault != nil {
+		return "", fault
 	}
 	if phrase == "" {
 		return "", n.response.invalid("a link of the issue holds issues and the phrase it goes by is empty")
 	}
 	return phrase, nil
+}
+
+func (n converter) linkEnd(link map[string]any) (string, map[string]any, *Error) {
+	direction, isText := link[directionKey].(string)
+	if !isText {
+		return "", nil, n.response.invalid("the direction of a link of the issue is not text")
+	}
+	kind, isObject := link[linkTypeKey].(map[string]any)
+	if !isObject {
+		return "", nil, n.response.invalid("the type of a link of the issue is not a JSON object")
+	}
+	return direction, kind, nil
 }
 
 func (c *Client) prepareLinkWrite(ctx context.Context, id, phrase, target string) (linkWrite, *Error) {
@@ -350,7 +359,7 @@ func (c *Client) prepareLinkWrite(ctx context.Context, id, phrase, target string
 	if other.id == source.id {
 		return linkWrite{}, other.a.fault(CodeBadUsage, oneIssue,
 			Pair{Key: issueKey, Value: NewString(source.readable)},
-			Pair{Key: "target", Value: NewString(other.readable)})
+			Pair{Key: targetKey, Value: NewString(other.readable)})
 	}
 	return linkWrite{source: source, target: other, link: link}, nil
 }
@@ -465,13 +474,9 @@ func (n converter) parseLinks(value any) ([]parsedLink, *Error) {
 	}
 	links := make([]parsedLink, 0, len(received))
 	for _, held := range received {
-		direction, isEnd := held[directionKey].(string)
-		if !isEnd {
-			return nil, n.response.invalid("the direction of a link of the issue is not text")
-		}
-		kind, isObject := held[linkTypeKey].(map[string]any)
-		if !isObject {
-			return nil, n.response.invalid("the type of a link of the issue is not a JSON object")
+		direction, kind, fault := n.linkEnd(held)
+		if fault != nil {
+			return nil, fault
 		}
 		typeID, isText := kind[idKey].(string)
 		if !isText {
@@ -517,7 +522,7 @@ func (s linkIssue) linkFor(phrase string) (issueLink, *Error) {
 		message := fmt.Sprintf("two links of the issue go by the phrase %s, and neither of them can be named "+
 			"by it", quote(twin))
 		return issueLink{}, s.fault(CodeUpstreamInvalid, message,
-			Pair{Key: "phrase", Value: NewString(twin)})
+			Pair{Key: phraseKey, Value: NewString(twin)})
 	}
 	link, found := soleMatch(named, phrase, func(link issueLink) string { return link.phrase })
 	if !found {
@@ -525,7 +530,7 @@ func (s linkIssue) linkFor(phrase string) (issueLink, *Error) {
 	}
 	if !link.hasValidID() {
 		return issueLink{}, s.fault(CodeUpstreamInvalid, unreadableLink,
-			Pair{Key: "phrase", Value: NewString(link.phrase)})
+			Pair{Key: phraseKey, Value: NewString(link.phrase)})
 	}
 	return link, nil
 }
@@ -565,8 +570,8 @@ func (s linkIssue) unknownPhrase(phrase string, named []issueLink) *Error {
 		}
 		nearby = nearest(phrase, among, canonicalPhrases(s.links))
 	}
-	entry := nearestEntry("phrase", phrase, nearby)
-	return s.fault(CodeUnknownName, unknownPhrase, Pair{Key: "unknown", Value: NewList(entry)})
+	entry := nearestEntry(phraseKey, phrase, nearby)
+	return s.fault(CodeUnknownName, unknownPhrase, Pair{Key: unknownKey, Value: NewList(entry)})
 }
 
 const unknownPhrase = "the phrase under unknown is no phrase a link of the issue goes by"
@@ -729,7 +734,7 @@ func opposite(direction string) string {
 func (w linkWrite) withLinkDetails(fault *Error) *Error {
 	fault.Details = insertAfterRequest(fault.Details,
 		Pair{Key: issueKey, Value: NewString(w.source.readable)},
-		Pair{Key: "phrase", Value: NewString(w.link.phrase)},
-		Pair{Key: "target", Value: NewString(w.target.readable)})
+		Pair{Key: phraseKey, Value: NewString(w.link.phrase)},
+		Pair{Key: targetKey, Value: NewString(w.target.readable)})
 	return fault
 }

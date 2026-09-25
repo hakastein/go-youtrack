@@ -11,6 +11,7 @@ const FieldListFields = "field(name,localizedName,fieldType(valueType,isMultiVal
 const (
 	projectRead        = "jetbrains.jetpass.project-read"
 	projectFieldSchema = "ProjectCustomField"
+	fieldsPlural       = "fields"
 )
 
 // ListFieldsOptions: Fields is a fields= expression, empty for FieldListFields and +x for them and x.
@@ -36,15 +37,15 @@ func (s *FieldsService) Show(ctx context.Context, project, name string, opts *Sh
 }
 
 func (s *FieldsService) list(ctx context.Context, project string, opts ListFieldsOptions) (*Node, *Error) {
+	c := s.client
 	code, fault := parseProjectCode(project)
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(projectFieldSchema, opts.Fields, FieldListFields)
+	requested, fault := c.parseFields(projectFieldSchema, opts.Fields, FieldListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	asked := withFields(requested, requestedField{name: ordinalKey})
 	decoded, fault := c.request(ctx, "[]"+projectFieldSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProjectCustomFields(ctx, code, fields, topAll)
@@ -63,10 +64,11 @@ func (s *FieldsService) list(ctx context.Context, project string, opts ListField
 	if fault != nil {
 		return nil, fault
 	}
-	return countedListDocument("fields", counted(len(ordered)), records), nil
+	return listDocument(fieldsPlural, counted(len(records)), truncation{known: true}, records), nil
 }
 
 func (s *FieldsService) show(ctx context.Context, project, name string, opts ShowFieldOptions) (*Node, *Error) {
+	c := s.client
 	code, fault := parseProjectCode(project)
 	if fault != nil {
 		return nil, fault
@@ -74,7 +76,7 @@ func (s *FieldsService) show(ctx context.Context, project, name string, opts Sho
 	if fault := checkFieldName(name); fault != nil {
 		return nil, fault
 	}
-	if _, fault := s.client.parseFields(projectFieldSchema, opts.Fields, FieldListFields); fault != nil {
+	if _, fault := c.parseFields(projectFieldSchema, opts.Fields, FieldListFields); fault != nil {
 		return nil, fault
 	}
 	read, fault := s.readField(ctx, code, name, func(found ProjectField) ([]requestedField, bool, *Error) {
@@ -121,6 +123,7 @@ func (s *FieldsService) readField(ctx context.Context, code, name string, ask fi
 }
 
 func (s *FieldsService) readFieldFrom(ctx context.Context, code, name string, ask fieldAsk, metadata *Metadata, sent Pair) (fieldRead, *Error, bool) {
+	c := s.client
 	names := resolvingNames(catalogueOf(metadata.Fields))
 	at, ok := names.place(name, name)
 	if !ok {
@@ -137,7 +140,6 @@ func (s *FieldsService) readFieldFrom(ctx context.Context, code, name string, as
 	if !modelled {
 		return refuseUnlessCached(metadata, metadataInvalid(sent, unmodelled(found.Type)))
 	}
-	c := s.client
 	asked := withFields(requested, fieldInfoFields())
 	answer, fault := c.request(ctx, projectFieldSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProjectCustomField(ctx, code, found.ID, fields)
@@ -199,13 +201,14 @@ func defaultFields(kind FieldType) (string, bool) {
 }
 
 func (s *FieldsService) fieldsToPrint(expression string, kind FieldType) (requested []requestedField, modelled bool, fault *Error) {
+	c := s.client
 	defaults := ""
 	if expression == "" || extendsDefault(expression) {
 		if defaults, modelled = defaultFields(kind); !modelled {
 			return nil, false, nil
 		}
 	}
-	requested, fault = s.client.parseFields(projectFieldSchema, expression, defaults)
+	requested, fault = c.parseFields(projectFieldSchema, expression, defaults)
 	return requested, true, fault
 }
 

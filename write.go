@@ -35,6 +35,13 @@ func optionalJSON[T any](clears bool, value *T) json.RawMessage {
 	return encoded
 }
 
+func nonEmpty(text string) *string {
+	if text == "" {
+		return nil
+	}
+	return &text
+}
+
 func writeResultNode(requested []requestedField) func(decodedResponse) (*Node, *Error) {
 	return func(a decodedResponse) (*Node, *Error) {
 		return objectNode(a, requested, a.objects[0], nil)

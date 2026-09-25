@@ -56,11 +56,11 @@ func (s *IssuesService) Delete(ctx context.Context, id string) (*Node, error) {
 }
 
 func (s *IssuesService) show(ctx context.Context, id string, opts ShowIssueOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueShowFields)
 	if fault != nil {
 		return nil, fault
@@ -72,14 +72,14 @@ func (s *IssuesService) show(ctx context.Context, id string, opts ShowIssueOptio
 }
 
 func (s *IssuesService) list(ctx context.Context, query string, opts ListIssuesOptions) (*Node, *Error) {
-	if fault := rejectRewritten("the query", query); fault != nil {
+	c := s.client
+	if fault := rejectRewritten(queryNoun, query); fault != nil {
 		return nil, fault
 	}
 	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueListFields)
 	if fault != nil {
 		return nil, fault
@@ -88,11 +88,11 @@ func (s *IssuesService) list(ctx context.Context, query string, opts ListIssuesO
 }
 
 func (s *IssuesService) delete(ctx context.Context, id string) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	return c.deleteOwner(ctx, issueOwner, issueSchema, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	}, c.apiDeleteIssue)

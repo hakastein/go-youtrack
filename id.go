@@ -90,6 +90,8 @@ func (k ownerKind) key() string {
 	return issueKey
 }
 
+const ownerNoun = "the issue or the article"
+
 type owner struct {
 	kind ownerKind
 	id   string

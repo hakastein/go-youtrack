@@ -44,7 +44,8 @@ func metadataOf(ctx context.Context, project string, read func(ctx context.Conte
 
 // sent is the read that brought the metadata, and nothing for metadata from the cache.
 func (s *FieldsService) metadata(ctx context.Context, code string) (*Metadata, Pair, *Error) {
-	if cached, hit := s.client.cache.load(metadataTarget(code)); hit {
+	c := s.client
+	if cached, hit := c.cache.load(metadataTarget(code)); hit {
 		return &Metadata{Fields: cached, FromCache: true}, Pair{}, nil
 	}
 	return s.readMetadata(ctx, code)

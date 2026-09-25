@@ -93,6 +93,7 @@ func (s *ActivitiesService) List(ctx context.Context, issue string, opts *ListAc
 }
 
 func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListActivitiesOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(issue)
 	if fault != nil {
 		return nil, fault
@@ -105,7 +106,6 @@ func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListAct
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(activitySchema, opts.Fields, ActivityListFields)
 	if fault != nil {
 		return nil, fault
@@ -138,7 +138,7 @@ func resolveCategories(asked []string) ([]activityCategory, *Error) {
 			unknown = append(unknown, nearestEntry(categoryKey, name, nearestNames(name, categoryIDs(table))))
 		}
 		message := "the names under unknown are none of the activity categories a history is listed in"
-		details := []Pair{{Key: "unknown", Value: NewList(unknown...)}}
+		details := []Pair{{Key: unknownKey, Value: NewList(unknown...)}}
 		return nil, &Error{Code: CodeUnknownName, Message: message, Details: details}
 	}
 	categories := make([]activityCategory, 0, len(table))
@@ -174,8 +174,8 @@ func rejectUnknownValueNames(spec *schemas, root, expression string, requested [
 		return nil
 	}
 	details := []Pair{
-		{Key: "fields", Value: NewString(expression)},
-		{Key: "unknown", Value: NewList(unknown...)},
+		{Key: fieldsKey, Value: NewString(expression)},
+		{Key: unknownKey, Value: NewList(unknown...)},
 	}
 	message := "the names under unknown are declared by no value an activity holds"
 	return &Error{Code: CodeUnknownName, Message: message, Details: details}
@@ -278,7 +278,7 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 		}
 		printed = append(printed, node)
 	}
-	return truncatedListDocument(activitiesPlural, found, left, printed), nil
+	return listDocument(activitiesPlural, found, truncation{left: left, known: true}, printed), nil
 }
 
 func activityRows(a decodedResponse, sent []activityCategory, printingValues bool) ([]activityCategory, *Error) {

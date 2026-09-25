@@ -72,11 +72,8 @@ func attachmentTargetOf(kind ownerKind) attachmentTarget {
 		remove: (*Client).apiDeleteIssueAttachment}
 }
 
-func (t attachmentTarget) listSchema() string {
-	return "[]" + t.schema
-}
-
 func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAttachmentsOptions) (*Node, *Error) {
+	c := s.client
 	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
@@ -85,18 +82,18 @@ func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAt
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(attachmentTargetOf(at.kind).schema, opts.Fields, AttachmentListFields)
+	target := attachmentTargetOf(at.kind)
+	requested, fault := c.parseFields(target.schema, opts.Fields, AttachmentListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
-	target := attachmentTargetOf(at.kind)
-	return c.listPage(ctx, attachmentsPlural, target.listSchema(), requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, attachmentsPlural, "[]"+target.schema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return target.list(c, ctx, at, fields, w)
 	})
 }
 
 func (s *AttachmentsService) create(ctx context.Context, owner string, file File, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
@@ -104,7 +101,8 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 	if fault := checkFile(file); fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(attachmentTargetOf(at.kind).schema, opts.Fields, AttachmentListFields)
+	target := attachmentTargetOf(at.kind)
+	requested, fault := c.parseFields(target.schema, opts.Fields, AttachmentListFields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -114,24 +112,22 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 	confirmed := func(a decodedResponse) *Error {
 		return verifyUpload(a, file.Name, sent.streamed())
 	}
-	c := s.client
-	target := attachmentTargetOf(at.kind)
 	checked := withFields(requested, requestedField{name: nameKey}, requestedField{name: sizeKey})
-	return writeAs(ctx, c, target.listSchema(), checked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, "[]"+target.schema, checked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return target.create(c, ctx, at, contentType, body, fields)
 	}, confirmed, writeResultNode(requested))
 }
 
 func (s *AttachmentsService) delete(ctx context.Context, owner, id string) (*Node, *Error) {
+	c := s.client
 	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
 	}
-	file, fault := parseChildID(attachmentKey, "the issue or the article", id)
+	file, fault := parseChildID(attachmentKey, ownerNoun, id)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	target := attachmentTargetOf(at.kind)
 	requested := []requestedField{
 		{name: idKey},

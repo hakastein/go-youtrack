@@ -9,10 +9,9 @@ import (
 )
 
 const (
-	commentsKey      = "comments"
-	deletedKey       = "deleted"
-	commentKey       = "comment"
-	commentOwnerNoun = "the issue or the article"
+	commentsKey = "comments"
+	deletedKey  = "deleted"
+	commentKey  = "comment"
 )
 
 const (
@@ -80,6 +79,7 @@ func (s *CommentsService) Delete(ctx context.Context, owner, id string) (*Node, 
 }
 
 func (s *CommentsService) list(ctx context.Context, owner string, opts ListCommentsOptions) (*Node, *Error) {
+	c := s.client
 	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
@@ -89,11 +89,10 @@ func (s *CommentsService) list(ctx context.Context, owner string, opts ListComme
 		return nil, fault
 	}
 	target := commentTargetOf(at.kind)
-	requested, fault := s.client.parseFields(target.comment, opts.Fields, target.listFields)
+	requested, fault := c.parseFields(target.comment, opts.Fields, target.listFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	return c.listPage(ctx, commentsKey, "[]"+target.comment, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return target.list(c, ctx, at, fields, w)
 	})

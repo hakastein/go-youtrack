@@ -80,11 +80,11 @@ func (f Field) Texts() []string {
 }
 
 func (s *IssuesService) get(ctx context.Context, id string) (*Issue, *Error) {
+	c := s.client
 	id, fault := parseIssueID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	decoded, fault := c.request(ctx, issueSchema, issueRecordFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
@@ -196,10 +196,9 @@ func (n converter) recordLinks(value any) ([]Link, *Error) {
 const brokenLinkSlot = "a link of the issue is not of the shape the specification gives it"
 
 func (n converter) recordLink(slot map[string]any) (Link, *Error) {
-	direction, isText := slot[directionKey].(string)
-	kind, isObject := slot[linkTypeKey].(map[string]any)
-	if !isText || !isObject {
-		return Link{}, n.response.invalid(brokenLinkSlot)
+	direction, kind, fault := n.linkEnd(slot)
+	if fault != nil {
+		return Link{}, fault
 	}
 	name, isName := kind[nameKey].(string)
 	forward, isForward := readOptionalText(kind[sourceToTarget])

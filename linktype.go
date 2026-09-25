@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const linkTypesListing = "[]IssueLinkType"
+const linkTypeSchema = "IssueLinkType"
 
 const topAllCutOff = 1000
 
@@ -25,7 +25,7 @@ func linkTypeFields() []requestedField {
 }
 
 func (c *Client) linkPhrases(ctx context.Context) (linkPhrases, *Error) {
-	a, fault := c.request(ctx, linkTypesListing, linkTypeFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, "[]"+linkTypeSchema, linkTypeFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssueLinkTypes(ctx, fields, topAllCutOff)
 	})
 	if fault != nil {
@@ -70,11 +70,8 @@ func linkEnd(kind map[string]any, plain, translated string) (label, phrase strin
 }
 
 func linkText(kind map[string]any, name string) (string, string) {
-	switch value := kind[name].(type) {
-	case nil:
-		return "", ""
-	case string:
-		return value, ""
+	if text, isText := readOptionalText(kind[name]); isText {
+		return text, ""
 	}
 	return "", fmt.Sprintf("the %s of a link type of the instance arrived as something other than text", name)
 }

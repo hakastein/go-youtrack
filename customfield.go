@@ -61,14 +61,6 @@ func fieldNamed[T interface{ info() fieldInfo }](name string, fields []T) (T, bo
 	return fields[places[0]], true
 }
 
-func pick(catalogue []fieldInfo, places []int) []fieldInfo {
-	found := make([]fieldInfo, 0, len(places))
-	for _, at := range places {
-		found = append(found, catalogue[at])
-	}
-	return found
-}
-
 func nearestNamed(name string, catalogue []fieldInfo) []string {
 	among := make([]suggestion, 0, len(catalogue))
 	for _, field := range catalogue {
@@ -338,7 +330,7 @@ func (n converter) valueNode(f issueCustomField) (*Node, bool, *Error) {
 	return NewList(items...), true, nil
 }
 
-const customFieldsListing = "[]CustomField"
+const instanceFieldSchema = "CustomField"
 
 const brokenCatalogue = "a custom field of the instance is named in some shape other than text"
 
@@ -347,7 +339,7 @@ func catalogueFields() []requestedField {
 }
 
 func (c *Client) customFieldCatalogue(ctx context.Context) (decodedResponse, []fieldInfo, *Error) {
-	a, fault := c.request(ctx, customFieldsListing, catalogueFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, "[]"+instanceFieldSchema, catalogueFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetCustomFields(ctx, fields, topAll)
 	})
 	if fault != nil {
@@ -412,7 +404,7 @@ func resolveNames(a decodedResponse, requested, asked []requestedField, catalogu
 			resolved = merge(resolved, requestedField{name: catalogue[at].name, fromCaller: true})
 		}
 	}
-	against := Pair{Key: "fields", Value: NewString(formatFields(requested))}
+	against := Pair{Key: fieldsKey, Value: NewString(formatFields(requested))}
 	if fault := names.fault(a.sent(), against, "the instance"); fault != nil {
 		return nil, fault
 	}
@@ -439,9 +431,13 @@ func (r *nameResolver) place(name, written string) (int, bool) {
 	case len(places) == 0:
 		r.unknown = append(r.unknown, nearestEntry(fieldKey, written, nearestNamed(name, r.catalogue)))
 	default:
+		found := make([]fieldInfo, 0, len(places))
+		for _, at := range places {
+			found = append(found, r.catalogue[at])
+		}
 		r.ambiguous = append(r.ambiguous, NewMap(
 			Pair{Key: fieldKey, Value: NewString(written)},
-			Pair{Key: "candidates", Value: textList(canonical(pick(r.catalogue, places)))}))
+			Pair{Key: candidatesKey, Value: textList(canonical(found))}))
 	}
 	r.reported[written] = true
 	return 0, false

@@ -62,7 +62,7 @@ func checkMissingFields(spec *schemas, response *http.Response, responseSchema s
 	}
 	details := []Pair{
 		sentRequest(response),
-		{Key: "fields", Value: NewString(formatFields(requested))},
+		{Key: fieldsKey, Value: NewString(formatFields(requested))},
 	}
 	if len(missing) > 0 {
 		message := "the fields under missing were asked for and did not arrive: the caller's rights may hide them"
@@ -71,7 +71,7 @@ func checkMissingFields(spec *schemas, response *http.Response, responseSchema s
 	}
 	if len(unknown) > 0 {
 		message := "the names under unknown are not declared where they were asked for"
-		details = append(details, Pair{Key: "unknown", Value: NewList(unknown...)})
+		details = append(details, Pair{Key: unknownKey, Value: NewList(unknown...)})
 		return &Error{Code: CodeUnknownName, Message: message, Details: details}
 	}
 	return nil
@@ -207,10 +207,10 @@ func nearestEntry(key, written string, nearest []string) *Node {
 func unresolvedDetails(unknown, ambiguous []*Node) []Pair {
 	var details []Pair
 	if len(unknown) > 0 {
-		details = append(details, Pair{Key: "unknown", Value: NewList(unknown...)})
+		details = append(details, Pair{Key: unknownKey, Value: NewList(unknown...)})
 	}
 	if len(ambiguous) > 0 {
-		details = append(details, Pair{Key: "ambiguous", Value: NewList(ambiguous...)})
+		details = append(details, Pair{Key: ambiguousKey, Value: NewList(ambiguous...)})
 	}
 	return details
 }

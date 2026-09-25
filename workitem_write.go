@@ -69,7 +69,7 @@ func parseWorkItemCreate(in WorkItemInput) (workItemCreateInput, *Error) {
 	if fault := rejectRewritten(workItemText, in.Text); fault != nil {
 		return workItemCreateInput{}, fault
 	}
-	written := workItemCreateInput{spent: spent, text: workItemOptional(in.Text), workType: workItemOptional(in.Type),
+	written := workItemCreateInput{spent: spent, text: nonEmpty(in.Text), workType: nonEmpty(in.Type),
 		attributes: in.Attributes}
 	if in.Date != "" {
 		against, fault := parseWorkDate(in.Date)
@@ -82,13 +82,6 @@ func parseWorkItemCreate(in WorkItemInput) (workItemCreateInput, *Error) {
 		return workItemCreateInput{}, fault
 	}
 	return written, nil
-}
-
-func workItemOptional(text string) *string {
-	if text == "" {
-		return nil
-	}
-	return &text
 }
 
 const workItemText = "the text of the work item"
@@ -393,7 +386,7 @@ func (w workItemUpdateInput) diff(item map[string]any) []mismatch {
 		wrong = emptyMismatch(wrong, textKey, item[textKey])
 	}
 	if w.clearsType {
-		wrong = emptyMismatch(wrong, typeKey, memberOf(item[typeKey], nameKey))
+		wrong = emptyObjectMismatch(wrong, typeKey, item[typeKey], nameKey)
 	}
 	return wrong
 }

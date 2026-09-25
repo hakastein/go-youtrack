@@ -15,7 +15,6 @@ const ArticleListFields = "idReadable,summary"
 const (
 	articleSchema    = "Article"
 	articlesPlural   = "articles"
-	articlesListing  = "[]" + articleSchema
 	contentKey       = "content"
 	parentArticleKey = "parentArticle"
 	parentKey        = "parent"
@@ -68,11 +67,11 @@ func (s *ArticlesService) Delete(ctx context.Context, id string) (*Node, error) 
 }
 
 func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseArticleID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
 	if fault != nil {
 		return nil, fault
@@ -96,24 +95,25 @@ func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleO
 }
 
 func (s *ArticlesService) list(ctx context.Context, query string, opts ListArticlesOptions) (*Node, *Error) {
-	if fault := rejectRewritten("the query", query); fault != nil {
+	c := s.client
+	if fault := rejectRewritten(queryNoun, query); fault != nil {
 		return nil, fault
 	}
 	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	return c.listPage(ctx, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, articlesPlural, "[]"+articleSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetArticles(ctx, query, fields, w)
 	})
 }
 
 func (s *ArticlesService) children(ctx context.Context, parent string, opts ListArticlesOptions) (*Node, *Error) {
+	c := s.client
 	parent, fault := parseArticleID(parent)
 	if fault != nil {
 		return nil, fault
@@ -122,17 +122,17 @@ func (s *ArticlesService) children(ctx context.Context, parent string, opts List
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	return c.listPage(ctx, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, articlesPlural, "[]"+articleSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetArticleChildArticles(ctx, parent, fields, w)
 	})
 }
 
 func (s *ArticlesService) create(ctx context.Context, project string, in ArticleInput, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	code, fault := parseProjectCode(project)
 	if fault != nil {
 		return nil, fault
@@ -140,7 +140,6 @@ func (s *ArticlesService) create(ctx context.Context, project string, in Article
 	if fault := checkArticleInput(in); fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
 	if fault != nil {
 		return nil, fault
@@ -228,6 +227,7 @@ const (
 )
 
 func (s *ArticlesService) update(ctx context.Context, id string, in ArticleUpdate, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseArticleID(id)
 	if fault != nil {
 		return nil, fault
@@ -235,7 +235,6 @@ func (s *ArticlesService) update(ctx context.Context, id string, in ArticleUpdat
 	if fault := checkArticleUpdate(in); fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
 	if fault != nil {
 		return nil, fault
@@ -379,11 +378,11 @@ func (p articleRef) checkNoCycle(article articleRef, line []ancestor) *Error {
 }
 
 func (s *ArticlesService) delete(ctx context.Context, id string) (*Node, *Error) {
+	c := s.client
 	id, fault := parseArticleID(id)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	return c.deleteOwner(ctx, articleOwner, articleSchema, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetArticle(ctx, id, fields)
 	}, c.apiDeleteArticle)

@@ -159,7 +159,7 @@ func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]res
 		message := "the names under unknown are not attributes of the work items of the project, or values they take"
 		return nil, p.response.fault(CodeUnknownName, message,
 			Pair{Key: projectKey, Value: NewString(p.project)},
-			Pair{Key: "unknown", Value: NewList(unknown...)})
+			Pair{Key: unknownKey, Value: NewList(unknown...)})
 	}
 	return filed, nil
 }

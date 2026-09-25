@@ -13,7 +13,6 @@ const (
 const (
 	workItemSchema          = "IssueWorkItem"
 	workItemsPlural         = "workItems"
-	workItemsListing        = "[]" + workItemSchema
 	durationKey             = "duration"
 	dateKey                 = "date"
 	workItemNoun            = "work item"
@@ -51,6 +50,7 @@ func (s *WorkItemsService) Delete(ctx context.Context, issue, id string) (*Node,
 }
 
 func (s *WorkItemsService) list(ctx context.Context, issue string, opts ListWorkItemsOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(issue)
 	if fault != nil {
 		return nil, fault
@@ -59,7 +59,6 @@ func (s *WorkItemsService) list(ctx context.Context, issue string, opts ListWork
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemListFields)
 	if fault != nil {
 		return nil, fault
@@ -67,11 +66,12 @@ func (s *WorkItemsService) list(ctx context.Context, issue string, opts ListWork
 	ask := func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetIssueWorkItems(ctx, id, fields, w)
 	}
-	selection := c.newList(workItemsPlural, workItemsListing, requested, workItemRequestFields(c.spec, requested), page, ask)
+	selection := c.newList(workItemsPlural, "[]"+workItemSchema, requested, workItemRequestFields(c.spec, requested), page, ask)
 	return selection.fetch(ctx)
 }
 
 func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItemInput, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(issue)
 	if fault != nil {
 		return nil, fault
@@ -80,7 +80,6 @@ func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItem
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemWriteFields)
 	if fault != nil {
 		return nil, fault
@@ -122,6 +121,7 @@ func (c *Client) resolveWorkItemSettings(ctx context.Context, id string, named *
 }
 
 func (s *WorkItemsService) update(ctx context.Context, issue, item string, in WorkItemUpdate, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(issue)
 	if fault != nil {
 		return nil, fault
@@ -134,7 +134,6 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemWriteFields)
 	if fault != nil {
 		return nil, fault
@@ -152,6 +151,7 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 }
 
 func (s *WorkItemsService) delete(ctx context.Context, issue, item string) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(issue)
 	if fault != nil {
 		return nil, fault
@@ -160,7 +160,6 @@ func (s *WorkItemsService) delete(ctx context.Context, issue, item string) (*Nod
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested := []requestedField{
 		{name: idKey},
 		{name: issueKey, children: []requestedField{{name: idReadableKey}}},
@@ -292,7 +291,7 @@ func (p projectWorkItemTypes) fault(name string, catalogue []fieldInfo) *Error {
 	message := "the name under unknown is not one type of work the project writes work items against"
 	return p.response.fault(CodeUnknownName, message,
 		Pair{Key: projectKey, Value: NewString(p.project)},
-		Pair{Key: "unknown", Value: NewList(nearestEntry(typeKey, name, nearestNamed(name, catalogue)))})
+		Pair{Key: unknownKey, Value: NewList(nearestEntry(typeKey, name, nearestNamed(name, catalogue)))})
 }
 
 func workItemRequestFields(spec *schemas, requested []requestedField) []requestedField {

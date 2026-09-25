@@ -7,6 +7,7 @@ import (
 )
 
 func (s *CommentsService) create(ctx context.Context, owner, text string, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
@@ -15,12 +16,11 @@ func (s *CommentsService) create(ctx context.Context, owner, text string, opts W
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(commentTargetOf(at.kind).comment, opts.Fields, CommentFields)
+	target := commentTargetOf(at.kind)
+	requested, fault := c.parseFields(target.comment, opts.Fields, CommentFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
-	target := commentTargetOf(at.kind)
 	body := written.body()
 	return writeAs(ctx, c, target.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return target.create(c, ctx, at, body, fields)
@@ -28,11 +28,12 @@ func (s *CommentsService) create(ctx context.Context, owner, text string, opts W
 }
 
 func (s *CommentsService) update(ctx context.Context, owner, id, text string, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
 	}
-	which, fault := parseChildID(commentKey, commentOwnerNoun, id)
+	which, fault := parseChildID(commentKey, ownerNoun, id)
 	if fault != nil {
 		return nil, fault
 	}
@@ -40,12 +41,11 @@ func (s *CommentsService) update(ctx context.Context, owner, id, text string, op
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := s.client.parseFields(commentTargetOf(at.kind).comment, opts.Fields, CommentFields)
+	target := commentTargetOf(at.kind)
+	requested, fault := c.parseFields(target.comment, opts.Fields, CommentFields)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
-	target := commentTargetOf(at.kind)
 	if target.keepsDeleted {
 		if fault := c.checkCommentNotDeleted(ctx, target, at, which); fault != nil {
 			return nil, fault
@@ -80,15 +80,15 @@ const deletedCommentMessage = "the comment was taken back by whoever wrote it, a
 	"none. A comment taken back can be deleted for good and changed by nothing at all"
 
 func (s *CommentsService) delete(ctx context.Context, owner, id string) (*Node, *Error) {
+	c := s.client
 	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
 	}
-	which, fault := parseChildID(commentKey, commentOwnerNoun, id)
+	which, fault := parseChildID(commentKey, ownerNoun, id)
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	target := commentTargetOf(at.kind)
 	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
 		return target.remove(c, ctx, at, which)

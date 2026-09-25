@@ -75,10 +75,6 @@ type truncation struct {
 	known bool
 }
 
-func truncated(left bool) truncation {
-	return truncation{left: left, known: true}
-}
-
 func (c count) truncationAt(shown int) truncation {
 	return truncation{left: c.total > shown, known: c.known}
 }
@@ -94,15 +90,8 @@ type list struct {
 	countTotal func(ctx context.Context) (count, *Error)
 }
 
-func (l list) requestFields() requestFields {
-	if l.sentFields != nil {
-		return requestFields{sent: l.sentFields, output: l.requested}
-	}
-	return requestFields{sent: l.requested, output: l.requested}
-}
-
 func (c *Client) listPage(ctx context.Context, plural, schema string, requested []requestedField, page Page, fetchPage pageFetcher) (*Node, *Error) {
-	return c.newList(plural, schema, requested, nil, page, fetchPage).fetch(ctx)
+	return c.newList(plural, schema, requested, requested, page, fetchPage).fetch(ctx)
 }
 
 func (c *Client) newList(plural, schema string, requested, sentFields []requestedField, page Page, fetchPage pageFetcher) list {
@@ -120,9 +109,13 @@ func (c *Client) newList(plural, schema string, requested, sentFields []requeste
 }
 
 func (l list) fetch(ctx context.Context) (*Node, *Error) {
-	page, fault := l.client.readList(ctx, l.schema, l.requestFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := l.client.request(ctx, l.schema, l.sentFields, func(ctx context.Context, fields string) (*http.Response, error) {
 		return l.fetchPage(ctx, fields, l.page.window())
 	})
+	if fault != nil {
+		return nil, fault
+	}
+	page, fault := newConverter(decoded, listRecord).objectsAt(decoded.schema, l.requested, decoded.objects)
 	if fault != nil {
 		return nil, fault
 	}
@@ -151,14 +144,6 @@ func moreThanAsked(plural string, limit, top, returned int) *Error {
 	}
 	details := []Pair{{Key: "limit", Value: intNode(limit)}, {Key: "returned", Value: intNode(returned)}}
 	return &Error{Code: CodeUpstreamInvalid, Message: "more " + plural + " arrived than were asked for", Details: details}
-}
-
-func countedListDocument(plural string, found count, records []*Node) *Node {
-	return listDocument(plural, found, found.truncationAt(len(records)), records)
-}
-
-func truncatedListDocument(plural string, found count, left bool, records []*Node) *Node {
-	return listDocument(plural, found, truncated(left), records)
 }
 
 func listDocument(plural string, found count, left truncation, records []*Node) *Node {

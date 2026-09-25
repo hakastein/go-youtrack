@@ -48,6 +48,7 @@ func (s *IssuesService) WriteFields(ctx context.Context, id string, writes []Fie
 }
 
 func (s *IssuesService) create(ctx context.Context, project string, in IssueInput, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	code, fault := parseProjectCode(project)
 	if fault != nil {
 		return nil, fault
@@ -56,15 +57,15 @@ func (s *IssuesService) create(ctx context.Context, project string, in IssueInpu
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueShowFields)
 	if fault != nil {
 		return nil, fault
 	}
-	return createIssue(ctx, c, code, parts, issueDocument(c, requested))
+	return createIssue(ctx, c, code, parts, requested)
 }
 
 func (s *IssuesService) update(ctx context.Context, id string, in IssueUpdate, opts WriteOptions) (*Node, *Error) {
+	c := s.client
 	id, fault := parseIssueID(id)
 	if fault != nil {
 		return nil, fault
@@ -73,15 +74,18 @@ func (s *IssuesService) update(ctx context.Context, id string, in IssueUpdate, o
 	if fault != nil {
 		return nil, fault
 	}
-	c := s.client
 	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueShowFields)
 	if fault != nil {
 		return nil, fault
 	}
-	return updateIssue(ctx, c, id, parts, issueDocument(c, requested))
+	return updateIssue(ctx, c, id, parts, func(verified []requestedField) ([]requestedField, *Error) {
+		asked, _, fault := c.issueRequest(ctx, requested, verified...)
+		return asked, fault
+	}, writeResultNode(requested))
 }
 
 func (s *IssuesService) writeFields(ctx context.Context, id string, writes []FieldWrite) (*Issue, *Error) {
+	c := s.client
 	id, fault := parseIssueID(id)
 	if fault != nil {
 		return nil, fault
@@ -93,7 +97,9 @@ func (s *IssuesService) writeFields(ctx context.Context, id string, writes []Fie
 	if fault != nil {
 		return nil, fault
 	}
-	return updateIssue(ctx, s.client, id, issueInput{named: named, cleared: cleared}, issueRecordAnswer())
+	return updateIssue(ctx, c, id, issueInput{named: named, cleared: cleared}, func(verified []requestedField) ([]requestedField, *Error) {
+		return withFields(issueRecordFields(), verified...), nil
+	}, readIssue)
 }
 
 const (
@@ -105,31 +111,7 @@ const (
 		"no value for is filed as the project fills it"
 )
 
-type issueAnswer[T any] struct {
-	fields func(ctx context.Context, verified []requestedField) ([]requestedField, *Error)
-	read   func(decodedResponse) (T, *Error)
-}
-
-func issueDocument(c *Client, requested []requestedField) issueAnswer[*Node] {
-	return issueAnswer[*Node]{
-		fields: func(ctx context.Context, verified []requestedField) ([]requestedField, *Error) {
-			asked, _, fault := c.issueRequest(ctx, requested, verified...)
-			return asked, fault
-		},
-		read: writeResultNode(requested),
-	}
-}
-
-func issueRecordAnswer() issueAnswer[*Issue] {
-	return issueAnswer[*Issue]{
-		fields: func(_ context.Context, verified []requestedField) ([]requestedField, *Error) {
-			return withFields(issueRecordFields(), verified...), nil
-		},
-		read: readIssue,
-	}
-}
-
-func createIssue(ctx context.Context, c *Client, code string, parts issueInput, answer issueAnswer[*Node]) (*Node, *Error) {
+func createIssue(ctx context.Context, c *Client, code string, parts issueInput, requested []requestedField) (*Node, *Error) {
 	project, fault := c.readProjectMetadata(ctx, code)
 	if fault != nil {
 		return nil, fault
@@ -144,17 +126,19 @@ func createIssue(ctx context.Context, c *Client, code string, parts issueInput, 
 	if missing := filed.missing(); len(missing) > 0 {
 		return nil, project.fault(CodeMissingRequired, missingMessage, "missing", textList(missing))
 	}
-	asked, fault := answer.fields(ctx, filed.verifyFields())
+	asked, _, fault := c.issueRequest(ctx, requested, filed.verifyFields()...)
 	if fault != nil {
 		return nil, fault
 	}
 	body := filed.createBody()
 	return writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssue(ctx, body, fields)
-	}, filed.verify, answer.read)
+	}, filed.verify, writeResultNode(requested))
 }
 
-func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueInput, answer issueAnswer[T]) (T, *Error) {
+func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueInput,
+	ask func(verified []requestedField) ([]requestedField, *Error), read func(decodedResponse) (T, *Error),
+) (T, *Error) {
 	var none T
 	issue, fault := c.readIssueToWrite(ctx, id)
 	if fault != nil {
@@ -167,14 +151,14 @@ func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueIn
 	if emptied := changed.requiredEmptied(); len(emptied) > 0 {
 		return none, issue.project.fault(CodeMissingRequired, emptiedMessage, "missing", textList(emptied))
 	}
-	asked, fault := answer.fields(ctx, changed.verifyFields())
+	asked, fault := ask(changed.verifyFields())
 	if fault != nil {
 		return none, fault
 	}
 	body := changed.updateBody()
 	return writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateIssue(ctx, issue.readable, body, fields)
-	}, changed.verify, answer.read)
+	}, changed.verify, read)
 }
 
 type issueInput struct {
@@ -186,10 +170,7 @@ type issueInput struct {
 }
 
 func (in IssueInput) parse() (issueInput, *Error) {
-	var description *string
-	if in.Description != "" {
-		description = &in.Description
-	}
+	description := nonEmpty(in.Description)
 	if fault := rejectReplacedText(&in.Summary, description); fault != nil {
 		return issueInput{}, fault
 	}

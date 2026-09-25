@@ -152,7 +152,13 @@ func requestDetail(method, address string) Pair {
 	return Pair{Key: requestKey, Value: NewString(method + " " + address)}
 }
 
-const requestKey = "request"
+const (
+	requestKey    = "request"
+	fieldsKey     = "fields"
+	unknownKey    = "unknown"
+	ambiguousKey  = "ambiguous"
+	candidatesKey = "candidates"
+)
 
 func insertAfterRequest(details []Pair, own ...Pair) []Pair {
 	at := slices.IndexFunc(details, func(pair Pair) bool { return pair.Key == requestKey })
