@@ -351,7 +351,7 @@ func TestCommentWritesRefuseAnAnswerThatDisagreesWithTheWrite(t *testing.T) {
 			actual:  youtrack.NewNull(),
 		},
 		{
-			name:    "a rewrite answered under another id than the one it was addressed by",
+			name:    "a rewrite answered under another id, named by the id it was addressed by",
 			write:   commentUpdatedOnAnIssue,
 			written: `{"$type":"IssueComment","id":"7-99","text":"Other"}`,
 			target:  "/api/issues/DEV-7/comments/7-12?fields=id,text",
