@@ -24,6 +24,7 @@ var (
 	articleChild   = articleStep{id: "177-9", readable: "DEV-A-9"}
 	articleBetween = articleStep{id: "177-8", readable: "DEV-A-8"}
 	articleOfDEMO  = articleStep{id: "177-50", readable: "DEMO-A-1"}
+	articleDeepest = articleStep{id: "177-29", readable: "DEV-A-29"}
 )
 
 const articleOtherParent = "DEV-A-2"
@@ -32,8 +33,6 @@ const (
 	articleRootAbove    = "null"
 	articleNothingAbove = ""
 )
-
-const articleAncestorsPerRequest = 10
 
 func articleLine(project, top string, line ...articleStep) string {
 	nested := top
@@ -56,6 +55,12 @@ func articleLineAbove(top articleStep, above int) []articleStep {
 		line = append(line, articleStep{id: "177-" + strconv.Itoa(30+at), readable: "DEV-A-" + strconv.Itoa(30+at)})
 	}
 	return line
+}
+
+func articleChildAsDeepAsAsked(w http.ResponseWriter, r *http.Request) {
+	asked := strings.Count(r.URL.Query().Get("fields"), "parentArticle(")
+	line := append(articleLineAbove(articleChild, asked-1), articleDeepest)
+	fake.JSON(http.StatusOK, articleLine("DEV", articleNothingAbove, line...))(w, r)
 }
 
 func articleRead(id, readable, project string) string {
@@ -826,31 +831,22 @@ func TestUpdateArticleRefusesAParentThatClosesTheLine(t *testing.T) {
 
 func TestUpdateArticleRefusesALineOfParentsTheServerBrokeOff(t *testing.T) {
 	t.Parallel()
-	deepest := articleStep{id: "177-39", readable: "DEV-A-39"}
 	tests := []struct {
 		name  string
-		reads map[string]string
+		child http.HandlerFunc
 	}{
-		{
-			name: "at the parent",
-			reads: map[string]string{
-				"DEV-A-7": articleLine("DEV", articleNothingAbove, articleWritten),
-				"DEV-A-9": articleLine("DEV", articleNothingAbove, articleChild),
-			},
-		},
-		{
-			name: "where the line is read on",
-			reads: map[string]string{
-				"DEV-A-7":  articleLine("DEV", articleNothingAbove, articleWritten),
-				"DEV-A-9":  articleLine("DEV", articleNothingAbove, articleLineAbove(articleChild, articleAncestorsPerRequest)...),
-				deepest.id: articleLine("DEV", articleNothingAbove, deepest),
-			},
-		},
+		{name: "at the parent", child: fake.JSON(http.StatusOK, articleLine("DEV", articleNothingAbove, articleChild))},
+		{name: "where the line is read on", child: articleChildAsDeepAsAsked},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := articleServer(t, tc.reads, fake.Unexpected(t))
+			server := routes(t, map[string]http.HandlerFunc{
+				"GET /api/articles/DEV-A-7":              fake.JSON(http.StatusOK, articleLine("DEV", articleNothingAbove, articleWritten)),
+				"GET /api/articles/DEV-A-9":              tc.child,
+				"GET /api/articles/" + articleDeepest.id: fake.JSON(http.StatusOK, articleLine("DEV", articleNothingAbove, articleDeepest)),
+				"POST /api/articles/DEV-A-7":             fake.Unexpected(t),
+			})
 
 			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")}, nil)
 
@@ -926,18 +922,19 @@ func TestUpdateArticleRefusesALineThatRepeatsAnArticle(t *testing.T) {
 
 func TestUpdateArticleReadsTheLineOnWhereItIsDeeperThanOneRequest(t *testing.T) {
 	t.Parallel()
-	deepest := articleStep{id: "177-39", readable: "DEV-A-39"}
-	server := articleServer(t, map[string]string{
-		"DEV-A-7":  articleLine("DEV", articleNothingAbove, articleWritten),
-		"DEV-A-9":  articleLine("DEV", articleNothingAbove, articleLineAbove(articleChild, articleAncestorsPerRequest)...),
-		deepest.id: articleLine("DEV", articleRootAbove, deepest, articleParent),
-	}, fake.JSON(http.StatusOK, articleFiled(t, map[string]any{"parentArticle": articleFiledUnder(articleChild.readable)})))
+	server := routes(t, map[string]http.HandlerFunc{
+		"GET /api/articles/DEV-A-7":              fake.JSON(http.StatusOK, articleLine("DEV", articleNothingAbove, articleWritten)),
+		"GET /api/articles/DEV-A-9":              articleChildAsDeepAsAsked,
+		"GET /api/articles/" + articleDeepest.id: fake.JSON(http.StatusOK, articleLine("DEV", articleRootAbove, articleDeepest, articleParent)),
+		"POST /api/articles/DEV-A-7": fake.JSON(http.StatusOK,
+			articleFiled(t, map[string]any{"parentArticle": articleFiledUnder(articleChild.readable)})),
+	})
 
 	_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")},
 		answeredWith("idReadable"))
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"/api/articles/DEV-A-7", "/api/articles/DEV-A-9", "/api/articles/" + deepest.id,
+	assert.Equal(t, []string{"/api/articles/DEV-A-7", "/api/articles/DEV-A-9", "/api/articles/" + articleDeepest.id,
 		"/api/articles/DEV-A-7"}, server.Paths())
 	assert.Equal(t, server.Request(t, 1).URL.Query().Get("fields"), server.Request(t, 2).URL.Query().Get("fields"))
 	assert.Equal(t, map[string]any{"parentArticle": map[string]any{"id": articleChild.id}}, server.LastJSON(t))
