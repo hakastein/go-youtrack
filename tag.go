@@ -324,21 +324,19 @@ func tagNameEdgeMessage(where string, r rune) string {
 type tagTarget struct {
 	schema string
 	kind   ownerKind
-}
-
-func issueTagTarget() tagTarget {
-	return tagTarget{schema: issueSchema, kind: issueOwner}
-}
-
-func articleTagTarget() tagTarget {
-	return tagTarget{schema: articleSchema, kind: articleOwner}
+	get    func(c *Client, ctx context.Context, id, fields string) (*http.Response, error)
+	add    func(c *Client, ctx context.Context, on readableID, body []byte, fields string) (*http.Response, error)
+	remove func(c *Client, ctx context.Context, on readableID, tag tagID) (*http.Response, error)
 }
 
 func tagTargetOf(kind ownerKind) tagTarget {
 	if kind == articleOwner {
-		return articleTagTarget()
+		return tagTarget{schema: articleSchema, kind: articleOwner, get: (*Client).apiGetArticle,
+			add: (*Client).apiAddArticleTag, remove: (*Client).apiRemoveArticleTag}
 	}
-	return issueTagTarget()
+	return tagTarget{schema: issueSchema, kind: issueOwner, get: func(c *Client, ctx context.Context, id, fields string) (*http.Response, error) {
+		return c.apiGetIssue(ctx, id, fields, nil)
+	}, add: (*Client).apiAddIssueTag, remove: (*Client).apiRemoveIssueTag}
 }
 
 func (s *TagsService) tagging(ctx context.Context, id, name string, opts TagOptions, write func(*Client, context.Context, owner, tagRef) (*Node, *Error)) (*Node, *Error) {
@@ -360,7 +358,7 @@ func (c *Client) addTag(ctx context.Context, at owner, sought tagRef) (*Node, *E
 	}
 	body := hung.body()
 	node, fault := writeAs(ctx, c, tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiAddTag(ctx, hung.target.kind, hung.on, body, fields)
+		return hung.target.add(c, ctx, hung.on, body, fields)
 	}, hung.verify, hung.render(addedKey))
 	if fault != nil {
 		return nil, hung.withDetails(fault)
@@ -374,7 +372,7 @@ func (c *Client) removeTag(ctx context.Context, at owner, sought tagRef) (*Node,
 		return nil, fault
 	}
 	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return c.apiRemoveTag(ctx, off.target.kind, off.on, off.tag)
+		return off.target.remove(c, ctx, off.on, off.tag)
 	}); fault != nil {
 		message := fmt.Sprintf("the tag is not on the %s, and the tag itself stands: nothing was taken off, and "+
 			"the tags the %s carries are under its field tags", off.target.kind, off.target.kind)
@@ -407,33 +405,12 @@ func (c *Client) resolveTagging(ctx context.Context, at owner, sought tagRef) (t
 func (c *Client) readTagOwner(ctx context.Context, target tagTarget, at owner) (readableID, *Error) {
 	requested := []requestedField{{name: idReadableKey}}
 	a, fault := c.request(ctx, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.getOwnerToTag(ctx, at, fields)
+		return target.get(c, ctx, at.id, fields)
 	})
 	if fault != nil {
 		return readableID{}, fault
 	}
 	return readableIDOf(a, target.kind, "a tagging")
-}
-
-func (c *Client) getOwnerToTag(ctx context.Context, at owner, fields string) (*http.Response, error) {
-	if at.kind == articleOwner {
-		return c.apiGetArticle(ctx, at.id, fields)
-	}
-	return c.apiGetIssue(ctx, at.id, fields, nil)
-}
-
-func (c *Client) apiAddTag(ctx context.Context, kind ownerKind, on readableID, body []byte, fields string) (*http.Response, error) {
-	if kind == articleOwner {
-		return c.apiAddArticleTag(ctx, on, body, fields)
-	}
-	return c.apiAddIssueTag(ctx, on, body, fields)
-}
-
-func (c *Client) apiRemoveTag(ctx context.Context, kind ownerKind, on readableID, tag tagID) (*http.Response, error) {
-	if kind == articleOwner {
-		return c.apiRemoveArticleTag(ctx, on, tag)
-	}
-	return c.apiRemoveIssueTag(ctx, on, tag)
 }
 
 type tagOp struct {

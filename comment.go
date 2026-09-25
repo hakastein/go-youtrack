@@ -15,7 +15,13 @@ const (
 	commentOwnerNoun = "the issue or the article"
 )
 
-const CommentFields = "id,author(login),created,updated,text"
+const (
+	CommentFields = "id,author(login),created,updated,text"
+	// A comment of an article carries no deleted, so a list of them goes without it.
+	CommentListFields = printedCommentFields + ",deleted"
+)
+
+const printedCommentFields = "id,author(login),created,text"
 
 // ListCommentsOptions: Fields is a fields= expression, empty for the defaults of the owner and +x for them and x.
 type ListCommentsOptions struct {
@@ -83,52 +89,39 @@ func (s *CommentsService) list(ctx context.Context, owner string, opts ListComme
 		return nil, fault
 	}
 	held := commentTargetOf(at.kind)
-	_, requested, fault := parseFields(opts.Fields, formatFields(held.listed()), false)
+	_, requested, fault := parseFields(opts.Fields, held.listFields, false)
 	if fault != nil {
 		return nil, fault
 	}
 	c := s.client
 	return c.listPage(ctx, commentsKey, "[]"+held.comment, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
-		return held.api.list(c, ctx, at, fields, w)
+		return held.list(c, ctx, at, fields, w)
 	})
 }
 
 type commentTarget struct {
-	schema  string
-	comment string
-	owner   ownerKind
-	api     commentAPI
-}
-
-type commentAPI struct {
-	list       func(c *Client, ctx context.Context, at owner, fields string, w window) (*http.Response, error)
-	create     func(c *Client, ctx context.Context, at owner, body []byte, fields string) (*http.Response, error)
-	getComment func(c *Client, ctx context.Context, at owner, comment childID, fields string) (*http.Response, error)
-	update     func(c *Client, ctx context.Context, at owner, comment childID, body []byte, fields string) (*http.Response, error)
-	remove     func(c *Client, ctx context.Context, at owner, comment childID) (*http.Response, error)
+	schema       string
+	comment      string
+	kind         ownerKind
+	listFields   string
+	keepsDeleted bool
+	list         func(c *Client, ctx context.Context, at owner, fields string, w window) (*http.Response, error)
+	create       func(c *Client, ctx context.Context, at owner, body []byte, fields string) (*http.Response, error)
+	get          func(c *Client, ctx context.Context, at owner, comment childID, fields string) (*http.Response, error)
+	update       func(c *Client, ctx context.Context, at owner, comment childID, body []byte, fields string) (*http.Response, error)
+	remove       func(c *Client, ctx context.Context, at owner, comment childID) (*http.Response, error)
 }
 
 func issueCommentTarget() commentTarget {
-	return commentTarget{schema: issueSchema, comment: "IssueComment", owner: issueOwner, api: commentAPI{
-		list:       (*Client).apiGetIssueComments,
-		create:     (*Client).apiCreateIssueComment,
-		getComment: (*Client).apiGetIssueComment,
-		update:     (*Client).apiUpdateIssueComment,
-		remove:     (*Client).apiDeleteIssueComment,
-	}}
+	return commentTarget{schema: issueSchema, comment: "IssueComment", kind: issueOwner, listFields: CommentListFields,
+		keepsDeleted: true, list: (*Client).apiGetIssueComments, create: (*Client).apiCreateIssueComment,
+		get: (*Client).apiGetIssueComment, update: (*Client).apiUpdateIssueComment, remove: (*Client).apiDeleteIssueComment}
 }
 
 func articleCommentTarget() commentTarget {
-	return commentTarget{schema: articleSchema, comment: "ArticleComment", owner: articleOwner, api: commentAPI{
-		list:   (*Client).apiGetArticleComments,
-		create: (*Client).apiCreateArticleComment,
-		update: (*Client).apiUpdateArticleComment,
-		remove: (*Client).apiDeleteArticleComment,
-	}}
-}
-
-func (h commentTarget) keepsDeleted() bool {
-	return h.api.getComment != nil
+	return commentTarget{schema: articleSchema, comment: "ArticleComment", kind: articleOwner, listFields: printedCommentFields,
+		list: (*Client).apiGetArticleComments, create: (*Client).apiCreateArticleComment,
+		update: (*Client).apiUpdateArticleComment, remove: (*Client).apiDeleteArticleComment}
 }
 
 func commentTargetOf(kind ownerKind) commentTarget {
@@ -143,12 +136,12 @@ const commentsOfAShow = "is filled by the count of comments the read asks for, w
 
 func (h commentTarget) commentsOfAList() string {
 	return fmt.Sprintf("holds the comments of an %s, which come a record at a time in a list of its comments, and "+
-		"with the %s itself in a read of it that asks for them", h.owner, h.owner)
+		"with the %s itself in a read of it that asks for them", h.kind, h.kind)
 }
 
 func (h commentTarget) commentsOfAWrite() string {
 	return fmt.Sprintf("holds the comments of an %s, which no write of it changes; they come with a read of the %s "+
-		"that asks for them", h.owner, h.owner)
+		"that asks for them", h.kind, h.kind)
 }
 
 func (h commentTarget) reject(spec *schemas, expression string, requested []requestedField, because string) *Error {
@@ -160,32 +153,19 @@ func (h commentTarget) reject(spec *schemas, expression string, requested []requ
 	return &Error{Code: CodeBadUsage, Message: message}
 }
 
-func commentOutputFields() []requestedField {
-	return []requestedField{
-		{name: idKey},
-		{name: "author", children: []requestedField{{name: loginKey}}},
-		{name: "created"},
-		{name: textKey},
+func ownFields(expression string) []requestedField {
+	_, fields, fault := parseFields("", expression, false)
+	if fault != nil {
+		panic(fault)
 	}
-}
-
-func (h commentTarget) listed() []requestedField {
-	held := commentOutputFields()
-	if h.keepsDeleted() {
-		held = append(held, requestedField{name: deletedKey})
-	}
-	return held
-}
-
-func CommentListFields() string {
-	return formatFields(issueCommentTarget().listed())
+	return fields
 }
 
 func (c Comments) merged(h commentTarget, asked []requestedField) []requestedField {
 	if !c.asked() {
 		return asked
 	}
-	return withFields(asked, requestedField{name: commentsKey, children: h.listed()})
+	return withFields(asked, requestedField{name: commentsKey, children: ownFields(h.listFields)})
 }
 
 func (c Comments) pair(h commentTarget, a decodedResponse, holder map[string]any) ([]Pair, *Error) {
@@ -207,13 +187,13 @@ type datedComment struct {
 func (c Comments) of(h commentTarget, a decodedResponse, holder map[string]any) (*Node, *Error) {
 	received, isList := holder[commentsKey].([]any)
 	if !isList {
-		return nil, a.invalid(fmt.Sprintf("the comments of the %s arrived as something other than an array", h.owner))
+		return nil, a.invalid(fmt.Sprintf("the comments of the %s arrived as something other than an array", h.kind))
 	}
 	kept := make([]datedComment, 0, len(received))
 	for _, item := range received {
 		comment, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, a.invalid(fmt.Sprintf("a comment of the %s arrived as something other than an object", h.owner))
+			return nil, a.invalid(fmt.Sprintf("a comment of the %s arrived as something other than an object", h.kind))
 		}
 		gone, fault := h.deleted(a, comment)
 		if fault != nil {
@@ -236,7 +216,7 @@ func (c Comments) of(h commentTarget, a decodedResponse, holder map[string]any) 
 	for _, written := range kept {
 		objects = append(objects, written.comment)
 	}
-	printed, fault := newConverter(a, blockLayout).objectsAt(h.comment, commentOutputFields(), objects)
+	printed, fault := newConverter(a, blockLayout).objectsAt(h.comment, ownFields(printedCommentFields), objects)
 	if fault != nil {
 		return nil, fault
 	}
@@ -244,7 +224,7 @@ func (c Comments) of(h commentTarget, a decodedResponse, holder map[string]any) 
 }
 
 func (h commentTarget) deleted(a decodedResponse, comment map[string]any) (bool, *Error) {
-	if !h.keepsDeleted() {
+	if !h.keepsDeleted {
 		return false, nil
 	}
 	gone, isFlag := comment[deletedKey].(bool)

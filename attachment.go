@@ -55,13 +55,21 @@ func (s *AttachmentsService) Delete(ctx context.Context, owner, id string) (*Nod
 
 type attachmentTarget struct {
 	schema string
+	list   func(c *Client, ctx context.Context, at owner, fields string, w window) (*http.Response, error)
+	create func(c *Client, ctx context.Context, at owner, multipartType string, body io.Reader, fields string) (*http.Response, error)
+	get    func(c *Client, ctx context.Context, at owner, file childID, fields string) (*http.Response, error)
+	remove func(c *Client, ctx context.Context, at readableID, file childID) (*http.Response, error)
 }
 
 func attachmentTargetOf(kind ownerKind) attachmentTarget {
 	if kind == articleOwner {
-		return attachmentTarget{schema: articleAttachmentSchema}
+		return attachmentTarget{schema: articleAttachmentSchema, list: (*Client).apiGetArticleAttachments,
+			create: (*Client).apiCreateArticleAttachment, get: (*Client).apiGetArticleAttachment,
+			remove: (*Client).apiDeleteArticleAttachment}
 	}
-	return attachmentTarget{schema: issueAttachmentSchema}
+	return attachmentTarget{schema: issueAttachmentSchema, list: (*Client).apiGetIssueAttachments,
+		create: (*Client).apiCreateIssueAttachment, get: (*Client).apiGetIssueAttachment,
+		remove: (*Client).apiDeleteIssueAttachment}
 }
 
 func (h attachmentTarget) listSchema() string {
@@ -82,16 +90,10 @@ func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAt
 		return nil, fault
 	}
 	c := s.client
-	return c.listPage(ctx, attachmentsPlural, attachmentTargetOf(at.kind).listSchema(), requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
-		return c.getAttachments(ctx, at, fields, w)
+	target := attachmentTargetOf(at.kind)
+	return c.listPage(ctx, attachmentsPlural, target.listSchema(), requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+		return target.list(c, ctx, at, fields, w)
 	})
-}
-
-func (c *Client) getAttachments(ctx context.Context, at owner, fields string, w window) (*http.Response, error) {
-	if at.kind == articleOwner {
-		return c.apiGetArticleAttachments(ctx, at, fields, w)
-	}
-	return c.apiGetIssueAttachments(ctx, at, fields, w)
 }
 
 func (s *AttachmentsService) create(ctx context.Context, owner string, file File, opts WriteOptions) (*Node, *Error) {
@@ -113,17 +115,11 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 		return verifyUpload(a, file.Name, sent.streamed())
 	}
 	c := s.client
+	target := attachmentTargetOf(at.kind)
 	checked := withFields(requested, requestedField{name: nameKey}, requestedField{name: sizeKey})
-	return writeAs(ctx, c, attachmentTargetOf(at.kind).listSchema(), checked, func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiCreateAttachment(ctx, at, contentType, body, fields)
+	return writeAs(ctx, c, target.listSchema(), checked, func(ctx context.Context, fields string) (*http.Response, error) {
+		return target.create(c, ctx, at, contentType, body, fields)
 	}, confirmed, writeResultNode(requested))
-}
-
-func (c *Client) apiCreateAttachment(ctx context.Context, at owner, contentType string, body io.Reader, fields string) (*http.Response, error) {
-	if at.kind == articleOwner {
-		return c.apiCreateArticleAttachment(ctx, at, contentType, body, fields)
-	}
-	return c.apiCreateIssueAttachment(ctx, at, contentType, body, fields)
 }
 
 func (s *AttachmentsService) delete(ctx context.Context, owner, id string) (*Node, *Error) {
@@ -136,30 +132,17 @@ func (s *AttachmentsService) delete(ctx context.Context, owner, id string) (*Nod
 		return nil, fault
 	}
 	c := s.client
+	target := attachmentTargetOf(at.kind)
 	requested := []requestedField{
 		{name: idKey},
 		{name: nameKey},
 		{name: at.kind.String(), children: []requestedField{{name: idReadableKey}}},
 	}
-	return c.deleteAsRead(ctx, attachmentTargetOf(at.kind).schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.getAttachment(ctx, at, file, fields)
+	return c.deleteAsRead(ctx, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+		return target.get(c, ctx, at, file, fields)
 	}, childOwner(attachmentKey, file, at.kind), func(ctx context.Context, holder readableID) (*http.Response, error) {
-		return c.apiDeleteAttachment(ctx, at.kind, holder, file)
+		return target.remove(c, ctx, holder, file)
 	})
-}
-
-func (c *Client) getAttachment(ctx context.Context, at owner, file childID, fields string) (*http.Response, error) {
-	if at.kind == articleOwner {
-		return c.apiGetArticleAttachment(ctx, at, file, fields)
-	}
-	return c.apiGetIssueAttachment(ctx, at, file, fields)
-}
-
-func (c *Client) apiDeleteAttachment(ctx context.Context, kind ownerKind, at readableID, file childID) (*http.Response, error) {
-	if kind == articleOwner {
-		return c.apiDeleteArticleAttachment(ctx, at, file)
-	}
-	return c.apiDeleteIssueAttachment(ctx, at, file)
 }
 
 // net/http may read the body after the response, when the caller has already closed Content; a cancelled request

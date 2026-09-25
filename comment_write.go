@@ -23,7 +23,7 @@ func (s *CommentsService) create(ctx context.Context, owner, text string, opts W
 	held := commentTargetOf(at.kind)
 	body := written.body()
 	return writeAs(ctx, c, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.api.create(c, ctx, at, body, fields)
+		return held.create(c, ctx, at, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
 
@@ -46,7 +46,7 @@ func (s *CommentsService) update(ctx context.Context, owner, id, text string, op
 	}
 	c := s.client
 	held := commentTargetOf(at.kind)
-	if held.keepsDeleted() {
+	if held.keepsDeleted {
 		if fault := c.checkCommentNotDeleted(ctx, held, at, which); fault != nil {
 			return nil, fault
 		}
@@ -54,13 +54,13 @@ func (s *CommentsService) update(ctx context.Context, owner, id, text string, op
 	written := commentUpdate{commentCreate: rewritten, at: which}
 	body := written.body()
 	return writeAs(ctx, c, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.api.update(c, ctx, at, written.at, body, fields)
+		return held.update(c, ctx, at, written.at, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
 
 func (c *Client) checkCommentNotDeleted(ctx context.Context, held commentTarget, at owner, comment childID) *Error {
 	a, fault := c.request(ctx, held.comment, []requestedField{{name: deletedKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.api.getComment(c, ctx, at, comment, fields)
+		return held.get(c, ctx, at, comment, fields)
 	})
 	if fault != nil {
 		return fault
@@ -91,7 +91,7 @@ func (s *CommentsService) delete(ctx context.Context, owner, id string) (*Node, 
 	c := s.client
 	held := commentTargetOf(at.kind)
 	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return held.api.remove(c, ctx, at, which)
+		return held.remove(c, ctx, at, which)
 	}); fault != nil {
 		return nil, fault
 	}
