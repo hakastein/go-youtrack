@@ -2,8 +2,10 @@ package youtrack
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -70,6 +72,103 @@ func (t FieldType) ValueKey() string {
 	return k.member
 }
 
+// Named says the server resolves a value of this type by its name or login and fixes the letter case on the
+// way, so a written value and a held one are the same without regard to case.
+func (t FieldType) Named() bool {
+	k, _ := t.kind()
+	return k.isNamedValue()
+}
+
+// Same says a written value key and a held one name the same value of this type.
+func (t FieldType) Same(written, held string) bool {
+	k, _ := t.kind()
+	return k.sameValue(written, held)
+}
+
+// BundleFields is the fields= expression of what the field's project settings hold for the values it accepts:
+// bundle(values(name,archived)) for a type with a bundle, bundle(aggregatedUsers(login)) for a user, empty otherwise.
+func (t FieldType) BundleFields() string {
+	k, _ := t.kind()
+	switch {
+	case k.bundle:
+		return "bundle(values(name,archived))"
+	case k.valueType == UserType:
+		return "bundle(aggregatedUsers(login))"
+	}
+	return ""
+}
+
+// ValueKeys are the members values are named by across the types: name, login, minutes and text. A fields=
+// expression asking for them under value reads the value key of a field of any type.
+func ValueKeys() []string {
+	var keys []string
+	for _, k := range fieldKinds() {
+		if k.member != "" && !slices.Contains(keys, k.member) {
+			keys = append(keys, k.member)
+		}
+	}
+	return keys
+}
+
+// Encoded is a value ready to be written: the JSON under value and the value key it was written as.
+type Encoded struct {
+	Body any
+	Key  string
+}
+
+// Encode turns a value key into what a write sends for a field of this type; a value the type cannot hold is an
+// *ArgumentError with the reason.
+func (t FieldType) Encode(text string) (Encoded, error) {
+	k, known := t.kind()
+	if !known {
+		return Encoded{}, &ArgumentError{Argument: "value", Value: text, Reason: "is written into a field of the type " + unmodelled(t)}
+	}
+	encoded, reason := k.encode(text)
+	if reason != "" {
+		return Encoded{}, &ArgumentError{Argument: "value", Value: text, Reason: reason}
+	}
+	return Encoded{Body: encoded.body, Key: encoded.key}, nil
+}
+
+// ReadValue reads one element of a custom field's value as the server sends it under value: an object for a
+// bundle element, a user, a group, a period or a text, the scalar itself for the other types. present is false
+// when the member the type is named by is null. The error names the shape the element should have had.
+func (t FieldType) ReadValue(item any) (value Value, present bool, err error) {
+	k, known := t.kind()
+	if !known {
+		return Value{}, false, errors.New("the value is of a field of the type " + unmodelled(t))
+	}
+	held := item
+	if k.member != "" {
+		object, isObject := item.(map[string]any)
+		if !isObject {
+			return Value{}, false, fmt.Errorf("the value holds no %s, which is what a field of its type is named by", k.member)
+		}
+		inside, ok := object[k.member]
+		if !ok {
+			return Value{}, false, fmt.Errorf("the value holds no %s, which is what a field of its type is named by", k.member)
+		}
+		if inside == nil {
+			return Value{}, false, nil
+		}
+		held = inside
+		if k.isNamedValue() {
+			value.ID, _ = object[idKey].(string)
+			value.LocalizedName, _ = object[localizedNameKey].(string)
+		}
+	}
+	text, read := k.keyText(held)
+	if !read {
+		what := "the value"
+		if k.member != "" {
+			what = "the " + k.member + " of the value"
+		}
+		return Value{}, false, errors.New(what + " is not " + k.shape())
+	}
+	value.Text = text
+	return value, true, nil
+}
+
 type form int
 
 const (
@@ -134,12 +233,10 @@ func (t FieldType) kind() (fieldKind, bool) {
 
 func valueMembers() []field {
 	var members []field
-	for _, k := range fieldKinds() {
-		if k.member != "" {
-			members = merge(members, field{name: k.member})
-		}
+	for _, key := range ValueKeys() {
+		members = append(members, field{name: key})
 	}
-	return merge(members, field{name: idKey})
+	return append(members, field{name: idKey}, field{name: localizedNameKey})
 }
 
 // A named value is one the server resolves by name, fixing its letter case on the way.
@@ -386,6 +483,8 @@ func (k fieldKind) keyText(held any) (string, bool) {
 	text, isText := held.(string)
 	return text, isText
 }
+
+const localizedNameKey = "localizedName"
 
 func (k fieldKind) shape() string {
 	switch k.form {

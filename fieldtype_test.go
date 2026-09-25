@@ -1,9 +1,12 @@
 package youtrack_test
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/hakastein/youtrack"
 )
@@ -63,4 +66,140 @@ func TestFieldTypeKnowsNoPairOutsideTheTable(t *testing.T) {
 			assert.False(t, fieldType.HasBundle())
 		})
 	}
+}
+
+func TestFieldTypeEncodesAValueKeyAsTheBodyOfItsType(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		fieldType youtrack.FieldType
+		text      string
+		body      string
+		key       string
+	}{
+		{name: "a name", fieldType: fieldType("enum", true), text: "First", body: `{"name":"First"}`, key: "First"},
+		{name: "a login", fieldType: fieldType("user", false), text: "first", body: `{"login":"first"}`, key: "first"},
+		{name: "a period", fieldType: fieldType("period", false), text: "PT90M", body: `{"minutes":90}`, key: "PT1H30M"},
+		{name: "a text", fieldType: fieldType("text", false), text: "a\nb", body: `{"text":"a\nb"}`, key: "a\nb"},
+		{name: "a day", fieldType: fieldType("date", false), text: "2026-09-16", body: `1789560000000`, key: "2026-09-16"},
+		{name: "a moment", fieldType: fieldType("date and time", false), text: "2026-08-31T03:00:00.123+03:00", body: `1788134400123`, key: "2026-08-31T00:00:00.123Z"},
+		{name: "a whole number", fieldType: fieldType("integer", false), text: "007", body: `7`, key: "7"},
+		{name: "a number", fieldType: fieldType("float", false), text: "1e3", body: `1000`, key: "1000"},
+		{name: "a string", fieldType: fieldType("string", false), text: "First", body: `"First"`, key: "First"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			encoded, err := tc.fieldType.Encode(tc.text)
+
+			require.NoError(t, err)
+			body, err := json.Marshal(encoded.Body)
+			require.NoError(t, err)
+			assert.JSONEq(t, tc.body, string(body))
+			assert.Equal(t, tc.key, encoded.Key)
+		})
+	}
+}
+
+func TestFieldTypeRefusesToEncodeAValueItsTypeCannotHold(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		fieldType youtrack.FieldType
+		text      string
+	}{
+		{name: "an empty name", fieldType: fieldType("enum", false), text: ""},
+		{name: "a period of days", fieldType: fieldType("period", false), text: "P1D"},
+		{name: "a string with a space around it", fieldType: fieldType("string", false), text: " a"},
+		{name: "a type the module does not model", fieldType: fieldType("quantum", false), text: "a"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := tc.fieldType.Encode(tc.text)
+
+			assert.Equal(t, youtrack.ArgumentError{Argument: "value", Value: tc.text}, argumentErrorOf(t, err))
+		})
+	}
+}
+
+func TestFieldTypeReadsOneValueByTheKeyOfItsType(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		fieldType youtrack.FieldType
+		item      string
+		value     youtrack.Value
+		present   bool
+	}{
+		{name: "a bundle element", fieldType: fieldType("state", false), item: `{"id":"3-1","name":"In Progress","localizedName":"В работе"}`,
+			value: youtrack.Value{ID: "3-1", Text: "In Progress", LocalizedName: "В работе"}, present: true},
+		{name: "a user", fieldType: fieldType("user", true), item: `{"id":"1-5","login":"first","fullName":"F"}`,
+			value: youtrack.Value{ID: "1-5", Text: "first"}, present: true},
+		{name: "a period", fieldType: fieldType("period", false), item: `{"id":"PT1H","minutes":60}`, value: youtrack.Value{Text: "PT1H"}, present: true},
+		{name: "a text that is null", fieldType: fieldType("text", false), item: `{"text":null}`},
+		{name: "a float", fieldType: fieldType("float", false), item: `1.50`, value: youtrack.Value{Text: "1.5"}, present: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var item any
+			decoder := json.NewDecoder(strings.NewReader(tc.item))
+			decoder.UseNumber()
+			require.NoError(t, decoder.Decode(&item))
+
+			value, present, err := tc.fieldType.ReadValue(item)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.present, present)
+			assert.Equal(t, tc.value, value)
+		})
+	}
+}
+
+func TestFieldTypeRefusesToReadAValueOfAnotherShape(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		fieldType youtrack.FieldType
+		item      any
+	}{
+		{name: "a name that is no object", fieldType: fieldType("enum", false), item: "First"},
+		{name: "an object without the member", fieldType: fieldType("user", false), item: map[string]any{"name": "x"}},
+		{name: "minutes that are text", fieldType: fieldType("period", false), item: map[string]any{"minutes": "90"}},
+		{name: "a string that is a number", fieldType: fieldType("string", false), item: json.Number("5")},
+		{name: "a type the module does not model", fieldType: fieldType("quantum", false), item: "x"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := tc.fieldType.ReadValue(tc.item)
+
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestFieldTypeComparesNamedValuesWithoutRegardToCase(t *testing.T) {
+	t.Parallel()
+	assert.True(t, fieldType("enum", false).Named())
+	assert.True(t, fieldType("user", true).Named())
+	assert.False(t, fieldType("string", false).Named())
+	assert.False(t, fieldType("text", false).Named())
+	assert.True(t, fieldType("enum", false).Same("first", "First"))
+	assert.False(t, fieldType("string", false).Same("first", "First"))
+	assert.True(t, fieldType("period", false).Same("PT1H", "PT1H"))
+}
+
+func TestFieldTypeNamesTheBundleFieldsOfItsType(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "bundle(values(name,archived))", fieldType("enum", true).BundleFields())
+	assert.Equal(t, "bundle(values(name,archived))", fieldType("ownedField", false).BundleFields())
+	assert.Equal(t, "bundle(aggregatedUsers(login))", fieldType("user", false).BundleFields())
+	assert.Equal(t, "", fieldType("group", false).BundleFields())
+	assert.Equal(t, "", fieldType("period", false).BundleFields())
+	assert.Equal(t, []string{"name", "login", "minutes", "text"}, youtrack.ValueKeys())
 }

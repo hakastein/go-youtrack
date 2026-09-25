@@ -32,13 +32,16 @@ func TestIssueReadsTheIssueAndItsFieldsByTheKeyOfTheirTypes(t *testing.T) {
 	}{
 		{name: "an enum", valueType: "enum",
 			value:  `{"$type":"EnumBundleElement","id":"3-1","name":"First","localizedName":"Localized","presentation":"Presented"}`,
-			values: []youtrack.Value{{ID: "3-1", Text: "First"}}},
+			values: []youtrack.Value{{ID: "3-1", Text: "First", LocalizedName: "Localized"}}},
 		{name: "enums", valueType: "enum", multi: true,
 			value:  `[` + element("First") + `,` + element("Second") + `]`,
 			values: []youtrack.Value{{ID: "3-5", Text: "First"}, {ID: "3-6", Text: "Second"}}},
 		{name: "a state", valueType: "state",
-			value:  `{"$type":"StateBundleElement","id":"3-2","name":"First","isResolved":false}`,
-			values: []youtrack.Value{{ID: "3-2", Text: "First"}}},
+			value:  `{"$type":"StateBundleElement","id":"3-2","name":"In Progress","localizedName":"В работе","isResolved":false}`,
+			values: []youtrack.Value{{ID: "3-2", Text: "In Progress", LocalizedName: "В работе"}}},
+		{name: "a state whose translation is null", valueType: "state",
+			value:  `{"$type":"StateBundleElement","id":"3-2","name":"Open","localizedName":null}`,
+			values: []youtrack.Value{{ID: "3-2", Text: "Open"}}},
 		{name: "a version", valueType: "version", value: `{"$type":"VersionBundleElement","id":"3-3","name":"First","released":true}`,
 			values: []youtrack.Value{{ID: "3-3", Text: "First"}}},
 		{name: "versions", valueType: "version", multi: true, value: `[{"$type":"VersionBundleElement","id":"3-3","name":"First"}]`,
@@ -95,6 +98,7 @@ func TestIssueReadsTheIssueAndItsFieldsByTheKeyOfTheirTypes(t *testing.T) {
 				ID: "2-1", IDReadable: "DEV-1", Summary: "First",
 				Project: youtrack.Project{ID: "0-1", ShortName: "DEV", Name: "Development"},
 				Fields:  []youtrack.Field{{Name: "Field", LocalizedName: "Поле", Type: fieldType(tc.valueType, tc.multi), Values: tc.values}},
+				Links:   []youtrack.Link{},
 				Tree:    issue.Tree,
 			}
 			assert.Equal(t, want, issue)
@@ -205,17 +209,68 @@ func TestIssueRefusesCustomFieldsOfAnotherShape(t *testing.T) {
 	}
 }
 
+func TestIssueReadsTheDescriptionAndTheLinks(t *testing.T) {
+	t.Parallel()
+	links := json.RawMessage(`[
+		{"$type":"IssueLink","direction":"INWARD","linkType":{"$type":"IssueLinkType","name":"Subtask","sourceToTarget":"parent for","targetToSource":"subtask of"},
+		 "issues":[{"$type":"Issue","id":"2-7","idReadable":"DEV-7"}]},
+		{"$type":"IssueLink","direction":"OUTWARD","linkType":{"$type":"IssueLinkType","name":"Subtask","sourceToTarget":"parent for","targetToSource":"subtask of"},"issues":[]},
+		{"$type":"IssueLink","direction":"BOTH","linkType":{"$type":"IssueLinkType","name":"Relates","sourceToTarget":"relates to","targetToSource":null},
+		 "issues":[{"$type":"Issue","id":"2-8","idReadable":"DEV-8"},{"$type":"Issue","id":"2-9","idReadable":"DOCS-9"}]}
+	]`)
+	server := fake.Serve(t, fake.JSON(http.StatusOK, issueJSON(t, map[string]any{
+		"description":  "First\nSecond",
+		"customFields": json.RawMessage(`[]`),
+		"links":        links,
+	})))
+
+	issue, err := client(t, server).Issue(t.Context(), "DEV-1", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, "First\nSecond", issue.Description)
+	subtask := youtrack.LinkType{Name: "Subtask", SourceToTarget: "parent for", TargetToSource: "subtask of"}
+	assert.Equal(t, []youtrack.Link{
+		{Direction: youtrack.Inward, Type: subtask, Issues: []youtrack.IssueRef{{ID: "2-7", IDReadable: "DEV-7"}}},
+		{Direction: youtrack.Outward, Type: subtask, Issues: []youtrack.IssueRef{}},
+		{Direction: youtrack.Both, Type: youtrack.LinkType{Name: "Relates", SourceToTarget: "relates to"},
+			Issues: []youtrack.IssueRef{{ID: "2-8", IDReadable: "DEV-8"}, {ID: "2-9", IDReadable: "DOCS-9"}}},
+	}, issue.Links)
+}
+
+func TestIssueReadsAnIssueWithoutADescriptionOrLinks(t *testing.T) {
+	t.Parallel()
+	server := fake.Serve(t, fake.JSON(http.StatusOK, issueJSON(t, map[string]any{
+		"description": nil, "customFields": json.RawMessage(`[]`), "links": nil,
+	})))
+
+	issue, err := client(t, server).Issue(t.Context(), "DEV-1", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, "", issue.Description)
+	assert.Nil(t, issue.Links)
+}
+
 func TestIssueRefusesAnIssueOfAnotherShape(t *testing.T) {
 	t.Parallel()
+	link := func(members string) json.RawMessage {
+		return json.RawMessage(`[{"$type":"IssueLink",` + members + `}]`)
+	}
 	tests := []struct {
 		name    string
 		members map[string]any
 	}{
 		{name: "a readable id that is a number", members: map[string]any{"idReadable": 5}},
 		{name: "a summary that is null", members: map[string]any{"summary": nil}},
+		{name: "a description that is a number", members: map[string]any{"description": 5}},
 		{name: "a project that is no object", members: map[string]any{"project": "DEV"}},
 		{name: "a project without a short name", members: map[string]any{"project": map[string]any{"id": "0-1", "name": "Development"}}},
 		{name: "no custom fields at all", members: map[string]any{"customFields": nil}},
+		{name: "links that are an object", members: map[string]any{"links": map[string]any{}}},
+		{name: "a link slot that is null", members: map[string]any{"links": json.RawMessage(`[null]`)}},
+		{name: "a link without a direction", members: map[string]any{"links": link(`"linkType":{"name":"Subtask","sourceToTarget":"a","targetToSource":"b"},"issues":[]`)}},
+		{name: "a link type without a name", members: map[string]any{"links": link(`"direction":"BOTH","linkType":{"sourceToTarget":"a","targetToSource":"b"},"issues":[]`)}},
+		{name: "a link whose issues are null", members: map[string]any{"links": link(`"direction":"BOTH","linkType":{"name":"Relates","sourceToTarget":"a","targetToSource":"b"},"issues":null`)}},
+		{name: "a linked issue without a readable id", members: map[string]any{"links": link(`"direction":"BOTH","linkType":{"name":"Relates","sourceToTarget":"a","targetToSource":"b"},"issues":[{"id":"2-7"}]`)}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -274,12 +329,13 @@ func TestIssueAsksForItsOwnFieldsAndTheCallersOnTop(t *testing.T) {
 		sent       string
 	}{
 		{name: "nothing beyond its own", expression: "", sent: issueFields},
-		{name: "a member of the issue", expression: "description", sent: issueFields + ",description"},
-		{name: "members with spaces around them", expression: " description , created ", sent: issueFields + ",description,created"},
-		{name: "a member it already asks for", expression: "summary,project(name)", sent: issueFields},
+		{name: "a member of the issue", expression: "created", sent: issueFields + ",created"},
+		{name: "members with spaces around them", expression: " created , commentsCount ", sent: issueFields + ",created,commentsCount"},
+		{name: "a member it already asks for", expression: "summary,description,project(name),links(direction)", sent: issueFields},
 		{name: "a name under a value", expression: "customFields(value(presentation))",
-			sent: "id,idReadable,summary,project(id,shortName,name),customFields(name,value(name,login,minutes,text,id,presentation)," +
-				"projectCustomField(id,ordinal,field(localizedName,fieldType(valueType,isMultiValue))))"},
+			sent: "id,idReadable,summary,description,project(id,shortName,name),customFields(name,value(name,login,minutes,text,id,localizedName,presentation)," +
+				"projectCustomField(id,ordinal,field(localizedName,fieldType(valueType,isMultiValue))))," +
+				"links(direction,linkType(name,sourceToTarget,targetToSource),issues(id,idReadable))"},
 		{name: "the custom fields whole", expression: "customFields", sent: issueFields},
 	}
 	for _, tc := range tests {

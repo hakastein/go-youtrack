@@ -43,7 +43,6 @@ func (c *Client) Bundle(ctx context.Context, project, field string) (*Bundle, er
 	if err != nil {
 		return nil, err
 	}
-	c.cache.store(target, metadata.fields)
 	bundle, err, _ := c.bundleFrom(ctx, code, field, metadata.fields, a, false)
 	return bundle, err
 }
