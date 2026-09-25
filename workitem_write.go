@@ -7,7 +7,7 @@ import (
 )
 
 type WorkItemInput struct {
-	// Whole minutes above zero.
+	// Whole minutes; zero is left for the server to judge.
 	Duration time.Duration
 	// A calendar day, as 2026-09-16, or its midnight UTC, as a work item reads it back; empty for the day the server
 	// takes for today.
@@ -95,9 +95,8 @@ const workItemText = "the text of the work item"
 
 func parseWorkDuration(spent time.Duration) (workDuration, *Error) {
 	switch {
-	case spent <= 0:
-		message := fmt.Sprintf("the duration %s is not above zero, and a work item holds a whole number of minutes "+
-			"above zero", spent)
+	case spent < 0:
+		message := fmt.Sprintf("the duration %s is negative, and a work item holds a whole number of minutes", spent)
 		return workDuration{}, &Error{Code: CodeBadUsage, Message: message}
 	case spent%time.Minute != 0:
 		message := fmt.Sprintf("the duration %s is no whole number of minutes: YouTrack keeps a work item as the "+

@@ -198,7 +198,6 @@ func TestCreateWorkItemRefusesADurationItCannotSend(t *testing.T) {
 		name  string
 		spent time.Duration
 	}{
-		{name: "no time at all", spent: 0},
 		{name: "a negative one", spent: -time.Hour},
 		{name: "seconds", spent: 30 * time.Second},
 		{name: "minutes and seconds", spent: 90 * time.Second},
@@ -249,7 +248,6 @@ func TestCreateWorkItemRefusesWhatItCannotSend(t *testing.T) {
 		in     *youtrack.WorkItemInput
 		fields string
 	}{
-		{name: "no work item at all"},
 		{name: "a text that is no UTF-8", in: &youtrack.WorkItemInput{Duration: time.Hour, Text: "bad\xffbyte"}},
 		{
 			name: "an attribute with no name",
@@ -319,7 +317,6 @@ func TestUpdateWorkItemRefusesWhatItCannotSend(t *testing.T) {
 			name: "an attribute with no value",
 			in:   &youtrack.WorkItemUpdate{Attributes: []youtrack.AttributeWrite{{Name: "Mode"}}},
 		},
-		{name: "a duration of no time", in: &youtrack.WorkItemUpdate{Duration: new(time.Duration(0))}},
 		{name: "a duration of seconds", in: &youtrack.WorkItemUpdate{Duration: new(90 * time.Second)}},
 		{name: "a day of nothing", in: &youtrack.WorkItemUpdate{Date: new("")}},
 		{name: "a time of day", in: &youtrack.WorkItemUpdate{Date: new("2026-09-01T15:00:00Z")}},
@@ -373,6 +370,12 @@ func TestCreateWorkItemWritesWhatTheCallGives(t *testing.T) {
 		sent   string
 	}{
 		{name: "hours and minutes", in: youtrack.WorkItemInput{Duration: 90 * time.Minute}, sent: `{"duration":{"minutes":90}}`},
+		{
+			name:   "no time, which the server judges",
+			in:     youtrack.WorkItemInput{},
+			answer: workItemAnswer{duration: workItemMinutes("0")},
+			sent:   `{"duration":{"minutes":0}}`,
+		},
 		{
 			name:   "hours alone",
 			in:     youtrack.WorkItemInput{Duration: 24 * time.Hour},
