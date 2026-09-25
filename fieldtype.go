@@ -274,7 +274,8 @@ func (k fieldKind) encode(text string) (Encoded, string) {
 }
 
 func (k fieldKind) emptyValueReason() string {
-	const leftAlone = "; a field is emptied by clearing it, and a field the call does not name is left as it stands"
+	const leftAlone = "; a write empties a field outright when it is asked to, and leaves a field the call does not " +
+		"name as it stands"
 	switch {
 	case k.valueType == StringType || k.valueType == TextType:
 		return fmt.Sprintf("YouTrack keeps a %s field it is given nothing for as holding nothing at all", k.valueType) + leftAlone

@@ -282,8 +282,8 @@ func descriptionRewrites() []charReplacement {
 
 const (
 	summaryEmpty     = "is empty, and YouTrack files no issue without a title"
-	descriptionEmpty = "is empty, and YouTrack keeps an empty description as none: the description is emptied " +
-		"outright by clearing it, and a description the call does not write is left as the issue holds it"
+	descriptionEmpty = "is empty, and YouTrack keeps an empty description as none: an update empties the " +
+		"description outright when it is asked to, and leaves a description it is not given as the issue holds it"
 )
 
 type createIssueBody struct {
