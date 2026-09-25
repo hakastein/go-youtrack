@@ -64,13 +64,7 @@ func (s *LinksService) list(ctx context.Context, id string, opts ListLinksOption
 	if fault != nil {
 		return nil, fault
 	}
-	asked := cloneFields(requested)
-	issueBlocks(c.spec, composedIssue(), asked)
-	for i := range asked {
-		if asked[i].name == linksKey {
-			asked[i].children = linkDocumentFields(asked[i].children, targetFields(requested))
-		}
-	}
+	asked := []requestedField{{name: linksKey, children: linkDocumentFields(linkRequest(c.spec, requested), targetFields(requested))}}
 	decoded, fault := c.request(ctx, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
@@ -95,7 +89,7 @@ func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts 
 		return nil, fault
 	}
 	body, _ := json.Marshal(idBody{ID: w.target.id})
-	node, fault := writeAs(ctx, c, issueSchema, linkWriteFields(targetBlocks(c.spec, requested)),
+	node, fault := writeAs(ctx, c, issueSchema, linkWriteFields(targetOutputFields(linkRequest(c.spec, requested))),
 		func(ctx context.Context, fields string) (*http.Response, error) {
 			return c.apiAddLinkedIssue(ctx, w.source.readable, w.link.id, body, fields)
 		}, w.verify, w.renderResult(targetFields(requested)))
@@ -173,12 +167,10 @@ func (n converter) linkDocument(target []requestedField, issue map[string]any) (
 	return NewMap(append(pairs, Pair{Key: linksKey, Value: block})...), nil
 }
 
-func targetBlocks(spec *schemas, requested []requestedField) []requestedField {
-	asked := []requestedField{{name: linksKey, children: []requestedField{
-		{name: issuesKey, children: targetFields(requested)},
-	}}}
+func linkRequest(spec *schemas, requested []requestedField) []requestedField {
+	asked := cloneFields(requested)
 	issueBlocks(spec, composedIssue(), asked)
-	return targetOutputFields(asked[0].children)
+	return asked[0].children
 }
 
 func targetFields(requested []requestedField) []requestedField {

@@ -90,8 +90,7 @@ func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItem
 		return nil, fault
 	}
 	filed := workItemCreate{input: written, workType: workType, attributes: attributes}
-	asked := withFields(requested, filed.verifyFields()...)
-	issueBlocks(c.spec, composedWorkItem(), asked)
+	asked := workItemRequestFields(c.spec, withFields(requested, filed.verifyFields()...))
 	body := filed.body()
 	return writeAs(ctx, c, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssueWorkItem(ctx, at, body, fields)
@@ -145,8 +144,7 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 		return nil, fault
 	}
 	changed := workItemUpdate{input: written, issue: owner, at: at, workType: workType, attributes: attributes}
-	asked := withFields(requested, changed.verifyFields()...)
-	issueBlocks(c.spec, composedWorkItem(), asked)
+	asked := workItemRequestFields(c.spec, withFields(requested, changed.verifyFields()...))
 	body := changed.body()
 	return writeAs(ctx, c, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateIssueWorkItem(ctx, owner, at, body, fields)
