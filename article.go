@@ -297,74 +297,69 @@ func ancestorFields() []requestedField {
 func (c *Client) readAncestors(ctx context.Context, id string) (articleRef, []ancestor, *Error) {
 	var parent articleRef
 	var line []ancestor
-	seen := map[string]bool{}
-	for at := id; ; {
+	for at := id; ; at = line[len(line)-1].id {
 		a, fault := c.request(ctx, articleSchema, ancestorFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 			return c.apiGetArticle(ctx, at, fields)
 		})
 		if fault != nil {
 			return articleRef{}, nil, fault
 		}
-		object := a.objects[0]
 		if line == nil {
-			parent, fault = readArticleToWrite(a, parentOfAWrite)
-			if fault != nil {
+			if parent, fault = readArticleToWrite(a, parentOfAWrite); fault != nil {
 				return articleRef{}, nil, fault
 			}
-			line = append(line, ancestor{id: parent.id, readable: parent.readable.String()})
-			seen[parent.id] = true
+			line = []ancestor{{id: parent.id, readable: parent.readable.String()}}
 		}
-		readBefore := len(line)
-		for {
-			value, asked := object[parentArticleKey]
-			if !asked {
-				break
-			}
-			if value == nil {
-				return parent, line, nil
-			}
-			parentObject, isObject := value.(map[string]any)
-			if !isObject {
-				return articleRef{}, nil, a.invalid("the parent of an article is neither an object nor null")
-			}
-			step, fault := readAncestor(a, parentObject)
-			if fault != nil {
-				return articleRef{}, nil, fault
-			}
-			if seen[step.id] {
-				return articleRef{}, nil, ancestorCycleFault(a, step)
-			}
-			seen[step.id] = true
-			line = append(line, step)
-			object = parentObject
+		var root bool
+		if line, root, fault = ancestorsIn(a, line); fault != nil {
+			return articleRef{}, nil, fault
 		}
-		if len(line) == readBefore {
-			return articleRef{}, nil, brokenAncestryFault(a, line[readBefore-1])
+		if root {
+			return parent, line, nil
 		}
-		at = line[len(line)-1].id
 	}
 }
 
-func readAncestor(a decodedResponse, parent map[string]any) (ancestor, *Error) {
-	id, isText := parent[idKey].(string)
-	readable, isReadable := parent[idReadableKey].(string)
-	if !isText || !isReadable {
-		return ancestor{}, a.invalid("the id or the readable id of an ancestor is not text")
+func ancestorsIn(a decodedResponse, line []ancestor) ([]ancestor, bool, *Error) {
+	object, readBefore := a.objects[0], len(line)
+	for {
+		value, asked := object[parentArticleKey]
+		switch {
+		case !asked && len(line) == readBefore:
+			return nil, false, ancestorFault(a, brokenAncestry, line[readBefore-1])
+		case !asked:
+			return line, false, nil
+		case value == nil:
+			return line, true, nil
+		}
+		parentObject, isObject := value.(map[string]any)
+		if !isObject {
+			return nil, false, a.invalid("the parent of an article is neither an object nor null")
+		}
+		id, isText := parentObject[idKey].(string)
+		readable, isReadable := parentObject[idReadableKey].(string)
+		if !isText || !isReadable {
+			return nil, false, a.invalid("the id or the readable id of an ancestor is not text")
+		}
+		step := ancestor{id: id, readable: readable}
+		if slices.ContainsFunc(line, func(seen ancestor) bool { return seen.id == id }) {
+			return nil, false, ancestorFault(a, ancestorCycle, step)
+		}
+		line = append(line, step)
+		object = parentObject
 	}
-	return ancestor{id: id, readable: readable}, nil
 }
 
-func ancestorCycleFault(a decodedResponse, twice ancestor) *Error {
-	message := "the article under article stands twice in the line of parents the server answered with, and no " +
-		"article hangs from itself"
-	return a.fault(CodeUpstreamInvalid, message, Pair{Key: articleOwner.String(), Value: NewString(twice.readable)})
-}
-
-func brokenAncestryFault(a decodedResponse, at ancestor) *Error {
-	message := "the server answered no parent for the article under article and no root above it either, and a " +
-		"line read on from there would be read from the same place again"
+func ancestorFault(a decodedResponse, message string, at ancestor) *Error {
 	return a.fault(CodeUpstreamInvalid, message, Pair{Key: articleOwner.String(), Value: NewString(at.readable)})
 }
+
+const (
+	ancestorCycle = "the article under article stands twice in the line of parents the server answered with, and no " +
+		"article hangs from itself"
+	brokenAncestry = "the server answered no parent for the article under article and no root above it either, and a " +
+		"line read on from there would be read from the same place again"
+)
 
 func (p articleRef) checkNoCycle(article articleRef, line []ancestor) *Error {
 	at := slices.IndexFunc(line, func(step ancestor) bool { return step.id == article.id })
