@@ -32,12 +32,12 @@ func writeResultNode(requested []requestedField) func(decodedResponse) (*Node, *
 	}
 }
 
-func (c *Client) deleteOwner(ctx context.Context, spec *schemas, kind ownerKind, schema string,
+func (c *Client) deleteOwner(ctx context.Context, kind ownerKind, schema string,
 	read func(ctx context.Context, fields string) (*http.Response, error),
 	destroy func(ctx context.Context, at readableID) (*http.Response, error),
 ) (*Node, *Error) {
 	requested := []requestedField{{name: idReadableKey}}
-	decoded, fault := c.request(ctx, spec, schema, requested, read)
+	decoded, fault := c.request(ctx, schema, requested, read)
 	if fault != nil {
 		return nil, fault
 	}

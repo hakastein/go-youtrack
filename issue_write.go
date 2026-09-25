@@ -113,7 +113,7 @@ type issueAnswer[T any] struct {
 func issueDocument(c *Client, requested []requestedField) issueAnswer[*Node] {
 	return issueAnswer[*Node]{
 		fields: func(ctx context.Context, verified []requestedField) ([]requestedField, *Error) {
-			if fault := c.resolveCustomFields(ctx, c.spec, requested); fault != nil {
+			if fault := c.resolveCustomFields(ctx, requested); fault != nil {
 				return nil, fault
 			}
 			asked := withFields(requested, verified...)
@@ -134,7 +134,7 @@ func issueRecordAnswer() issueAnswer[*Issue] {
 }
 
 func createIssue(ctx context.Context, c *Client, code string, parts issueInput, answer issueAnswer[*Node]) (*Node, *Error) {
-	project, fault := c.readProjectMetadata(ctx, c.spec, code)
+	project, fault := c.readProjectMetadata(ctx, code)
 	if fault != nil {
 		return nil, fault
 	}
@@ -154,14 +154,14 @@ func createIssue(ctx context.Context, c *Client, code string, parts issueInput, 
 		return nil, fault
 	}
 	body := filed.createBody()
-	return writeAs(ctx, c, c.spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssue(ctx, body, fields)
 	}, filed.verify, answer.read)
 }
 
 func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueInput, answer issueAnswer[T]) (T, *Error) {
 	var none T
-	issue, fault := c.readIssueToWrite(ctx, c.spec, id)
+	issue, fault := c.readIssueToWrite(ctx, id)
 	if fault != nil {
 		return none, fault
 	}
@@ -177,7 +177,7 @@ func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueIn
 		return none, fault
 	}
 	body := changed.updateBody()
-	return writeAs(ctx, c, c.spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateIssue(ctx, issue.readable, body, fields)
 	}, changed.verify, answer.read)
 }
@@ -532,8 +532,8 @@ func writeMetadataFields() []requestedField {
 	}
 }
 
-func (c *Client) readProjectMetadata(ctx context.Context, spec *schemas, code string) (projectMetadata, *Error) {
-	a, fault := c.request(ctx, spec, projectSchema, writeMetadataFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+func (c *Client) readProjectMetadata(ctx context.Context, code string) (projectMetadata, *Error) {
+	a, fault := c.request(ctx, projectSchema, writeMetadataFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProject(ctx, code, fields)
 	})
 	if fault != nil {
@@ -560,8 +560,8 @@ func issueToWriteFields() []requestedField {
 	}
 }
 
-func (c *Client) readIssueToWrite(ctx context.Context, spec *schemas, id string) (issueForUpdate, *Error) {
-	a, fault := c.request(ctx, spec, issueSchema, issueToWriteFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+func (c *Client) readIssueToWrite(ctx context.Context, id string) (issueForUpdate, *Error) {
+	a, fault := c.request(ctx, issueSchema, issueToWriteFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
 	if fault != nil {

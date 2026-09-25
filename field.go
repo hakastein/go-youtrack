@@ -48,7 +48,7 @@ func (s *FieldsService) list(ctx context.Context, project string, opts ListField
 	}
 	c := s.client
 	asked := withFields(requested, requestedField{name: ordinalKey})
-	decoded, fault := c.request(ctx, c.spec, "[]ProjectCustomField", asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, "[]ProjectCustomField", asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProjectCustomFields(ctx, code, fields, topAll)
 	})
 	if fault != nil {
@@ -150,7 +150,7 @@ func (s *FieldsService) readFieldFrom(ctx context.Context, code, name string, as
 	}
 	c := s.client
 	asked := withFields(requested, fieldInfoFields())
-	answer, fault := c.request(ctx, c.spec, "ProjectCustomField", asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	answer, fault := c.request(ctx, "ProjectCustomField", asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProjectCustomField(ctx, code, found.id, fields)
 	})
 	if fault != nil {

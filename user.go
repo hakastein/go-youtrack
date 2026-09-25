@@ -70,7 +70,7 @@ func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOpti
 		return nil, fault
 	}
 	c := s.client
-	users, fault := c.read(ctx, c.spec, userSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	users, fault := c.read(ctx, userSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetUser(ctx, login, fields)
 	})
 	if fault != nil {
@@ -92,14 +92,14 @@ func (s *UsersService) list(ctx context.Context, query string, opts ListUsersOpt
 		return nil, fault
 	}
 	c := s.client
-	return c.listPage(ctx, c.spec, usersPlural, "[]"+userSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, usersPlural, "[]"+userSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetUsers(ctx, query, fields, w)
 	})
 }
 
 func (s *UsersService) me(ctx context.Context) (*User, *Error) {
 	c := s.client
-	a, fault := c.request(ctx, c.spec, meSchema, userFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, meSchema, userFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetCurrentUser(ctx, fields)
 	})
 	if fault != nil {
@@ -121,7 +121,7 @@ func (s *UsersService) find(ctx context.Context, query string, limit int) ([]Use
 		return nil, fault
 	}
 	c := s.client
-	a, fault := c.request(ctx, c.spec, "[]"+userSchema, userFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, "[]"+userSchema, userFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetUsers(ctx, query, fields, page.window())
 	})
 	if fault != nil {

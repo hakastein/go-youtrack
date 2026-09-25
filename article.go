@@ -78,7 +78,7 @@ func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleO
 		return nil, fault
 	}
 	held := articleCommentTarget()
-	decoded, fault := c.request(ctx, c.spec, articleSchema, opts.Comments.merged(held, requested), func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, articleSchema, opts.Comments.merged(held, requested), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetArticle(ctx, id, fields)
 	})
 	if fault != nil {
@@ -105,7 +105,7 @@ func (s *ArticlesService) list(ctx context.Context, query string, opts ListArtic
 	if fault != nil {
 		return nil, fault
 	}
-	return c.listPage(ctx, c.spec, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetArticles(ctx, query, fields, w)
 	})
 }
@@ -124,7 +124,7 @@ func (s *ArticlesService) children(ctx context.Context, parent string, opts List
 	if fault != nil {
 		return nil, fault
 	}
-	return c.listPage(ctx, c.spec, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, articlesPlural, articlesListing, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetArticleChildArticles(ctx, parent, fields, w)
 	})
 }
@@ -147,7 +147,7 @@ func (s *ArticlesService) create(ctx context.Context, project string, in Article
 		return nil, fault
 	}
 	body := filed.body()
-	return c.write(ctx, c.spec, articleSchema, withFields(requested, filed.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, articleSchema, withFields(requested, filed.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateArticle(ctx, body, fields)
 	}, filed.verify, writeResultNode(requested))
 }
@@ -184,7 +184,7 @@ func articleToWriteFields() []requestedField {
 }
 
 func (c *Client) readArticleToWrite(ctx context.Context, id, what string) (articleRef, *Error) {
-	a, fault := c.request(ctx, c.spec, articleSchema, articleToWriteFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, articleSchema, articleToWriteFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetArticle(ctx, id, fields)
 	})
 	if fault != nil {
@@ -250,7 +250,7 @@ func (s *ArticlesService) update(ctx context.Context, id string, in ArticleUpdat
 		return nil, fault
 	}
 	body := written.body()
-	return c.write(ctx, c.spec, articleSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, articleSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateArticle(ctx, article.readable, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
@@ -300,7 +300,7 @@ func (c *Client) readAncestors(ctx context.Context, id string) (articleRef, []an
 	var line []ancestor
 	seen := map[string]bool{}
 	for at := id; ; {
-		a, fault := c.request(ctx, c.spec, articleSchema, ancestorFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+		a, fault := c.request(ctx, articleSchema, ancestorFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 			return c.apiGetArticle(ctx, at, fields)
 		})
 		if fault != nil {
@@ -402,7 +402,7 @@ func (s *ArticlesService) delete(ctx context.Context, id string) (*Node, *Error)
 		return nil, fault
 	}
 	c := s.client
-	return c.deleteOwner(ctx, c.spec, articleOwner, articleSchema, func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.deleteOwner(ctx, articleOwner, articleSchema, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetArticle(ctx, id, fields)
 	}, c.apiDeleteArticle)
 }

@@ -418,8 +418,8 @@ func catalogueFields() []requestedField {
 	return []requestedField{{name: nameKey}, {name: "localizedName"}}
 }
 
-func (c *Client) customFieldCatalogue(ctx context.Context, spec *schemas) (decodedResponse, []fieldInfo, *Error) {
-	a, fault := c.request(ctx, spec, customFieldCatalogue, catalogueFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+func (c *Client) customFieldCatalogue(ctx context.Context) (decodedResponse, []fieldInfo, *Error) {
+	a, fault := c.request(ctx, customFieldCatalogue, catalogueFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetCustomFields(ctx, fields, topAll)
 	})
 	if fault != nil {
@@ -448,12 +448,12 @@ func readCatalogueEntry(object map[string]any) (fieldInfo, bool) {
 	return fieldInfo{name: name, localizedName: translated}, true
 }
 
-func (c *Client) resolveCustomFields(ctx context.Context, spec *schemas, requested []requestedField) *Error {
-	named := namedCustomFields(spec, requested)
+func (c *Client) resolveCustomFields(ctx context.Context, requested []requestedField) *Error {
+	named := namedCustomFields(c.spec, requested)
 	if named == nil || !slices.ContainsFunc(named.children, fromCaller) {
 		return nil
 	}
-	a, catalogue, fault := c.customFieldCatalogue(ctx, spec)
+	a, catalogue, fault := c.customFieldCatalogue(ctx)
 	if fault != nil {
 		return fault
 	}

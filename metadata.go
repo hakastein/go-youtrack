@@ -54,7 +54,7 @@ func (s *FieldsService) readMetadata(ctx context.Context, project string) (*Meta
 		return nil, Pair{}, fault
 	}
 	c := s.client
-	decoded, fault := c.request(ctx, c.spec, projectSchema, projectFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, projectSchema, projectFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProject(ctx, code, fields)
 	})
 	if fault != nil {

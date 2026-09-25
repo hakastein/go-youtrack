@@ -70,7 +70,7 @@ func (s *WorkItemsService) list(ctx context.Context, issue string, opts ListWork
 	ask := func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetIssueWorkItems(ctx, id, fields, w)
 	}
-	selection := c.newList(c.spec, workItemsPlural, workItemsListing, requested, workItemRequestFields(c.spec, requested), page, ask)
+	selection := c.newList(workItemsPlural, workItemsListing, requested, workItemRequestFields(c.spec, requested), page, ask)
 	return selection.fetch(ctx)
 }
 
@@ -96,7 +96,7 @@ func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItem
 	asked := withFields(requested, filed.verifyFields()...)
 	issueBlocks(c.spec, composedWorkItem(), asked)
 	body := filed.body()
-	return c.write(ctx, c.spec, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssueWorkItem(ctx, at, body, fields)
 	}, filed.verify, writeResultNode(requested))
 }
@@ -151,7 +151,7 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 	asked := withFields(requested, changed.verifyFields()...)
 	issueBlocks(c.spec, composedWorkItem(), asked)
 	body := changed.body()
-	return c.write(ctx, c.spec, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiUpdateIssueWorkItem(ctx, owner, at, body, fields)
 	}, changed.verify, writeResultNode(requested))
 }
@@ -174,7 +174,7 @@ func (s *WorkItemsService) delete(ctx context.Context, issue, item string) (*Nod
 	}
 	c := s.client
 	requested := removedWorkItemFields()
-	a, fault := c.request(ctx, c.spec, workItemSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, workItemSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssueWorkItem(ctx, id, at, fields)
 	})
 	if fault != nil {
@@ -251,7 +251,7 @@ func workItemTypesFields(withAttributes bool) []requestedField {
 }
 
 func (c *Client) readWorkItemTypes(ctx context.Context, id string, withAttributes bool) (readableID, projectWorkItemTypes, *Error) {
-	a, fault := c.request(ctx, c.spec, issueSchema, workItemTypesFields(withAttributes), func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, issueSchema, workItemTypesFields(withAttributes), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
 	if fault != nil {

@@ -41,7 +41,7 @@ func (s *ProjectsService) show(ctx context.Context, code string, opts ShowProjec
 		return nil, fault
 	}
 	c := s.client
-	projects, fault := c.read(ctx, c.spec, projectSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	projects, fault := c.read(ctx, projectSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetProject(ctx, code, fields)
 	})
 	if fault != nil {
@@ -60,7 +60,7 @@ func (s *ProjectsService) list(ctx context.Context, opts ListProjectsOptions) (*
 		return nil, fault
 	}
 	c := s.client
-	return c.listPage(ctx, c.spec, "projects", "[]"+projectSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, "projects", "[]"+projectSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetProjects(ctx, fields, w)
 	})
 }

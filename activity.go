@@ -258,7 +258,7 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 	var phrases linkPhrases
 	if named && slices.ContainsFunc(categories, func(row activityCategory) bool { return row.field == fieldLinkPhrase }) {
 		var fault *Error
-		phrases, fault = c.linkPhrases(ctx, c.spec)
+		phrases, fault = c.linkPhrases(ctx)
 		if fault != nil {
 			return nil, fault
 		}
@@ -266,7 +266,7 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 	sent := withFields(requested, own...)
 	probing := page.window()
 	probing.top += truncationProbe
-	decoded, fault := c.request(ctx, c.spec, "[]"+activitySchema, sent, func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, "[]"+activitySchema, sent, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssueActivities(ctx, id, strings.Join(categoryIDs(categories), ","), fields, probing)
 	})
 	if fault != nil {

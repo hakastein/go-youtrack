@@ -84,7 +84,7 @@ func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAt
 		return nil, fault
 	}
 	c := s.client
-	return c.listPage(ctx, c.spec, attachmentsPlural, attachmentTargetOf(at.kind).listSchema(), requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, attachmentsPlural, attachmentTargetOf(at.kind).listSchema(), requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.getAttachments(ctx, at, fields, w)
 	})
 }
@@ -116,7 +116,7 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 	}
 	c := s.client
 	checked := withFields(requested, requestedField{name: nameKey}, requestedField{name: sizeKey})
-	return c.write(ctx, c.spec, attachmentTargetOf(at.kind).listSchema(), checked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, attachmentTargetOf(at.kind).listSchema(), checked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateAttachment(ctx, at, contentType, body, fields)
 	}, confirmed, writeResultNode(requested))
 }
@@ -144,7 +144,7 @@ func (s *AttachmentsService) delete(ctx context.Context, owner, id string) (*Nod
 		{name: nameKey},
 		{name: target.owner, children: []requestedField{{name: idReadableKey}}},
 	}
-	found, fault := c.request(ctx, c.spec, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	found, fault := c.request(ctx, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.getAttachment(ctx, at, file, fields)
 	})
 	if fault != nil {

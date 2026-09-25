@@ -72,7 +72,7 @@ func (s *LinksService) list(ctx context.Context, id string, opts ListLinksOption
 			asked[i].children = linkDocumentFields(asked[i].children, targetFields(requested))
 		}
 	}
-	decoded, fault := c.request(ctx, c.spec, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
 	if fault != nil {
@@ -96,7 +96,7 @@ func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts 
 		return nil, fault
 	}
 	body, _ := json.Marshal(internalIssueIDBody{ID: w.target.id})
-	node, fault := c.write(ctx, c.spec, issueSchema, linkWriteFields(targetBlocks(c.spec, requested)),
+	node, fault := c.write(ctx, issueSchema, linkWriteFields(targetBlocks(c.spec, requested)),
 		func(ctx context.Context, fields string) (*http.Response, error) {
 			return c.apiAddLinkedIssue(ctx, w.source.readable, w.link.id, body, fields)
 		}, w.verify, w.renderResult(targetFields(requested)))
@@ -462,7 +462,7 @@ func (c *Client) readTargetIssue(ctx context.Context, id string) (linkIssue, *Er
 }
 
 func (c *Client) readLinkedIssue(ctx context.Context, id string, requested []requestedField) (linkIssue, *Error) {
-	a, fault := c.request(ctx, c.spec, issueSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, issueSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
 	if fault != nil {

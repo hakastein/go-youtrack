@@ -89,7 +89,7 @@ func (s *IssuesService) get(ctx context.Context, id string) (*Issue, *Error) {
 		return nil, fault
 	}
 	c := s.client
-	decoded, fault := c.request(ctx, c.spec, issueSchema, issueRecordFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, issueSchema, issueRecordFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
 	if fault != nil {

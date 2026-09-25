@@ -69,7 +69,7 @@ func (s *IssuesService) show(ctx context.Context, id string, opts ShowIssueOptio
 	if fault := opts.Comments.check(); fault != nil {
 		return nil, fault
 	}
-	return c.showIssue(ctx, c.spec, id, requested, opts.Comments)
+	return c.showIssue(ctx, id, requested, opts.Comments)
 }
 
 func (s *IssuesService) list(ctx context.Context, query string, opts ListIssuesOptions) (*Node, *Error) {
@@ -85,7 +85,7 @@ func (s *IssuesService) list(ctx context.Context, query string, opts ListIssuesO
 	if fault != nil {
 		return nil, fault
 	}
-	return c.listIssues(ctx, c.spec, query, requested, page, opts.Warn)
+	return c.listIssues(ctx, query, requested, page, opts.Warn)
 }
 
 func (s *IssuesService) delete(ctx context.Context, id string) (*Node, *Error) {
@@ -94,7 +94,7 @@ func (s *IssuesService) delete(ctx context.Context, id string) (*Node, *Error) {
 		return nil, fault
 	}
 	c := s.client
-	return c.deleteOwner(ctx, c.spec, issueOwner, issueSchema, func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.deleteOwner(ctx, issueOwner, issueSchema, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	}, c.apiDeleteIssue)
 }
@@ -119,17 +119,16 @@ func rejectUnreadableQuery(query string) *Error {
 	return &Error{Code: CodeBadUsage, Message: message}
 }
 
-func (c *Client) listIssues(ctx context.Context, spec *schemas, query string, requested []requestedField, page Page, warn func(*Warning)) (*Node, *Error) {
-	if fault := c.warnOfFreeText(ctx, spec, query, warn); fault != nil {
+func (c *Client) listIssues(ctx context.Context, query string, requested []requestedField, page Page, warn func(*Warning)) (*Node, *Error) {
+	if fault := c.warnOfFreeText(ctx, query, warn); fault != nil {
 		return nil, fault
 	}
-	asked, named, fault := c.issueRequest(ctx, spec, requested)
+	asked, named, fault := c.issueRequest(ctx, requested)
 	if fault != nil {
 		return nil, fault
 	}
 	selection := list{
 		client:    c,
-		spec:      spec,
 		plural:    issuesPlural,
 		schema:    "[]" + issueSchema,
 		requested: requested,
@@ -138,16 +137,16 @@ func (c *Client) listIssues(ctx context.Context, spec *schemas, query string, re
 			return c.apiGetIssues(ctx, query, fields, named, w)
 		},
 		sentFields: asked,
-		countTotal: func(ctx context.Context) (count, *Error) { return c.countIssuesWithRetry(ctx, spec, query) },
+		countTotal: func(ctx context.Context) (count, *Error) { return c.countIssuesWithRetry(ctx, query) },
 	}
 	return selection.fetch(ctx)
 }
 
-func (c *Client) warnOfFreeText(ctx context.Context, spec *schemas, query string, warn func(*Warning)) *Error {
+func (c *Client) warnOfFreeText(ctx context.Context, query string, warn func(*Warning)) *Error {
 	if warn == nil {
 		return nil
 	}
-	marked, fault := c.searchMarkup(ctx, spec, query)
+	marked, fault := c.searchMarkup(ctx, query)
 	if fault != nil {
 		return fault
 	}
@@ -157,17 +156,17 @@ func (c *Client) warnOfFreeText(ctx context.Context, spec *schemas, query string
 	return nil
 }
 
-func (c *Client) countIssuesWithRetry(ctx context.Context, spec *schemas, query string) (count, *Error) {
-	found, fault := c.countIssues(ctx, spec, query)
+func (c *Client) countIssuesWithRetry(ctx context.Context, query string) (count, *Error) {
+	found, fault := c.countIssues(ctx, query)
 	if fault != nil || found.known {
 		return found, fault
 	}
-	return c.countIssues(ctx, spec, query)
+	return c.countIssues(ctx, query)
 }
 
-func (c *Client) countIssues(ctx context.Context, spec *schemas, query string) (count, *Error) {
+func (c *Client) countIssues(ctx context.Context, query string) (count, *Error) {
 	body := searchBody(query)
-	decoded, fault := c.request(ctx, spec, countSchema, []requestedField{{name: countKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, countSchema, []requestedField{{name: countKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCountIssues(ctx, body, fields)
 	})
 	if fault != nil {
@@ -308,13 +307,13 @@ func namedCustomFields(spec *schemas, requested []requestedField) *requestedFiel
 	return own
 }
 
-func (c *Client) showIssue(ctx context.Context, spec *schemas, id string, requested []requestedField, comments Comments) (*Node, *Error) {
-	asked, named, fault := c.issueRequest(ctx, spec, requested)
+func (c *Client) showIssue(ctx context.Context, id string, requested []requestedField, comments Comments) (*Node, *Error) {
+	asked, named, fault := c.issueRequest(ctx, requested)
 	if fault != nil {
 		return nil, fault
 	}
 	held := issueCommentTarget()
-	decoded, fault := c.request(ctx, spec, issueSchema, comments.merged(held, asked), func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, issueSchema, comments.merged(held, asked), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, named)
 	})
 	if fault != nil {
@@ -328,13 +327,13 @@ func (c *Client) showIssue(ctx context.Context, spec *schemas, id string, reques
 	return objectNode(decoded, requested, issue, own)
 }
 
-func (c *Client) issueRequest(ctx context.Context, spec *schemas, requested []requestedField) ([]requestedField, []string, *Error) {
-	if fault := c.resolveCustomFields(ctx, spec, requested); fault != nil {
+func (c *Client) issueRequest(ctx context.Context, requested []requestedField) ([]requestedField, []string, *Error) {
+	if fault := c.resolveCustomFields(ctx, requested); fault != nil {
 		return nil, nil, fault
 	}
 	asked := cloneFields(requested)
-	issueBlocks(spec, composedIssue(), asked)
-	return asked, customFieldsFilter(spec, requested), nil
+	issueBlocks(c.spec, composedIssue(), asked)
+	return asked, customFieldsFilter(c.spec, requested), nil
 }
 
 func customFieldsFilter(spec *schemas, requested []requestedField) []string {

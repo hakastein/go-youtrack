@@ -93,7 +93,7 @@ func (s *TagsService) list(ctx context.Context, opts ListTagsOptions) (*Node, *E
 		return nil, fault
 	}
 	c := s.client
-	return c.listPage(ctx, c.spec, tagsPlural, "[]"+tagSchema, requested, page, c.apiGetTags)
+	return c.listPage(ctx, tagsPlural, "[]"+tagSchema, requested, page, c.apiGetTags)
 }
 
 func (s *TagsService) create(ctx context.Context, name string, sharing TagSharing, opts WriteOptions) (*Node, *Error) {
@@ -113,7 +113,7 @@ func (s *TagsService) create(ctx context.Context, name string, sharing TagSharin
 		return nil, fault
 	}
 	body := written.body()
-	return c.write(ctx, c.spec, tagSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, tagSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateTag(ctx, body, fields)
 	}, written.verify, writeResultNode(requested))
 }
@@ -373,7 +373,7 @@ func (c *Client) addTag(ctx context.Context, at owner, sought tagRef) (*Node, *E
 		return nil, fault
 	}
 	body := hung.body()
-	node, fault := c.write(ctx, c.spec, tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	node, fault := c.write(ctx, tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiAddTag(ctx, hung.target.kind, hung.on, body, fields)
 	}, hung.verify, hung.render(addedKey))
 	if fault != nil {
@@ -427,7 +427,7 @@ func (c *Client) resolveTagging(ctx context.Context, at owner, sought tagRef) (t
 
 func (c *Client) readTagOwner(ctx context.Context, target tagTarget, at owner) (readableID, *Error) {
 	requested := []requestedField{{name: idReadableKey}}
-	a, fault := c.request(ctx, c.spec, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.getOwnerToTag(ctx, at, fields)
 	})
 	if fault != nil {
@@ -533,7 +533,7 @@ type tagCandidate struct {
 
 func (c *Client) resolveTag(ctx context.Context, sought tagRef) (resolvedTag, *Error) {
 	requested := resolvedTagFields()
-	a, fault := c.request(ctx, c.spec, "[]"+tagSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, "[]"+tagSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetTags(ctx, fields, allRecords)
 	})
 	if fault != nil {
@@ -716,7 +716,7 @@ type groupCatalogue struct {
 
 func (c *Client) listGroups(ctx context.Context) (groupCatalogue, *Error) {
 	requested := []requestedField{{name: idKey}, {name: nameKey}}
-	a, fault := c.request(ctx, c.spec, "[]"+groupSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, "[]"+groupSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetGroups(ctx, fields, topAll)
 	})
 	if fault != nil {

@@ -85,7 +85,6 @@ func (c count) truncationAt(shown int) truncation {
 
 type list struct {
 	client     *Client
-	spec       *schemas
 	plural     string
 	schema     string
 	requested  []requestedField
@@ -102,14 +101,14 @@ func (l list) requestFields() requestFields {
 	return requestFields{sent: l.requested, output: l.requested}
 }
 
-func (c *Client) listPage(ctx context.Context, spec *schemas, plural, schema string, requested []requestedField, page Page, fetchPage pageFetcher) (*Node, *Error) {
-	return c.newList(spec, plural, schema, requested, nil, page, fetchPage).fetch(ctx)
+func (c *Client) listPage(ctx context.Context, plural, schema string, requested []requestedField, page Page, fetchPage pageFetcher) (*Node, *Error) {
+	return c.newList(plural, schema, requested, nil, page, fetchPage).fetch(ctx)
 }
 
-func (c *Client) newList(spec *schemas, plural, schema string, requested, sentFields []requestedField, page Page, fetchPage pageFetcher) list {
-	l := list{client: c, spec: spec, plural: plural, schema: schema, requested: requested, sentFields: sentFields, page: page, fetchPage: fetchPage}
+func (c *Client) newList(plural, schema string, requested, sentFields []requestedField, page Page, fetchPage pageFetcher) list {
+	l := list{client: c, plural: plural, schema: schema, requested: requested, sentFields: sentFields, page: page, fetchPage: fetchPage}
 	l.countTotal = func(ctx context.Context) (count, *Error) {
-		ids, fault := c.read(ctx, spec, schema, []requestedField{{name: idKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
+		ids, fault := c.read(ctx, schema, []requestedField{{name: idKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
 			return fetchPage(ctx, fields, allRecords)
 		})
 		if fault != nil {
@@ -121,7 +120,7 @@ func (c *Client) newList(spec *schemas, plural, schema string, requested, sentFi
 }
 
 func (l list) fetch(ctx context.Context) (*Node, *Error) {
-	page, fault := l.client.readList(ctx, l.spec, l.schema, l.requestFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	page, fault := l.client.readList(ctx, l.schema, l.requestFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return l.fetchPage(ctx, fields, l.page.window())
 	})
 	if fault != nil {

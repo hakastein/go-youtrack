@@ -33,9 +33,9 @@ func markupFields() []requestedField {
 	}
 }
 
-func (c *Client) searchMarkup(ctx context.Context, spec *schemas, query string) ([]styleRange, *Error) {
+func (c *Client) searchMarkup(ctx context.Context, query string) ([]styleRange, *Error) {
 	body := searchBody(query)
-	decoded, fault := c.request(ctx, spec, suggestionsSchema, markupFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, suggestionsSchema, markupFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiAssistSearch(ctx, body, fields)
 	})
 	if fault != nil {
