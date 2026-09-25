@@ -507,8 +507,8 @@ func (n converter) linkNames(direction string, kind map[string]any) (string, []s
 	phrase := ""
 	var named []string
 	for i, name := range read {
-		text, isText := kind[name].(string)
-		if !isText && kind[name] != nil {
+		text, isText := readLocalized(kind[name])
+		if !isText {
 			return "", nil, n.response.invalid(fmt.Sprintf("the %s of a link type of the issue is neither text nor null", name))
 		}
 		if i == 0 {
