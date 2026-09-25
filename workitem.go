@@ -23,13 +23,13 @@ const (
 	workItemTypesKey        = "workItemTypes"
 )
 
-// An empty Fields means WorkItemListFields; +x adds x to them.
+// ListWorkItemsOptions: Fields is a fields= expression, empty for WorkItemListFields and +x for them and x.
 type ListWorkItemsOptions struct {
 	Fields string
 	Page   Page
 }
 
-// Oldest first.
+// List runs oldest first.
 func (s *WorkItemsService) List(ctx context.Context, issue string, opts *ListWorkItemsOptions) (*Node, error) {
 	return result(s.list(ctx, issue, optionsOf(opts)))
 }
@@ -40,7 +40,7 @@ func (s *WorkItemsService) Create(ctx context.Context, issue string, in *WorkIte
 	return result(s.create(ctx, issue, optionsOf(in), optionsOf(opts)))
 }
 
-// The work item is addressed by its internal id, as 7-1.
+// Update takes id as the internal id of the work item, such as 7-1.
 func (s *WorkItemsService) Update(ctx context.Context, issue, id string, in *WorkItemUpdate, opts *WriteOptions) (*Node, error) {
 	return result(s.update(ctx, issue, id, optionsOf(in), optionsOf(opts)))
 }

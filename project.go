@@ -5,7 +5,6 @@ import (
 	"net/http"
 )
 
-// Default fields expressions of the project documents.
 const (
 	ProjectShowFields = "shortName,name,plugins(timeTrackingSettings(enabled,workItemTypes(name)))"
 	ProjectListFields = "shortName,name"

@@ -53,8 +53,7 @@ type UsersService service
 
 type Option func(*Client)
 
-// WithMetadataCache is for a process of one call, as a CLI: a directory 0700 per address and token, files 0600,
-// no token inside.
+// WithMetadataCache: a directory 0700 per address and token, files 0600, no token inside; an empty dir keeps none.
 func WithMetadataCache(dir string) Option {
 	return func(c *Client) {
 		c.cache = newMetaCache(dir, c.address.String(), c.token)
@@ -107,7 +106,6 @@ func parseAddress(address string) (*url.URL, *Error) {
 	return nil, &Error{Code: CodeBadUsage, Message: "address " + quote(address) + " " + reason}
 }
 
-// The token itself never goes into the message: an error is printed.
 func checkToken(token string) *Error {
 	if token == "" {
 		return &Error{Code: CodeBadUsage, Message: "the token is empty"}

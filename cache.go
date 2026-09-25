@@ -14,7 +14,6 @@ const (
 	cacheFileMode      fs.FileMode = 0o600
 )
 
-// The cache confirms and never refuses: whatever disagrees with the server is a miss, and the metadata is read again.
 type metaCache struct {
 	directory string
 }

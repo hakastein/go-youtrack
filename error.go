@@ -81,7 +81,7 @@ type Warning struct {
 	Details []Pair
 }
 
-// The one place a *Error becomes an error: a nil *Error must come out as a nil interface.
+// A nil *Error must come out as a nil error, not as an error holding a nil pointer.
 func result[T any](value T, failed *Error) (T, error) {
 	if failed != nil {
 		var none T

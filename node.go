@@ -10,7 +10,6 @@ import (
 	"strings"
 )
 
-// Kind is what a node holds.
 type Kind int
 
 const (
@@ -20,13 +19,11 @@ const (
 	StringNode
 	// NumberNode is a number as the server wrote it.
 	NumberNode
-	// BoolNode is true or false.
 	BoolNode
 	// TextNode is prose that may span lines: a description, the text of a comment, the content of an article.
 	TextNode
-	// ListNode is a list of nodes in the server's order or the module's.
 	ListNode
-	// MapNode is a mapping of keys to nodes in the order the fields expression named them.
+	// MapNode keeps its keys in the order the fields expression named them.
 	MapNode
 )
 
@@ -67,32 +64,26 @@ type Pair struct {
 	FromData bool
 }
 
-// DataPair is a pair whose key is a name from the server's data.
 func DataPair(key string, value *Node) Pair {
 	return Pair{Key: key, Value: value, FromData: true}
 }
 
-// NewNull is a null node.
 func NewNull() *Node {
 	return &Node{kind: NullNode}
 }
 
-// NewString is a string node.
 func NewString(s string) *Node {
 	return &Node{kind: StringNode, value: s}
 }
 
-// NewNumber is a number node holding n as written.
 func NewNumber(n json.Number) *Node {
 	return &Node{kind: NumberNode, value: string(n)}
 }
 
-// NewBool is a bool node.
 func NewBool(b bool) *Node {
 	return &Node{kind: BoolNode, value: strconv.FormatBool(b)}
 }
 
-// NewText is a node of prose that may span lines.
 func NewText(s string) *Node {
 	return &Node{kind: TextNode, value: s}
 }
@@ -113,28 +104,26 @@ func NewMap(pairs ...Pair) *Node {
 	return &Node{kind: MapNode, pairs: slices.Clone(pairs)}
 }
 
-// Kind is what the node holds.
 func (n *Node) Kind() Kind {
 	return n.kind
 }
 
-// Value is a scalar as text: the string or the prose itself, the number as the server wrote it, true or false.
-// It is empty for null, a list and a map.
+// Value is a scalar as text, a bool as true or false; empty for null, a list and a map.
 func (n *Node) Value() string {
 	return n.value
 }
 
-// Items are the nodes of a list; nil for any other kind.
+// Items is nil for a node of any kind but a list.
 func (n *Node) Items() []*Node {
 	return slices.Clone(n.items)
 }
 
-// Pairs are the pairs of a map in order; nil for any other kind.
+// Pairs is nil for a node of any kind but a map.
 func (n *Node) Pairs() []Pair {
 	return slices.Clone(n.pairs)
 }
 
-// Lookup is the value of a map under the key; false when the node is no map or holds no such key.
+// Lookup is false for a node of any kind but a map.
 func (n *Node) Lookup(key string) (*Node, bool) {
 	for _, pair := range n.pairs {
 		if pair.Key == key {
@@ -218,7 +207,6 @@ func CheckKey(key string) error {
 	return nil
 }
 
-// A quoted name stands in prose that is itself a double-quoted string once printed, so backticks keep it readable.
 func quote(s string) string {
 	goQuoted := strconv.Quote(s)
 	escaped := strings.ReplaceAll(goQuoted[1:len(goQuoted)-1], `\"`, `"`)

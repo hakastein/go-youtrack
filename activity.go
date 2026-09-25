@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// added and removed print as lists even where the server sends one value or null.
+// added and removed are lists even where the server sends one value or null.
 const ActivityListFields = "timestamp,author(login),category,field," +
 	"added(id,idReadable,login,name,urls),removed(id,idReadable,login,name,urls)"
 
@@ -86,7 +86,8 @@ type ListActivitiesOptions struct {
 	Categories []string
 }
 
-// Newest first; the total is null unless the page ends where the history does, and a limit is at most MaxInt32-1.
+// List runs newest first; the total is null unless the page ends where the history does, and a limit is at most
+// MaxInt32-1.
 func (s *ActivitiesService) List(ctx context.Context, issue string, opts *ListActivitiesOptions) (*Node, error) {
 	return result(s.list(ctx, issue, optionsOf(opts)))
 }

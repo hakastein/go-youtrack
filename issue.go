@@ -171,7 +171,6 @@ func (n converter) recordFields(value any) ([]Field, *Error) {
 	return fields, nil
 }
 
-// A slot the server left null would hide a link, so it is refused rather than skipped.
 func (n converter) recordLinks(value any) ([]Link, *Error) {
 	if value == nil {
 		return nil, nil

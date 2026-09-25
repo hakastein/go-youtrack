@@ -31,7 +31,7 @@ const (
 	StringType     ValueType = "string"
 )
 
-// FieldType is the type of a custom field: the type of its value and whether it holds several.
+// FieldType is fieldType.valueType and fieldType.isMultiValue of a custom field as the server sends them.
 type FieldType struct {
 	ValueType ValueType
 	Multi     bool
@@ -77,7 +77,7 @@ func (t FieldType) Named() bool {
 	return k.isNamedValue()
 }
 
-// Same says a written value key and a held one name the same value of this type.
+// Same compares without regard to letter case for a Named type and exactly for the others.
 func (t FieldType) Same(written, held string) bool {
 	k, _ := t.kind()
 	return k.sameValue(written, held)
@@ -238,7 +238,6 @@ func (t FieldType) kind() (fieldKind, bool) {
 	return fieldKind{}, false
 }
 
-// A named value is one the server resolves by name, fixing its letter case on the way.
 func (k fieldKind) isNamedValue() bool {
 	return k.member != "" && k.form == asString
 }
@@ -440,8 +439,6 @@ func encodeText(text string) (Encoded, string) {
 	return Encoded{Body: map[string]string{textKey: text}, Key: text}, ""
 }
 
-// keyText reads the value key of a held value as text: a name or login as is, a period as PT1H30M, a day as
-// 2026-09-16, a moment in UTC, a number in its shortest decimal form.
 func (k fieldKind) keyText(held any) (string, bool) {
 	switch k.form {
 	case asDuration:
