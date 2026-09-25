@@ -3,21 +3,45 @@ package youtrack
 import (
 	"encoding/json"
 	"fmt"
-	"math"
-	"slices"
-	"strings"
 	"time"
 )
 
-type workItemCreateInput struct {
-	spent      parsedDuration
-	day        *workDate
-	text       *string
-	attributes []namedValue
+type WorkItemInput struct {
+	// Whole minutes above zero.
+	Duration time.Duration
+	// A calendar day, as 2026-09-16, or its midnight UTC, as a work item reads it back; empty for the day the server
+	// takes for today.
+	Date string
+	// Empty writes no text.
+	Text string
+	// A type of work of the project, named in any letter case, an exact spelling settling a tie; empty for none.
+	Type       string
+	Attributes []AttributeWrite
 }
 
-type parsedDuration struct {
-	text    string
+// WorkItemUpdate: a nil part is left as the work item holds it. Duration and Date take what WorkItemInput does and
+// are never emptied, since every work item holds both.
+type WorkItemUpdate struct {
+	Duration *time.Duration
+	Date     *string
+	// An empty text is written as one; ClearText takes the text away.
+	Text      *string
+	Type      *string
+	ClearText bool
+	ClearType bool
+	// An attribute of the work item the update does not name is left as it stands.
+	Attributes []AttributeWrite
+}
+
+type workItemCreateInput struct {
+	spent      workDuration
+	day        *workDate
+	text       *string
+	workType   *string
+	attributes []AttributeWrite
+}
+
+type workDuration struct {
 	minutes int64
 }
 
@@ -37,59 +61,50 @@ type resolvedWorkType struct {
 	name string
 }
 
-func rejectWorkItemType(named *string) *Error {
-	if named == nil || *named != "" {
-		return nil
-	}
-	return invalidValueFault("--"+typeKey, *named, "names no type of work: the types an issue may be written "+
-		"against are the settings of its project, printed by ytrack project show <code> under plugins")
-}
-
-func rejectWorkItemText(text *string) *Error {
-	if text == nil {
-		return nil
-	}
-	return rejectNoUTF8("--"+textKey, *text)
-}
-
-func parseWorkItemCreate(spent string, day, text, named *string, attributes []string) (workItemCreateInput, *Error) {
-	length, fault := parseDuration(spent)
+func parseWorkItemCreate(in WorkItemInput) (workItemCreateInput, *Error) {
+	spent, fault := parseWorkDuration(in.Duration)
 	if fault != nil {
 		return workItemCreateInput{}, fault
 	}
-	if fault := rejectWorkItemText(text); fault != nil {
+	if fault := rejectNoUTF8(workItemText, in.Text); fault != nil {
 		return workItemCreateInput{}, fault
 	}
-	written := workItemCreateInput{spent: length, text: text}
-	if day != nil {
-		against, fault := parseWorkDate(*day)
+	written := workItemCreateInput{spent: spent, text: workItemOptional(in.Text), workType: workItemOptional(in.Type),
+		attributes: in.Attributes}
+	if in.Date != "" {
+		against, fault := parseWorkDate(in.Date)
 		if fault != nil {
 			return workItemCreateInput{}, fault
 		}
 		written.day = &against
 	}
-	if fault := rejectWorkItemType(named); fault != nil {
-		return workItemCreateInput{}, fault
-	}
-	if written.attributes, fault = attributeValues(attributes); fault != nil {
+	if fault := checkAttributes(in.Attributes); fault != nil {
 		return workItemCreateInput{}, fault
 	}
 	return written, nil
 }
 
-func parseDuration(text string) (parsedDuration, *Error) {
-	minutes, read := periodMinutes(text)
-	switch {
-	case !read:
-		return parsedDuration{}, invalidValueFault("duration", text, "is no ISO 8601 period of hours and minutes, as "+
-			"in PT1H30M, PT90M or PT0M: ytrack writes a work item as the minutes it comes to, and neither a day "+
-			"nor a week is a fixed count of them — YouTrack reads P1D as the working day of the instance — while "+
-			"a second and a fraction are no part of what a work item holds")
-	case minutes > math.MaxInt32:
-		return parsedDuration{}, invalidValueFault("duration", text,
-			fmt.Sprintf("is longer than the %d minutes YouTrack keeps a work item for", math.MaxInt32))
+func workItemOptional(text string) *string {
+	if text == "" {
+		return nil
 	}
-	return parsedDuration{text: text, minutes: minutes}, nil
+	return &text
+}
+
+const workItemText = "the text of the work item"
+
+func parseWorkDuration(spent time.Duration) (workDuration, *Error) {
+	switch {
+	case spent <= 0:
+		message := fmt.Sprintf("the duration %s is not above zero, and a work item holds a whole number of minutes "+
+			"above zero", spent)
+		return workDuration{}, &Error{Code: CodeBadUsage, Message: message}
+	case spent%time.Minute != 0:
+		message := fmt.Sprintf("the duration %s is no whole number of minutes: YouTrack keeps a work item as the "+
+			"minutes it comes to, and a second is no part of what a work item holds", spent)
+		return workDuration{}, &Error{Code: CodeBadUsage, Message: message}
+	}
+	return workDuration{minutes: int64(spent / time.Minute)}, nil
 }
 
 func parseWorkDate(text string) (workDate, *Error) {
@@ -98,27 +113,26 @@ func parseWorkDate(text string) (workDate, *Error) {
 	}
 	moment, err := time.Parse(time.RFC3339, text)
 	if err != nil {
-		return workDate{}, invalidValueFault(dateKey, text, "is neither a calendar day, as in 2026-09-01, nor "+
-			"midnight UTC of one, as in 2026-09-01T00:00:00Z: a work item is written against a day, and "+
-			"YouTrack keeps no moment of it")
+		return workDate{}, badWorkDate(text, "is neither a calendar day, as in 2026-09-01, nor midnight UTC of one, "+
+			"as in 2026-09-01T00:00:00Z: a work item is written against a day, and YouTrack keeps no moment of it")
 	}
 	utc := moment.UTC()
 	midnight := time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
 	if !utc.Equal(midnight) {
-		return workDate{}, invalidValueFault(dateKey, text, "names a time of day, and a work item is written "+
-			"against a day: YouTrack would file the moment under the calendar day of the time zone of whoever "+
-			"wrote it, which is not the caller's to know")
+		return workDate{}, badWorkDate(text, "names a time of day, and a work item is written against a day: "+
+			"YouTrack would file the moment under the calendar day of the time zone of whoever wrote it, which is "+
+			"not the caller's to know")
 	}
 	if _, offset := moment.Zone(); offset != 0 {
-		return workDate{}, invalidValueFault(dateKey, text, "is midnight UTC written in an offset of its own, "+
-			"and a day goes in as the day it is written in: a calendar day, as in 2026-09-01, or midnight UTC "+
-			"of one with Z or +00:00 on it, as ytrack prints it")
+		return workDate{}, badWorkDate(text, "is midnight UTC written in an offset of its own, and a day goes in as "+
+			"the day it is written in: a calendar day, as in 2026-09-01, or midnight UTC of one with Z or +00:00 on "+
+			"it, as a work item reads it back")
 	}
 	return workDate{text: text, noon: noonUTC(midnight)}, nil
 }
 
-func invalidValueFault(named, value, because string) *Error {
-	return &Error{Code: CodeBadUsage, Message: fmt.Sprintf("%s %s %s", named, quote(value), because)}
+func badWorkDate(text, because string) *Error {
+	return &Error{Code: CodeBadUsage, Message: fmt.Sprintf("the day %s %s", quote(text), because)}
 }
 
 type createWorkItemBody struct {
@@ -210,21 +224,18 @@ func (t resolvedWorkType) verify(wrong []mismatch, value any) []mismatch {
 	})
 }
 
-func (d parsedDuration) verify(wrong []mismatch, value any) []mismatch {
+func (d workDuration) verify(wrong []mismatch, value any) []mismatch {
+	written := NewString(duration(d.minutes))
 	held, isObject := value.(map[string]any)
 	if isObject {
 		if minutes, isWhole := parseInt64(held[minutesKey]); isWhole {
 			if minutes == d.minutes {
 				return wrong
 			}
-			return append(wrong, mismatch{
-				field:    durationKey,
-				expected: NewString(d.text),
-				actual:   NewString(duration(minutes)),
-			})
+			return append(wrong, mismatch{field: durationKey, expected: written, actual: NewString(duration(minutes))})
 		}
 	}
-	return append(wrong, mismatch{field: durationKey, expected: NewString(d.text), actual: NewNull()})
+	return append(wrong, mismatch{field: durationKey, expected: written, actual: NewNull()})
 }
 
 func (d workDate) verify(wrong []mismatch, value any) []mismatch {
@@ -256,13 +267,13 @@ func owningIssue(a decodedResponse) *Node {
 }
 
 type workItemUpdateInput struct {
-	spent            *parsedDuration
-	day              *workDate
-	text             *string
-	attributes       []namedValue
-	clearsType       bool
-	clearsText       bool
-	clearsAttributes []string
+	spent      *workDuration
+	day        *workDate
+	text       *string
+	workType   *string
+	clearsType bool
+	clearsText bool
+	attributes []AttributeWrite
 }
 
 type workItemUpdate struct {
@@ -273,97 +284,61 @@ type workItemUpdate struct {
 	attributes []resolvedAttribute
 }
 
-func clearableWorkItemParts() []clearablePart[workItemUpdateInput] {
-	return []clearablePart[workItemUpdateInput]{
-		{name: typeKey, empty: func(w *workItemUpdateInput) { w.clearsType = true }},
-		{name: textKey, empty: func(w *workItemUpdateInput) { w.clearsText = true }},
-	}
-}
-
-func keptWorkItemParts() []string {
-	return []string{durationKey, dateKey}
-}
-
-func parseWorkItemUpdate(spent, day, text, named *string, attributes, cleared []string) (workItemUpdateInput, *Error) {
-	if spent == nil && day == nil && text == nil && named == nil && len(attributes) == 0 && len(cleared) == 0 {
+func parseWorkItemUpdate(in WorkItemUpdate) (workItemUpdateInput, *Error) {
+	if in.Duration == nil && in.Date == nil && in.Text == nil && in.Type == nil && !in.ClearText && !in.ClearType &&
+		len(in.Attributes) == 0 {
 		return workItemUpdateInput{}, &Error{Code: CodeBadUsage, Message: nothingToWriteIntoAWorkItem}
 	}
-	var written workItemUpdateInput
-	if fault := written.parseClear(cleared); fault != nil {
-		return workItemUpdateInput{}, fault
-	}
-	if written.clearsType && named != nil {
+	if in.ClearType && in.Type != nil {
 		return workItemUpdateInput{}, &Error{Code: CodeBadUsage, Message: typeBothWays}
 	}
-	if written.clearsText && text != nil {
+	if in.ClearText && in.Text != nil {
 		return workItemUpdateInput{}, &Error{Code: CodeBadUsage, Message: textBothWays}
 	}
-	if fault := rejectWorkItemText(text); fault != nil {
-		return workItemUpdateInput{}, fault
+	written := workItemUpdateInput{clearsType: in.ClearType, clearsText: in.ClearText, attributes: in.Attributes}
+	if in.Text != nil {
+		if fault := rejectNoUTF8(workItemText, *in.Text); fault != nil {
+			return workItemUpdateInput{}, fault
+		}
+		text := *in.Text
+		written.text = &text
 	}
-	written.text = text
-	if spent != nil {
-		length, fault := parseDuration(*spent)
+	if in.Duration != nil {
+		spent, fault := parseWorkDuration(*in.Duration)
 		if fault != nil {
 			return workItemUpdateInput{}, fault
 		}
-		written.spent = &length
+		written.spent = &spent
 	}
-	if day != nil {
-		against, fault := parseWorkDate(*day)
+	if in.Date != nil {
+		against, fault := parseWorkDate(*in.Date)
 		if fault != nil {
 			return workItemUpdateInput{}, fault
 		}
 		written.day = &against
 	}
-	if fault := rejectWorkItemType(named); fault != nil {
-		return workItemUpdateInput{}, fault
-	}
-	var fault *Error
-	if written.attributes, fault = attributeValues(attributes); fault != nil {
-		return workItemUpdateInput{}, fault
-	}
-	for _, set := range written.attributes {
-		if slices.ContainsFunc(written.clearsAttributes, func(name string) bool { return strings.EqualFold(name, set.name) }) {
-			return workItemUpdateInput{}, attributeBothWays(set.name)
+	if in.Type != nil {
+		if *in.Type == "" {
+			return workItemUpdateInput{}, &Error{Code: CodeBadUsage, Message: unnamedWorkItemType}
 		}
+		named := *in.Type
+		written.workType = &named
+	}
+	if fault := checkAttributes(in.Attributes); fault != nil {
+		return workItemUpdateInput{}, fault
 	}
 	return written, nil
 }
 
-func (w *workItemUpdateInput) parseClear(cleared []string) *Error {
-	parts := clearableWorkItemParts()
-	for _, name := range cleared {
-		if at := clearablePartIndex(parts, name); at >= 0 {
-			parts[at].empty(w)
-			continue
-		}
-		if at := slices.IndexFunc(keptWorkItemParts(), func(kept string) bool {
-			return strings.EqualFold(name, kept)
-		}); at >= 0 {
-			held := keptWorkItemParts()[at]
-			message := fmt.Sprintf("--clear %s names a part every work item holds: YouTrack answers a %s of null "+
-				"with Field %s cannot be null, so there is no way to empty one; --%s writes it afresh",
-				quote(name), held, held, held)
-			return &Error{Code: CodeBadUsage, Message: message}
-		}
-		if name == "" {
-			message := fmt.Sprintf(`--clear "" names nothing to empty: it takes %s or the name of an attribute`, partsOf(parts))
-			return &Error{Code: CodeBadUsage, Message: message}
-		}
-		w.clearsAttributes = append(w.clearsAttributes, name)
-	}
-	return nil
-}
+const nothingToWriteIntoAWorkItem = "the update writes nothing into the work item: it names no part to write and " +
+	"none to empty, and a part it names none of is left as the work item holds it"
 
-const nothingToWriteIntoAWorkItem = "the call writes nothing into the work item: an update is given --duration, " +
-	"--type, --date, --text, --attribute or --clear, and a part it is given none of is left as the work item " +
-	"holds it"
+const typeBothWays = "the update both writes the type of work of the work item and takes it away"
 
-const typeBothWays = "--type writes the type of work of the work item and --clear type takes it away, and the " +
-	"call gives both"
+const textBothWays = "the update both writes the text of the work item and empties it"
 
-const textBothWays = "--text writes the text of the work item and --clear text empties it, and the call gives both"
+const unnamedWorkItemType = "the type of work to write has no name: the types a work item may be written against " +
+	"are the time tracking settings of its project, and a type is taken away by emptying it"
 
 type updateWorkItemBody struct {
 	Duration   *minutesBody    `json:"duration,omitempty"`

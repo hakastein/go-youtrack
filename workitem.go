@@ -7,9 +7,10 @@ import (
 	"time"
 )
 
-const WorkItemListFields = "id,duration,type(name),attributes,author(login),date,text"
-
-const WorkItemWriteFields = "id,duration,type(name),attributes,author(login),date,issue(idReadable,customFields),text"
+const (
+	WorkItemListFields  = "id,duration,type(name),attributes,author(login),date,text"
+	WorkItemWriteFields = "id,duration,type(name),attributes,author(login),date,issue(idReadable,customFields),text"
+)
 
 const (
 	workItemSchema          = "IssueWorkItem"
@@ -25,65 +26,88 @@ const (
 	workItemTypesKey        = "workItemTypes"
 )
 
-func ListWorkItems(id string, expression string, page Page) (Call, *Error) {
-	id, fault := parseIssueID(id)
-	if fault != nil {
-		return nil, fault
-	}
-	page, fault = page.parse()
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	requested, fault := workItemFields(spec, expression, WorkItemListFields)
-	if fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listWorkItems(ctx, spec, id, requested, page)
-	}, nil
+// An empty Fields means WorkItemListFields; +x adds x to them.
+type ListWorkItemsOptions struct {
+	Fields string
+	Page   Page
 }
 
-func CreateWorkItem(id, spent string, day, text, workType *string, attributes []string, expression string) (Call, *Error) {
-	id, fault := parseIssueID(id)
-	if fault != nil {
-		return nil, fault
-	}
-	written, fault := parseWorkItemCreate(spent, day, text, workType, attributes)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	requested, fault := workItemFields(spec, expression, WorkItemWriteFields)
-	if fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.createWorkItem(ctx, spec, id, written, workType, requested)
-	}, nil
+// Oldest first.
+func (s *WorkItemsService) List(ctx context.Context, issue string, opts *ListWorkItemsOptions) (*Node, error) {
+	return result(s.list(ctx, issue, optionsOf(opts)))
 }
 
-func (c *Client) createWorkItem(ctx context.Context, spec *schemas, id string, written workItemCreateInput, named *string, requested []requestedField) (*Node, *Error) {
-	at, workType, attributes, fault := c.resolveWorkItemSettings(ctx, spec, id, named, written.attributes, nil)
+// Create logs time as the owner of the token. A type of work or an attribute is resolved among the time tracking
+// settings of the project, read before the write.
+func (s *WorkItemsService) Create(ctx context.Context, issue string, in *WorkItemInput, opts *WriteOptions) (*Node, error) {
+	return result(s.create(ctx, issue, optionsOf(in), optionsOf(opts)))
+}
+
+// The work item is addressed by its internal id, as 7-1.
+func (s *WorkItemsService) Update(ctx context.Context, issue, id string, in *WorkItemUpdate, opts *WriteOptions) (*Node, error) {
+	return result(s.update(ctx, issue, id, optionsOf(in), optionsOf(opts)))
+}
+
+// Delete answers with the work item as read just before the deletion, which goes to the issue the read named.
+func (s *WorkItemsService) Delete(ctx context.Context, issue, id string) (*Node, error) {
+	return result(s.delete(ctx, issue, id))
+}
+
+func (s *WorkItemsService) list(ctx context.Context, issue string, opts ListWorkItemsOptions) (*Node, *Error) {
+	id, fault := parseIssueID(issue)
+	if fault != nil {
+		return nil, fault
+	}
+	page, fault := opts.Page.parse()
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	requested, fault := workItemFields(c.spec, opts.Fields, WorkItemListFields)
+	if fault != nil {
+		return nil, fault
+	}
+	ask := func(ctx context.Context, fields string, w window) (*http.Response, error) {
+		return c.apiGetIssueWorkItems(ctx, id, fields, w)
+	}
+	selection := c.newList(c.spec, workItemsPlural, workItemsListing, requested, workItemRequestFields(c.spec, requested), page, ask)
+	return selection.fetch(ctx)
+}
+
+func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItemInput, opts WriteOptions) (*Node, *Error) {
+	id, fault := parseIssueID(issue)
+	if fault != nil {
+		return nil, fault
+	}
+	written, fault := parseWorkItemCreate(in)
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	requested, fault := workItemFields(c.spec, opts.Fields, WorkItemWriteFields)
+	if fault != nil {
+		return nil, fault
+	}
+	at, workType, attributes, fault := c.resolveWorkItemSettings(ctx, id, written.workType, written.attributes)
 	if fault != nil {
 		return nil, fault
 	}
 	filed := workItemCreate{input: written, workType: workType, attributes: attributes}
 	asked := withFields(requested, filed.verifyFields()...)
-	fillInDurations(spec, workItemSchema, asked)
-	issueBlocks(spec, composedWorkItem(), asked)
+	fillInDurations(c.spec, workItemSchema, asked)
+	issueBlocks(c.spec, composedWorkItem(), asked)
 	body := filed.body()
-	return c.write(ctx, spec, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	return c.write(ctx, c.spec, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssueWorkItem(ctx, at, body, fields)
 	}, filed.verify, writeResultNode(requested))
 }
 
-func (c *Client) resolveWorkItemSettings(ctx context.Context, spec *schemas, id string, named *string, set []namedValue, cleared []string) (string, *resolvedWorkType, []resolvedAttribute, *Error) {
-	withAttributes := len(set) > 0 || len(cleared) > 0
+func (c *Client) resolveWorkItemSettings(ctx context.Context, id string, named *string, written []AttributeWrite) (string, *resolvedWorkType, []resolvedAttribute, *Error) {
+	withAttributes := len(written) > 0
 	if named == nil && !withAttributes {
 		return id, nil, nil, nil
 	}
-	readable, project, fault := c.readWorkItemTypes(ctx, spec, id, withAttributes)
+	readable, project, fault := c.readWorkItemTypes(ctx, id, withAttributes)
 	if fault != nil {
 		return "", nil, nil, fault
 	}
@@ -95,15 +119,15 @@ func (c *Client) resolveWorkItemSettings(ctx context.Context, spec *schemas, id 
 		}
 		workType = &resolved
 	}
-	attributes, fault := project.resolveAttributes(set, cleared)
+	attributes, fault := project.resolveAttributes(written)
 	if fault != nil {
 		return "", nil, nil, fault
 	}
 	return readable.String(), workType, attributes, nil
 }
 
-func UpdateWorkItem(id, item string, spent, day, text, workType *string, attributes, cleared []string, expression string) (Call, *Error) {
-	id, fault := parseIssueID(id)
+func (s *WorkItemsService) update(ctx context.Context, issue, item string, in WorkItemUpdate, opts WriteOptions) (*Node, *Error) {
+	id, fault := parseIssueID(issue)
 	if fault != nil {
 		return nil, fault
 	}
@@ -111,48 +135,27 @@ func UpdateWorkItem(id, item string, spent, day, text, workType *string, attribu
 	if fault != nil {
 		return nil, fault
 	}
-	written, fault := parseWorkItemUpdate(spent, day, text, workType, attributes, cleared)
+	written, fault := parseWorkItemUpdate(in)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	requested, fault := workItemFields(spec, expression, WorkItemWriteFields)
+	c := s.client
+	requested, fault := workItemFields(c.spec, opts.Fields, WorkItemWriteFields)
 	if fault != nil {
 		return nil, fault
 	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.updateWorkItem(ctx, spec, id, at, written, workType, requested)
-	}, nil
-}
-
-func (c *Client) updateWorkItem(ctx context.Context, spec *schemas, id string, at childID, written workItemUpdateInput, named *string, requested []requestedField) (*Node, *Error) {
-	issue, workType, attributes, fault := c.resolveWorkItemSettings(ctx, spec, id, named, written.attributes, written.clearsAttributes)
+	owner, workType, attributes, fault := c.resolveWorkItemSettings(ctx, id, written.workType, written.attributes)
 	if fault != nil {
 		return nil, fault
 	}
-	changed := workItemUpdate{input: written, issue: issue, at: at, workType: workType, attributes: attributes}
+	changed := workItemUpdate{input: written, issue: owner, at: at, workType: workType, attributes: attributes}
 	asked := withFields(requested, changed.verifyFields()...)
-	fillInDurations(spec, workItemSchema, asked)
-	issueBlocks(spec, composedWorkItem(), asked)
+	fillInDurations(c.spec, workItemSchema, asked)
+	issueBlocks(c.spec, composedWorkItem(), asked)
 	body := changed.body()
-	return c.write(ctx, spec, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiUpdateIssueWorkItem(ctx, issue, at, body, fields)
+	return c.write(ctx, c.spec, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiUpdateIssueWorkItem(ctx, owner, at, body, fields)
 	}, changed.verify, writeResultNode(requested))
-}
-
-func DeleteWorkItem(id, item string) (Call, *Error) {
-	id, fault := parseIssueID(id)
-	if fault != nil {
-		return nil, fault
-	}
-	at, fault := parseChildID(workItemNoun, workItemOwnerNoun, item)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.deleteWorkItem(ctx, spec, id, at)
-	}, nil
 }
 
 func removedWorkItemFields() []requestedField {
@@ -162,15 +165,24 @@ func removedWorkItemFields() []requestedField {
 	}
 }
 
-func (c *Client) deleteWorkItem(ctx context.Context, spec *schemas, id string, at childID) (*Node, *Error) {
+func (s *WorkItemsService) delete(ctx context.Context, issue, item string) (*Node, *Error) {
+	id, fault := parseIssueID(issue)
+	if fault != nil {
+		return nil, fault
+	}
+	at, fault := parseChildID(workItemNoun, workItemOwnerNoun, item)
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
 	requested := removedWorkItemFields()
-	a, fault := c.request(ctx, spec, workItemSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, c.spec, workItemSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssueWorkItem(ctx, id, at, fields)
 	})
 	if fault != nil {
 		return nil, fault
 	}
-	issue, fault := owningIssueID(a)
+	owner, fault := owningIssueID(a)
 	if fault != nil {
 		return nil, fault
 	}
@@ -179,7 +191,7 @@ func (c *Client) deleteWorkItem(ctx context.Context, spec *schemas, id string, a
 		return nil, fault
 	}
 	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return c.apiDeleteIssueWorkItem(ctx, issue, known)
+		return c.apiDeleteIssueWorkItem(ctx, owner, known)
 	}); fault != nil {
 		return nil, fault
 	}
@@ -240,8 +252,8 @@ func workItemTypesFields(withAttributes bool) []requestedField {
 	}
 }
 
-func (c *Client) readWorkItemTypes(ctx context.Context, spec *schemas, id string, withAttributes bool) (readableID, projectWorkItemTypes, *Error) {
-	a, fault := c.request(ctx, spec, issueSchema, workItemTypesFields(withAttributes), func(ctx context.Context, fields string) (*http.Response, error) {
+func (c *Client) readWorkItemTypes(ctx context.Context, id string, withAttributes bool) (readableID, projectWorkItemTypes, *Error) {
+	a, fault := c.request(ctx, c.spec, issueSchema, workItemTypesFields(withAttributes), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssue(ctx, id, fields, nil)
 	})
 	if fault != nil {
@@ -337,14 +349,6 @@ func (p projectWorkItemTypes) fault(name string, catalogue []fieldInfo) *Error {
 	return unknownNames(sent, Pair{Key: projectKey, Value: NewString(p.project)}, "unknown", message, []*Node{entry})
 }
 
-func (c *Client) listWorkItems(ctx context.Context, spec *schemas, id string, requested []requestedField, page Page) (*Node, *Error) {
-	ask := func(ctx context.Context, fields string, w window) (*http.Response, error) {
-		return c.apiGetIssueWorkItems(ctx, id, fields, w)
-	}
-	selection := c.newList(spec, workItemsPlural, workItemsListing, requested, workItemRequestFields(spec, requested), page, ask)
-	return selection.fetch(ctx)
-}
-
 func workItemRequestFields(spec *schemas, requested []requestedField) []requestedField {
 	asked := cloneFields(requested)
 	fillInDurations(spec, workItemSchema, asked)
@@ -353,12 +357,7 @@ func workItemRequestFields(spec *schemas, requested []requestedField) []requeste
 }
 
 func workItemFields(spec *schemas, expression string, defaults string) ([]requestedField, *Error) {
-	written := defaults
-	requested, fault := parseDefault(defaults, false)
-	if expression != "" {
-		written = expression
-		requested, fault = parseFields(written, defaults)
-	}
+	written, requested, fault := fieldsOrDefault(expression, defaults, false)
 	if fault != nil {
 		return nil, fault
 	}

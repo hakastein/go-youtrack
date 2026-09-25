@@ -9,9 +9,15 @@ import (
 const (
 	attributesKey           = "attributes"
 	workItemAttributeSchema = "WorkItemAttribute"
-	attributeFlag           = "--attribute"
 	attributeValueKey       = "value"
 )
+
+// Name and Value resolve in any letter case, an exact spelling settling a tie; Clear takes no Value.
+type AttributeWrite struct {
+	Name  string
+	Value string
+	Clear bool
+}
 
 func attributesAsked() []requestedField {
 	return []requestedField{
@@ -67,29 +73,27 @@ func (n converter) attributes(value any) (*Node, *Error) {
 	return NewMap(pairs...), nil
 }
 
-func attributeValues(filled []string) ([]namedValue, *Error) {
-	named := make([]namedValue, 0, len(filled))
-	for _, flag := range filled {
-		name, value, split := strings.Cut(flag, "=")
+func checkAttributes(written []AttributeWrite) *Error {
+	for at, attribute := range written {
+		var message string
 		switch {
-		case !split:
-			message := fmt.Sprintf("%s %s holds no =: an attribute is set by writing its name, an = and the value, "+
-				"as in %s 'Формат работы=ИИагент'", attributeFlag, quote(flag), attributeFlag)
-			return nil, &Error{Code: CodeBadUsage, Message: message}
-		case name == "":
-			message := fmt.Sprintf("%s %s names no attribute: the name stands before the =", attributeFlag, quote(flag))
-			return nil, &Error{Code: CodeBadUsage, Message: message}
-		case value == "":
-			message := fmt.Sprintf("%s %s names no value: --clear takes an attribute away", attributeFlag, quote(flag))
-			return nil, &Error{Code: CodeBadUsage, Message: message}
+		case attribute.Name == "":
+			message = "an attribute to write has no name, and every attribute of the work items of a project has one"
+		case attribute.Clear && attribute.Value != "":
+			message = fmt.Sprintf("the call both sets the attribute %s and empties it", quote(attribute.Name))
+		case !attribute.Clear && attribute.Value == "":
+			message = fmt.Sprintf("the attribute %s is set to a value of no name: an attribute holds one of the "+
+				"values it takes, or is emptied", quote(attribute.Name))
+		case slices.ContainsFunc(written[:at], func(earlier AttributeWrite) bool {
+			return strings.EqualFold(earlier.Name, attribute.Name)
+		}):
+			message = fmt.Sprintf("the call names the attribute %s twice, in any letter case", quote(attribute.Name))
+		default:
+			continue
 		}
-		if slices.ContainsFunc(named, func(earlier namedValue) bool { return strings.EqualFold(earlier.name, name) }) {
-			message := fmt.Sprintf("%s names the attribute %s twice", attributeFlag, quote(name))
-			return nil, &Error{Code: CodeBadUsage, Message: message}
-		}
-		named = append(named, namedValue{name: name, value: value})
+		return &Error{Code: CodeBadUsage, Message: message}
 	}
-	return named, nil
+	return nil
 }
 
 type projectAttribute struct {
@@ -121,42 +125,38 @@ func attributeBodies(filed []resolvedAttribute) []attributeBody {
 	return written
 }
 
-func (p projectWorkItemTypes) resolveAttributes(set []namedValue, cleared []string) ([]resolvedAttribute, *Error) {
+func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]resolvedAttribute, *Error) {
 	catalogue := make([]fieldInfo, 0, len(p.attributes))
 	for _, attribute := range p.attributes {
 		catalogue = append(catalogue, fieldInfo{name: attribute.name})
 	}
 	var filed []resolvedAttribute
 	var unknown []*Node
-	for _, written := range set {
-		at, found := matchName(written.name, catalogue)
+	for _, asked := range written {
+		at, found := matchName(asked.Name, catalogue)
 		if !found {
-			unknown = append(unknown, unknownAttribute(written.name, catalogue))
+			unknown = append(unknown, unknownAttribute(asked.Name, catalogue))
 			continue
 		}
 		attribute := p.attributes[at]
+		if asked.Clear {
+			filed = append(filed, resolvedAttribute{id: attribute.id, name: attribute.name})
+			continue
+		}
 		values := make([]fieldInfo, 0, len(attribute.values))
 		for _, value := range attribute.values {
 			values = append(values, fieldInfo{name: value.name})
 		}
-		place, found := matchName(written.value, values)
+		place, found := matchName(asked.Value, values)
 		if !found {
 			unknown = append(unknown, NewMap(
 				Pair{Key: "attribute", Value: NewString(attribute.name)},
-				Pair{Key: attributeValueKey, Value: NewString(written.value)},
-				Pair{Key: "nearest", Value: NewList(names(nearestNamed(written.value, values))...)}))
+				Pair{Key: attributeValueKey, Value: NewString(asked.Value)},
+				Pair{Key: "nearest", Value: NewList(names(nearestNamed(asked.Value, values))...)}))
 			continue
 		}
-		value := resolvedWorkType{id: attribute.values[place].id, name: written.value}
+		value := resolvedWorkType{id: attribute.values[place].id, name: asked.Value}
 		filed = append(filed, resolvedAttribute{id: attribute.id, name: attribute.name, value: &value})
-	}
-	for _, name := range cleared {
-		at, found := matchName(name, catalogue)
-		if !found {
-			unknown = append(unknown, unknownAttribute(name, catalogue))
-			continue
-		}
-		filed = append(filed, resolvedAttribute{id: p.attributes[at].id, name: p.attributes[at].name})
 	}
 	if len(unknown) > 0 {
 		message := "the names under unknown are not attributes of the work items of the project, or values they take"
@@ -164,12 +164,6 @@ func (p projectWorkItemTypes) resolveAttributes(set []namedValue, cleared []stri
 		return nil, unknownNames(sent, Pair{Key: projectKey, Value: NewString(p.project)}, "unknown", message, unknown)
 	}
 	return filed, nil
-}
-
-func attributeBothWays(name string) *Error {
-	message := fmt.Sprintf("%s sets the attribute %s and --clear takes it away, and the call gives both",
-		attributeFlag, quote(name))
-	return &Error{Code: CodeBadUsage, Message: message}
 }
 
 func unknownAttribute(name string, catalogue []fieldInfo) *Node {
