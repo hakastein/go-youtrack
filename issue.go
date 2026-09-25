@@ -127,7 +127,7 @@ func readIssue(a decodedResponse) (*Issue, *Error) {
 	if !isProject {
 		return nil, a.invalid("the project of the issue is not of the shape the specification gives it")
 	}
-	n := newConverter(a, blockLayout)
+	n := newConverter(a, wholeRecord)
 	fields, fault := n.recordFields(object[customFieldsKey])
 	if fault != nil {
 		return nil, fault

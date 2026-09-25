@@ -71,7 +71,7 @@ func (s *LinksService) list(ctx context.Context, id string, opts ListLinksOption
 	if fault != nil {
 		return nil, fault
 	}
-	return newConverter(decoded, inlineLayout).linkDocument(targetFields(requested), decoded.objects[0])
+	return newConverter(decoded, listRecord).linkDocument(targetFields(requested), decoded.objects[0])
 }
 
 func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts WriteOptions) (*Node, *Error) {
@@ -399,7 +399,7 @@ func (c *Client) readSourceIssue(ctx context.Context, id string) (linkIssue, *Er
 	if fault != nil {
 		return linkIssue{}, fault
 	}
-	links, fault := newConverter(read.a, inlineLayout).parseIssueLinks(read.a.objects[0][linksKey])
+	links, fault := newConverter(read.a, listRecord).parseIssueLinks(read.a.objects[0][linksKey])
 	if fault != nil {
 		return linkIssue{}, fault
 	}
@@ -637,7 +637,7 @@ func (w linkWrite) verify(a decodedResponse) *Error {
 	if fault != nil {
 		return fault
 	}
-	links, fault := newConverter(a, inlineLayout).responseLinks(source[linksKey])
+	links, fault := newConverter(a, listRecord).responseLinks(source[linksKey])
 	if fault != nil {
 		return fault
 	}
@@ -651,7 +651,7 @@ func (w linkWrite) findSource(a decodedResponse) (map[string]any, *Error) {
 	if id, isText := a.objects[0][idKey].(string); !isText || id != w.target.id {
 		return nil, a.fault(CodeUpstreamInvalid, "the write was answered with an issue other than the target issue it named")
 	}
-	links, fault := newConverter(a, inlineLayout).responseLinks(a.objects[0][linksKey])
+	links, fault := newConverter(a, listRecord).responseLinks(a.objects[0][linksKey])
 	if fault != nil {
 		return nil, fault
 	}
@@ -676,7 +676,7 @@ func (w linkWrite) renderResult(printed []requestedField) func(decodedResponse) 
 		if fault != nil {
 			return nil, fault
 		}
-		return newConverter(a, inlineLayout).linkDocument(printed, source)
+		return newConverter(a, listRecord).linkDocument(printed, source)
 	}
 }
 

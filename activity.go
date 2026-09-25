@@ -268,7 +268,7 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 	if len(received) > page.Limit {
 		received, rows, found, left = received[:page.Limit], rows[:page.Limit], count{}, true
 	}
-	n := converter{response: decoded, layout: inlineLayout, phrases: phrases, activityRoot: true}
+	n := converter{response: decoded, record: listRecord, phrases: phrases, activityRoot: true}
 	printed := make([]*Node, 0, len(received))
 	for at, activity := range received {
 		n.row = rows[at]

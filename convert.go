@@ -9,24 +9,24 @@ import (
 	"strings"
 )
 
-type layout int
+type recordForm int
 
 const (
-	blockLayout layout = iota
-	inlineLayout
+	wholeRecord recordForm = iota
+	listRecord
 )
 
 type converter struct {
 	response     decodedResponse
-	layout       layout
+	record       recordForm
 	at           []string
 	row          activityCategory
 	activityRoot bool
 	phrases      linkPhrases
 }
 
-func newConverter(a decodedResponse, l layout) converter {
-	return converter{response: a, layout: l}
+func newConverter(a decodedResponse, record recordForm) converter {
+	return converter{response: a, record: record}
 }
 
 func (n converter) child(name string) converter {
@@ -48,7 +48,7 @@ func (n converter) objectsAt(schema string, requested []requestedField, objects 
 }
 
 func objectNode(a decodedResponse, requested []requestedField, object map[string]any, own []Pair) (*Node, *Error) {
-	n := newConverter(a, blockLayout)
+	n := newConverter(a, wholeRecord)
 	pairs, fault := n.pairs(a.schema, requested, object)
 	if fault != nil {
 		return nil, fault
@@ -218,7 +218,7 @@ func rawValueNode(value any) *Node {
 }
 
 func (n converter) textNode(text string) *Node {
-	if n.layout == inlineLayout {
+	if n.record == listRecord {
 		return NewString(text)
 	}
 	return NewText(text)

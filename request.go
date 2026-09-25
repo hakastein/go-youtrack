@@ -63,7 +63,7 @@ func (c *Client) readList(ctx context.Context, responseSchema string, of request
 	if fault != nil {
 		return nil, fault
 	}
-	return newConverter(decoded, inlineLayout).objectsAt(decoded.schema, of.output, decoded.objects)
+	return newConverter(decoded, listRecord).objectsAt(decoded.schema, of.output, decoded.objects)
 }
 
 func sendWrite(ctx context.Context, call func(ctx context.Context) (*http.Response, error)) (*http.Response, []byte, *Error) {

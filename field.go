@@ -59,7 +59,7 @@ func (s *FieldsService) list(ctx context.Context, project string, opts ListField
 	if fault != nil {
 		return nil, fault
 	}
-	records, fault := newConverter(decoded, blockLayout).objectsAt(decoded.schema, requested, ordered)
+	records, fault := newConverter(decoded, wholeRecord).objectsAt(decoded.schema, requested, ordered)
 	if fault != nil {
 		return nil, fault
 	}

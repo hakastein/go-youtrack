@@ -204,7 +204,7 @@ func (c Comments) of(h commentTarget, a decodedResponse, holder map[string]any) 
 	for _, written := range kept {
 		objects = append(objects, written.comment)
 	}
-	printed, fault := newConverter(a, blockLayout).objectsAt(h.comment, ownFields(printedCommentFields), objects)
+	printed, fault := newConverter(a, wholeRecord).objectsAt(h.comment, ownFields(printedCommentFields), objects)
 	if fault != nil {
 		return nil, fault
 	}
