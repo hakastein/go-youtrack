@@ -175,6 +175,15 @@ func TestReadMetadataReadsTheFieldsOfTheProjectInItsOrder(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, &youtrack.Metadata{Fields: fourFields()}, metadata)
+}
+
+func TestReadMetadataAsksForTheFieldsOfTheProject(t *testing.T) {
+	t.Parallel()
+	server := fake.Serve(t, fake.JSON(http.StatusOK, fourFieldsProject()))
+
+	_, err := client(t, server).Fields.ReadMetadata(t.Context(), "DEV")
+
+	require.NoError(t, err)
 	assert.Equal(t, []string{projectPath + "?fields=" + projectFields}, server.Targets(t))
 }
 

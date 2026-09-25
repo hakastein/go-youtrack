@@ -56,9 +56,18 @@ func TestBundleReadsTheValuesOfTheFieldItsNameResolvesTo(t *testing.T) {
 				{ID: "3-1", Name: "Open"}, {ID: "3-2", Name: "Legacy", Archived: true}, {ID: "3-3", Name: "Инфраструктура. DevOps"},
 			}}, bundle)
 			assert.Equal(t, []string{projectPath, fieldPath + tc.field.ID}, server.Paths())
-			assert.Equal(t, bundleFields, server.Last(t).URL.Query().Get("fields"))
 		})
 	}
+}
+
+func TestBundleAsksForTheValuesOfTheField(t *testing.T) {
+	t.Parallel()
+	server := oneEnumField().serve(t)
+
+	_, err := client(t, server).Fields.Bundle(t.Context(), "DEV", "Field")
+
+	require.NoError(t, err)
+	assert.Equal(t, bundleFields, server.Last(t).URL.Query().Get("fields"))
 }
 
 func TestBundleTakesWhetherTheFieldMayStandEmptyFromTheReadOfTheField(t *testing.T) {
@@ -111,7 +120,6 @@ func TestBundleReadsTheValuesOfATypeThatHasThem(t *testing.T) {
 				Values: []youtrack.BundleValue{{ID: "3-1", Name: "First"}},
 			}
 			assert.Equal(t, want, got)
-			assert.Equal(t, bundleFields, server.Last(t).URL.Query().Get("fields"))
 		})
 	}
 }
@@ -147,7 +155,7 @@ func TestBundleRefusesAFieldOfATypeWithNoBundle(t *testing.T) {
 			_, err := client(t, server).Fields.Bundle(t.Context(), "DEV", "Field")
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
-			assert.Equal(t, youtrack.FieldListFields, server.Last(t).URL.Query().Get("fields"))
+			assert.Equal(t, []string{projectPath, firstFieldPath}, server.Paths())
 		})
 	}
 }

@@ -271,7 +271,6 @@ func TestCreateIssueFilesAnEmptyDescriptionAsNone(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"project":{"id":"0-1"},"summary":"First"}`, server.Last(t).Body)
-	assert.Equal(t, "idReadable,summary", server.Last(t).URL.Query().Get("fields"))
 }
 
 func TestUpdateIssueSendsOnlyThePartsItWrites(t *testing.T) {

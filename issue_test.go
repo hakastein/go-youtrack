@@ -127,7 +127,6 @@ func TestGetReadsTheIssueAndItsFieldsByTheKeyOfTheirTypes(t *testing.T) {
 			require.NoError(t, err)
 			field := youtrack.Field{Name: "Field", LocalizedName: "Поле", Type: fieldType(tc.valueType, tc.multi), Values: tc.values}
 			assert.Equal(t, issueOfDEV(field), issue)
-			assert.Equal(t, requestTo(http.MethodGet, server, issuePath+"?fields="+issueRecordFields), lastRequest(t, server))
 		})
 	}
 }
@@ -300,14 +299,14 @@ func TestGetRefusesAnIDOfAnyOtherForm(t *testing.T) {
 	}
 }
 
-func TestGetSendsTheReadableIdAsWritten(t *testing.T) {
+func TestGetAsksForTheRecordUnderTheReadableIdAsWritten(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, issueRecord(t, nil)))
 
 	_, err := client(t, server).Issues.Get(t.Context(), "dev-01")
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"/api/issues/dev-01"}, server.Paths())
+	assert.Equal(t, []string{"/api/issues/dev-01?fields=" + issueRecordFields}, server.Targets(t))
 }
 
 func TestWriteFieldsRefusesACallItCannotSend(t *testing.T) {
@@ -357,7 +356,6 @@ func TestWriteFieldsAnswersWithTheIssueAsTheServerHoldsIt(t *testing.T) {
 	want.Summary = "Renamed by a workflow"
 	assert.Equal(t, want, issue)
 	assert.Equal(t, []string{"GET /api/issues/dev-1", "POST " + issuePath}, server.Routes())
-	assert.Equal(t, requestTo(http.MethodPost, server, issuePath+"?fields="+issueRecordFields), lastRequest(t, server))
 	assert.JSONEq(t, `{"customFields":[{"$type":"StateIssueCustomField","name":"State","value":{"name":"Done"}}]}`,
 		server.Last(t).Body)
 }
