@@ -17,10 +17,12 @@
   `AmbiguousName`, `InvalidValue`) заменены одной `*Error` с `Code`, `Message`, `Details`, `AfterWrite` и `Err`.
   Код — из словаря ytrack (`bad_usage`, `unknown_name`, `missing_required`, `not_found`, `denied`, `rejected`,
   `upstream_failed`, `upstream_invalid`, `write_uncertain`), сентинелы `Err…` сравниваются `errors.Is` по коду,
-  `MayHaveWritten` заменяет `TransportError.Written`, `StatusError.Uncertain` и `ResponseError.Write`.
+  `MayHaveWritten` заменяет `TransportError.Written`, `StatusError.Uncertain` и `ResponseError.Write`, `AfterWrite` —
+  `StatusError.Accepted`.
 - `Send`, `FieldType.Encode` и `FieldType.ReadValue` отвечают `*Error`: тип вне таблицы у обоих —
   `upstream_invalid`, и `ReadValue` отвергает `id` или `localizedName` значения, которые не строка и не `null`.
 - Тип `Request` и `Metadata.Request` удалены: запрос стоит в `Details` ошибки под `request`.
+- `fake.Server.Env()` удалён: окружение входа ytrack собирает сам.
 - Токен больше не попадает в текст ошибки `NewClient`.
 
 Новое:
@@ -34,6 +36,9 @@
 - Выражение полей вызывающего с кастом-полями в кавычках и `+x` к набору по умолчанию, проверка имён по `$type`
   каталогом схем из спецификации (`catalogue.gen.go`, генератор `scripts/catalogue.go`; `make ytapi` сверяет и его),
   страница списка `Page` с `DefaultLimit`, `WriteOptions`, выбор комментариев `Comments`, предупреждение `Warning`.
+- Вход операций: `IssueInput`, `IssueUpdate`, `ArticleInput`, `ArticleUpdate`, `WorkItemInput`, `WorkItemUpdate`,
+  `AttributeWrite`, `File`, `TagSharing`, `TagOptions`; опции `Show…Options`, `List…Options`; наборы полей по умолчанию
+  `…Fields`; `ActivityCategories`.
 - `fake.ServeUnread` — сервер для теста, обработчик которого читает тело сам, как у запроса, который клиент обрывает.
 
 ## v0.2.0

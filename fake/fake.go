@@ -159,10 +159,6 @@ func (s *Server) journal(r *http.Request, body string) {
 	})
 }
 
-func (s *Server) Env() []string {
-	return []string{"YTRACK_URL=" + s.URL, "YTRACK_TOKEN=" + Token}
-}
-
 func (s *Server) Address(t *testing.T) *url.URL {
 	t.Helper()
 	address, err := url.Parse(s.URL)

@@ -31,7 +31,7 @@ const (
 // the facts under keys of their own: the request as it can be sent again under request, the words of the server
 // verbatim under upstream_status, upstream_error, upstream_message and upstream_body, the names at fault under
 // unknown, missing or invalid. AfterWrite says the error came after the instance took a write. Err is the error of
-// the transport under a request that got no answer.
+// the transport under a request that got no answer or whose answer broke off.
 type Error struct {
 	Code       Code
 	Message    string
