@@ -3,6 +3,7 @@ package youtrack_test
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -85,6 +86,20 @@ func TestAnAddressOfTheInstanceIsResolvedFromTheAddressOfTheClient(t *testing.T)
 			assert.Equal(t, tc.want(server.Origin), node)
 		})
 	}
+}
+
+func TestAnAddressOfTheInstanceLeavesOutTheUserOfTheAddressOfTheClient(t *testing.T) {
+	t.Parallel()
+	server := fake.Serve(t, fake.JSON(http.StatusOK, `{"$type":"Project","iconUrl":"/api/entityIcons/0-3"}`))
+	address := server.Address(t)
+	address.User = url.UserPassword("alice", "secret")
+	c, err := youtrack.NewClient(address.String(), fake.Token)
+	require.NoError(t, err)
+
+	node, err := projectReading("iconUrl")(t.Context(), c)
+
+	require.NoError(t, err)
+	assert.Equal(t, youtrack.NewMap(youtrack.Pair{Key: "iconUrl", Value: youtrack.NewString(server.Origin + "/api/entityIcons/0-3")}), node)
 }
 
 func TestShowProjectRefusesAnAddressOfTheInstanceThatIsNoAbsolutePath(t *testing.T) {

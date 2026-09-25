@@ -185,7 +185,9 @@ func (n converter) resolveInstancePath(field requestedField, value any) (*Node, 
 	if err != nil || !isAbsolutePath(reference) {
 		return nil, n.invalidURL(field, value)
 	}
-	return NewString(n.response.address.ResolveReference(reference).String()), nil
+	origin := *n.response.address
+	origin.User = nil
+	return NewString(origin.ResolveReference(reference).String()), nil
 }
 
 func isAbsolutePath(reference *url.URL) bool {
