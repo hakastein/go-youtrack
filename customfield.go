@@ -515,43 +515,27 @@ func (r *nameResolver) place(name, written string) (int, bool) {
 		return places[0], true
 	case r.reported[written]:
 	case len(places) == 0:
-		r.unknown = append(r.unknown, unknownEntry(written, nearestNamed(name, r.catalogue)))
+		r.unknown = append(r.unknown, nearestEntry("field", written, nearestNamed(name, r.catalogue)))
 	default:
-		r.ambiguous = append(r.ambiguous, ambiguousEntry(written, canonical(pick(r.catalogue, places))))
+		r.ambiguous = append(r.ambiguous, NewMap(
+			Pair{Key: "field", Value: NewString(written)},
+			Pair{Key: "candidates", Value: textList(canonical(pick(r.catalogue, places)))}))
 	}
 	r.reported[written] = true
 	return 0, false
 }
 
 func (r *nameResolver) fault(sent, against Pair, among string) *Error {
-	switch {
-	case len(r.unknown) > 0:
-		message := "the names under unknown are not custom fields of " + among
-		return unknownNames(sent, against, "unknown", message, r.unknown)
-	case len(r.ambiguous) > 0:
-		message := "the names under ambiguous are the names of more than one custom field of " + among + " each"
-		return unknownNames(sent, against, "ambiguous", message, r.ambiguous)
+	key, entries, message := "unknown", r.unknown, "the names under unknown are not custom fields of "+among
+	if len(r.unknown) == 0 {
+		key, entries = "ambiguous", r.ambiguous
+		message = "the names under ambiguous are the names of more than one custom field of " + among + " each"
 	}
-	return nil
-}
-
-func unknownNames(sent, against Pair, key, message string, entries []*Node) *Error {
-	details := []Pair{
-		sent,
-		against,
-		{Key: key, Value: NewList(entries...)},
+	if len(entries) == 0 {
+		return nil
 	}
+	details := []Pair{sent, against, {Key: key, Value: NewList(entries...)}}
 	return &Error{Code: CodeUnknownName, Message: message, Details: details}
-}
-
-func ambiguousEntry(field string, candidates []string) *Node {
-	names := make([]*Node, 0, len(candidates))
-	for _, name := range candidates {
-		names = append(names, NewString(name))
-	}
-	return NewMap(
-		Pair{Key: "field", Value: NewString(field)},
-		Pair{Key: "candidates", Value: NewList(names...)})
 }
 
 func fieldInfoFields() requestedField {

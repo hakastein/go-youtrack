@@ -41,7 +41,7 @@ func (c *Client) deleteOwner(ctx context.Context, kind ownerKind, schema string,
 	if fault != nil {
 		return nil, fault
 	}
-	readable, fault := readableIDAt(decoded, decoded.objects[0], kind, "a deletion")
+	readable, fault := readableIDOf(decoded, kind, "a deletion")
 	if fault != nil {
 		return nil, fault
 	}

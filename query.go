@@ -87,13 +87,9 @@ func freeTextWarning(query string, ranges []styleRange) *Warning {
 	if len(parts) == 0 {
 		return nil
 	}
-	written := make([]*Node, 0, len(parts))
-	for _, part := range parts {
-		written = append(written, NewString(part))
-	}
 	details := []Pair{
 		{Key: queryKey, Value: NewString(query)},
-		{Key: freeTextKey, Value: NewList(written...)},
+		{Key: freeTextKey, Value: textList(parts)},
 	}
 	return &Warning{Code: CodeUnknownName, Message: freeTextMessage, Details: details}
 }

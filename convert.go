@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type layout int
@@ -301,7 +300,7 @@ func (n converter) instant(name string, value any) (*Node, *Error) {
 	if !isInstant {
 		return nil, n.response.invalid(notAnInstant(name))
 	}
-	return NewString(time.UnixMilli(count).UTC().Format(time.RFC3339Nano)), nil
+	return NewString(formatMoment(count)), nil
 }
 
 func parseInt64(value any) (int64, bool) {
@@ -322,4 +321,12 @@ func notAnInstant(name string) string {
 
 func intNode(n int) *Node {
 	return NewNumber(json.Number(strconv.Itoa(n)))
+}
+
+func textList(texts []string) *Node {
+	items := make([]*Node, 0, len(texts))
+	for _, text := range texts {
+		items = append(items, NewString(text))
+	}
+	return NewList(items...)
 }

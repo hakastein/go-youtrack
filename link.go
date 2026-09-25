@@ -469,7 +469,7 @@ func (c *Client) readLinkedIssue(ctx context.Context, id string, requested []req
 	if fault != nil {
 		return linkIssue{}, fault
 	}
-	readable, fault := readableIDAt(a, a.objects[0], issueOwner, "a link")
+	readable, fault := readableIDOf(a, issueOwner, "a link")
 	if fault != nil {
 		return linkIssue{}, fault
 	}
@@ -628,9 +628,7 @@ func (s linkIssue) unknownPhrase(phrase string, named []issueLink) *Error {
 		}
 		nearby = nearest(phrase, among, canonicalPhrases(s.links))
 	}
-	entry := NewMap(
-		Pair{Key: "phrase", Value: NewString(phrase)},
-		Pair{Key: "nearest", Value: NewList(names(nearby)...)})
+	entry := nearestEntry("phrase", phrase, nearby)
 	return s.fault(CodeUnknownName, unknownPhrase, Pair{Key: "unknown", Value: NewList(entry)})
 }
 

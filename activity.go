@@ -182,7 +182,7 @@ func rejectUnknownValueNames(spec *schemas, expression string, requested []reque
 		names := j.childSchemas(activity, &fieldNode{field: field}).names
 		for _, child := range field.children {
 			if !slices.Contains(names, child.name) {
-				unknown = append(unknown, unknownEntry(fieldPath([]string{field.name}, child.name), nearestNames(child.name, names)))
+				unknown = append(unknown, nearestEntry("field", fieldPath([]string{field.name}, child.name), nearestNames(child.name, names)))
 			}
 		}
 	}

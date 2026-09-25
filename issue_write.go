@@ -147,7 +147,7 @@ func createIssue(ctx context.Context, c *Client, code string, parts issueInput, 
 		return nil, project.fault(CodeBadUsage, hiddenMessage, "invalid", invalidEntries(hidden))
 	}
 	if missing := filed.missing(); len(missing) > 0 {
-		return nil, project.fault(CodeMissingRequired, missingMessage, "missing", names(missing))
+		return nil, project.fault(CodeMissingRequired, missingMessage, "missing", textList(missing))
 	}
 	asked, fault := answer.fields(ctx, filed.verifyFields())
 	if fault != nil {
@@ -170,7 +170,7 @@ func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueIn
 		return none, fault
 	}
 	if emptied := changed.requiredEmptied(); len(emptied) > 0 {
-		return none, issue.project.fault(CodeMissingRequired, emptiedMessage, "missing", names(emptied))
+		return none, issue.project.fault(CodeMissingRequired, emptiedMessage, "missing", textList(emptied))
 	}
 	asked, fault := answer.fields(ctx, changed.verifyFields())
 	if fault != nil {
@@ -475,17 +475,13 @@ func (f resolvedField) node() *Node {
 }
 
 func valueNode(values []string, kind FieldType) *Node {
-	items := make([]*Node, 0, len(values))
-	for _, value := range values {
-		items = append(items, NewString(value))
-	}
 	switch {
 	case kind.Multi:
-		return NewList(items...)
-	case len(items) == 0:
+		return textList(values)
+	case len(values) == 0:
 		return NewNull()
 	}
-	return items[0]
+	return NewString(values[0])
 }
 
 type projectMetadata struct {
@@ -564,7 +560,7 @@ func (c *Client) readIssueToWrite(ctx context.Context, id string) (issueForUpdat
 	if fault != nil {
 		return issueForUpdate{}, fault
 	}
-	readable, fault := readableIDAt(a, a.objects[0], issueOwner, "an update")
+	readable, fault := readableIDOf(a, issueOwner, "an update")
 	if fault != nil {
 		return issueForUpdate{}, fault
 	}
@@ -787,7 +783,7 @@ func (p projectMetadata) encodeValues(given [][]string, emptied []bool, issueFie
 		fields = append(fields, written)
 	}
 	if len(invalid) > 0 {
-		return nil, p.fault(CodeBadUsage, invalidMessage, "invalid", invalid)
+		return nil, p.fault(CodeBadUsage, invalidMessage, "invalid", NewList(invalid...))
 	}
 	return fields, nil
 }
@@ -837,26 +833,16 @@ const (
 		"leaves it one way"
 )
 
-func (p projectMetadata) fault(code Code, message, key string, entries []*Node) *Error {
-	return p.response.fault(code, message,
-		Pair{Key: "project", Value: NewString(p.code)},
-		Pair{Key: key, Value: NewList(entries...)})
+func (p projectMetadata) fault(code Code, message, key string, entries *Node) *Error {
+	return p.response.fault(code, message, Pair{Key: "project", Value: NewString(p.code)}, Pair{Key: key, Value: entries})
 }
 
-func names(fields []string) []*Node {
-	nodes := make([]*Node, 0, len(fields))
-	for _, name := range fields {
-		nodes = append(nodes, NewString(name))
-	}
-	return nodes
-}
-
-func invalidEntries(hidden []hiddenField) []*Node {
+func invalidEntries(hidden []hiddenField) *Node {
 	entries := make([]*Node, 0, len(hidden))
 	for _, field := range hidden {
 		entries = append(entries, invalidEntry(field.name, field.value, field.reason))
 	}
-	return entries
+	return NewList(entries...)
 }
 
 func (w issueWrite) hiddenReason(field projectField) (string, bool) {

@@ -135,7 +135,7 @@ func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]res
 	for _, asked := range written {
 		at, found := matchName(asked.Name, catalogue)
 		if !found {
-			unknown = append(unknown, unknownAttribute(asked.Name, catalogue))
+			unknown = append(unknown, nearestEntry("attribute", asked.Name, nearestNamed(asked.Name, catalogue)))
 			continue
 		}
 		attribute := p.attributes[at]
@@ -152,7 +152,7 @@ func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]res
 			unknown = append(unknown, NewMap(
 				Pair{Key: "attribute", Value: NewString(attribute.name)},
 				Pair{Key: attributeValueKey, Value: NewString(asked.Value)},
-				Pair{Key: "nearest", Value: NewList(names(nearestNamed(asked.Value, values))...)}))
+				Pair{Key: "nearest", Value: textList(nearestNamed(asked.Value, values))}))
 			continue
 		}
 		value := resolvedWorkType{id: attribute.values[place].id, name: asked.Value}
@@ -160,15 +160,11 @@ func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]res
 	}
 	if len(unknown) > 0 {
 		message := "the names under unknown are not attributes of the work items of the project, or values they take"
-		return nil, unknownNames(p.response.sent(), Pair{Key: projectKey, Value: NewString(p.project)}, "unknown", message, unknown)
+		return nil, p.response.fault(CodeUnknownName, message,
+			Pair{Key: projectKey, Value: NewString(p.project)},
+			Pair{Key: "unknown", Value: NewList(unknown...)})
 	}
 	return filed, nil
-}
-
-func unknownAttribute(name string, catalogue []fieldInfo) *Node {
-	return NewMap(
-		Pair{Key: "attribute", Value: NewString(name)},
-		Pair{Key: "nearest", Value: NewList(names(nearestNamed(name, catalogue))...)})
 }
 
 func matchName(name string, catalogue []fieldInfo) (int, bool) {

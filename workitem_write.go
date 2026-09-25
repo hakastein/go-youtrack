@@ -241,7 +241,7 @@ func (d workDate) verify(wrong []mismatch, value any) []mismatch {
 	}
 	received := NewNull()
 	if isInstant {
-		received = NewString(formatDateTime(at))
+		received = NewString(formatMoment(at))
 	}
 	return append(wrong, mismatch{field: dateKey, expected: NewString(d.text), actual: received})
 }

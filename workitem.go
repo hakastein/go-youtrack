@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 )
 
 const (
@@ -339,11 +338,10 @@ func (p projectWorkItemTypes) catalogue() []fieldInfo {
 }
 
 func (p projectWorkItemTypes) fault(name string, catalogue []fieldInfo) *Error {
-	entry := NewMap(
-		Pair{Key: typeKey, Value: NewString(name)},
-		Pair{Key: "nearest", Value: NewList(names(nearestNamed(name, catalogue))...)})
 	message := "the name under unknown is not one type of work the project writes work items against"
-	return unknownNames(p.response.sent(), Pair{Key: projectKey, Value: NewString(p.project)}, "unknown", message, []*Node{entry})
+	return p.response.fault(CodeUnknownName, message,
+		Pair{Key: projectKey, Value: NewString(p.project)},
+		Pair{Key: "unknown", Value: NewList(nearestEntry(typeKey, name, nearestNamed(name, catalogue)))})
 }
 
 func workItemRequestFields(spec *schemas, requested []requestedField) []requestedField {
@@ -362,8 +360,4 @@ func workItemFields(spec *schemas, expression string, defaults string) ([]reques
 
 type minutesBody struct {
 	Minutes int64 `json:"minutes"`
-}
-
-func formatDateTime(milliseconds int64) string {
-	return time.UnixMilli(milliseconds).UTC().Format(time.RFC3339Nano)
 }

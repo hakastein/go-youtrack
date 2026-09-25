@@ -57,7 +57,7 @@ func checkMissingFields(spec *schemas, response *http.Response, responseSchema s
 		if code == CodeUpstreamInvalid {
 			missing = append(missing, missingEntry(field, a))
 		} else {
-			unknown = append(unknown, unknownEntry(field, nearestNames(a.name, j.schemaSets[a.at].names)))
+			unknown = append(unknown, nearestEntry("field", field, nearestNames(a.name, j.schemaSets[a.at].names)))
 		}
 	}
 	details := []Pair{
@@ -208,16 +208,8 @@ func missingEntry(field string, a missingField) *Node {
 	return NewMap(Pair{Key: "field", Value: NewString(field)}, Pair{Key: "type", Value: schema})
 }
 
-func unknownEntry(field string, nearest []string) *Node {
-	return nearestEntry("field", field, nearest)
-}
-
 func nearestEntry(key, written string, nearest []string) *Node {
-	names := make([]*Node, 0, len(nearest))
-	for _, name := range nearest {
-		names = append(names, NewString(name))
-	}
-	return NewMap(Pair{Key: key, Value: NewString(written)}, Pair{Key: "nearest", Value: NewList(names...)})
+	return NewMap(Pair{Key: key, Value: NewString(written)}, Pair{Key: "nearest", Value: textList(nearest)})
 }
 
 type suggestion struct {

@@ -430,7 +430,7 @@ func (c *Client) readTagOwner(ctx context.Context, target tagTarget, at owner) (
 	if fault != nil {
 		return readableID{}, fault
 	}
-	return readableIDAt(a, a.objects[0], target.kind, "a tagging")
+	return readableIDOf(a, target.kind, "a tagging")
 }
 
 func (c *Client) getOwnerToTag(ctx context.Context, at owner, fields string) (*http.Response, error) {
@@ -621,11 +621,9 @@ func sortedNames[E named](shown []E) []string {
 }
 
 func noTagNamed(a decodedResponse, name string, shown []tagCandidate) *Error {
-	entry := NewMap(
-		Pair{Key: tagKey, Value: NewString(name)},
-		Pair{Key: "nearest", Value: textList(nearestNames(name, sortedNames(shown)))})
+	entry := nearestEntry(tagKey, name, nearestNames(name, sortedNames(shown)))
 	message := "the name under unknown is no tag this token is shown"
-	return unresolvedTag(a, "unknown", message, entry)
+	return a.fault(CodeUnknownName, message, Pair{Key: "unknown", Value: NewList(entry)})
 }
 
 func severalTagsNamed(a decodedResponse, name string, shown []tagCandidate, candidates []int) *Error {
@@ -633,7 +631,7 @@ func severalTagsNamed(a decodedResponse, name string, shown []tagCandidate, cand
 		Pair{Key: tagKey, Value: NewString(name)},
 		Pair{Key: "candidates", Value: tagsListed(shown, candidates)})
 	message := "the name under ambiguous is the name of more than one tag this token is shown"
-	return unresolvedTag(a, "ambiguous", message, entry)
+	return a.fault(CodeUnknownName, message, Pair{Key: "ambiguous", Value: NewList(entry)})
 }
 
 func noTagOfThatOwner(a decodedResponse, sought tagRef, shown []tagCandidate, named []int) *Error {
@@ -642,7 +640,7 @@ func noTagOfThatOwner(a decodedResponse, sought tagRef, shown []tagCandidate, na
 		Pair{Key: ownedByKey, Value: NewString(sought.owner)},
 		Pair{Key: "candidates", Value: tagsListed(shown, named)})
 	message := "no tag this token is shown under the name under unknown belongs to the login beside it"
-	return unresolvedTag(a, "unknown", message, entry)
+	return a.fault(CodeUnknownName, message, Pair{Key: "unknown", Value: NewList(entry)})
 }
 
 func tagsListed(shown []tagCandidate, at []int) *Node {
@@ -660,18 +658,6 @@ func tagsListed(shown []tagCandidate, at []int) *Node {
 			Pair{Key: ownerKey, Value: NewString(tag.owner)}))
 	}
 	return NewList(entries...)
-}
-
-func unresolvedTag(a decodedResponse, key, message string, entry *Node) *Error {
-	return a.fault(CodeUnknownName, message, Pair{Key: key, Value: NewList(entry)})
-}
-
-func textList(texts []string) *Node {
-	items := make([]*Node, 0, len(texts))
-	for _, text := range texts {
-		items = append(items, NewString(text))
-	}
-	return NewList(items...)
 }
 
 func (r resolvedTag) pathSafeID() (tagID, *Error) {
@@ -779,9 +765,7 @@ func (r *groupResolver) resolveOne(name string) (groupID, bool) {
 		}
 	}
 	if len(candidates) == 0 {
-		r.unknown = append(r.unknown, NewMap(
-			Pair{Key: groupKey, Value: NewString(name)},
-			Pair{Key: "nearest", Value: textList(nearestNames(name, sortedNames(r.shown.groups)))}))
+		r.unknown = append(r.unknown, nearestEntry(groupKey, name, nearestNames(name, sortedNames(r.shown.groups))))
 		return groupID{}, false
 	}
 	if len(candidates) > 1 {
@@ -821,14 +805,14 @@ func (r *groupResolver) fault() *Error {
 	if len(r.unknown) == 0 && len(r.ambiguous) == 0 {
 		return nil
 	}
-	details := []Pair{r.shown.response.sent()}
+	var details []Pair
 	if len(r.unknown) > 0 {
 		details = append(details, Pair{Key: "unknown", Value: NewList(r.unknown...)})
 	}
 	if len(r.ambiguous) > 0 {
 		details = append(details, Pair{Key: "ambiguous", Value: NewList(r.ambiguous...)})
 	}
-	return &Error{Code: CodeUnknownName, Message: unresolvedGroups(len(r.unknown), len(r.ambiguous)), Details: details}
+	return r.shown.response.fault(CodeUnknownName, unresolvedGroups(len(r.unknown), len(r.ambiguous)), details...)
 }
 
 func unresolvedGroups(unknown, ambiguous int) string {

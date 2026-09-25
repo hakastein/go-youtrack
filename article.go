@@ -194,7 +194,7 @@ func (c *Client) readArticleToWrite(ctx context.Context, id, what string) (artic
 }
 
 func readArticleToWrite(a decodedResponse, what string) (articleRef, *Error) {
-	readable, fault := readableIDAt(a, a.objects[0], articleOwner, what)
+	readable, fault := readableIDOf(a, articleOwner, what)
 	if fault != nil {
 		return articleRef{}, fault
 	}
