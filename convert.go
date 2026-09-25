@@ -248,23 +248,55 @@ func (n converter) durationNode(value any) (*Node, *Error) {
 	return NewString(duration(count)), nil
 }
 
-func rejectDurationParts(spec *schemas, at, expression string, requested []requestedField) *Error {
-	var fault *Error
-	fieldsOfType(spec, at, durationSchema, requested, nil, func(parents []string, field *requestedField) {
-		if field.children == nil || fault != nil {
-			return
-		}
-		message := fmt.Sprintf("fields %s: %s is printed as the ISO 8601 period of the minutes it holds, as in "+
-			"PT1H30M, so no name stands under it", quote(expression), fieldPath(parents, field.name))
-		fault = &Error{Code: CodeBadUsage, Message: message}
-	})
-	return fault
+func (c *schemas) askDurationsByMinutes(responseSchema string, requested []requestedField) ([]requestedField, *Error) {
+	asked := cloneFields(requested)
+	return asked, c.durationsUnder(c.subtree(parseTypeRef(responseSchema).schema), asked, nil)
 }
 
-func fillInDurations(spec *schemas, at string, asked []requestedField) {
-	fieldsOfType(spec, at, durationSchema, asked, nil, func(_ []string, field *requestedField) {
-		field.children = []requestedField{{name: minutesKey}}
-	})
+func (c *schemas) durationsUnder(owners []string, fields []requestedField, parents []string) *Error {
+	for i := range fields {
+		field := &fields[i]
+		inner, duration, onlyDuration := c.declarationsOf(owners, *field)
+		if onlyDuration && field.children != nil {
+			message := fmt.Sprintf("%s is printed as the ISO 8601 period of the minutes it holds, as in PT1H30M, so "+
+				"no name stands under it", fieldPath(parents, field.name))
+			return &Error{Code: CodeBadUsage, Message: message}
+		}
+		if fault := c.durationsUnder(inner, field.children, append(slices.Clip(parents), field.name)); fault != nil {
+			return fault
+		}
+		if duration {
+			field.children = merge(field.children, requestedField{name: minutesKey})
+		}
+	}
+	return nil
+}
+
+func (c *schemas) declarationsOf(owners []string, field requestedField) (inner []string, duration, onlyDuration bool) {
+	other := false
+	declared := slices.Clone(field.extraSchemas)
+	for _, owner := range owners {
+		decl, found := c.declaration(owner, field.name)
+		switch {
+		case !found:
+			continue
+		case decl.schema == durationSchema:
+			duration = true
+		default:
+			other = true
+		}
+		if decl.schema != "" && !slices.Contains(declared, decl.schema) {
+			declared = append(declared, decl.schema)
+		}
+	}
+	for _, schema := range declared {
+		for _, name := range c.subtree(schema) {
+			if !slices.Contains(inner, name) {
+				inner = append(inner, name)
+			}
+		}
+	}
+	return inner, duration, duration && !other
 }
 
 func (n converter) instant(name string, value any) (*Node, *Error) {

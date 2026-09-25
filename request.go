@@ -104,6 +104,10 @@ func (c *Client) write(ctx context.Context, spec *schemas, responseSchema string
 
 func writeAs[T any](ctx context.Context, c *Client, spec *schemas, responseSchema string, requested []requestedField, call func(ctx context.Context, fields string) (*http.Response, error), confirm func(decodedResponse) *Error, output func(decodedResponse) (T, *Error)) (T, *Error) {
 	var none T
+	requested, fault := spec.askDurationsByMinutes(responseSchema, requested)
+	if fault != nil {
+		return none, fault
+	}
 	response, fault := send(ctx, func(ctx context.Context) (*http.Response, error) {
 		return call(ctx, formatFields(requested))
 	})
@@ -137,6 +141,10 @@ func writeAs[T any](ctx context.Context, c *Client, spec *schemas, responseSchem
 }
 
 func (c *Client) request(ctx context.Context, spec *schemas, responseSchema string, requested []requestedField, call func(ctx context.Context, fields string) (*http.Response, error)) (decodedResponse, *Error) {
+	requested, fault := spec.askDurationsByMinutes(responseSchema, requested)
+	if fault != nil {
+		return decodedResponse{}, fault
+	}
 	response, err := call(ctx, formatFields(requested))
 	if err != nil {
 		return decodedResponse{}, transportFailure(err, false)

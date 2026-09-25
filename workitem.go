@@ -94,7 +94,6 @@ func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItem
 	}
 	filed := workItemCreate{input: written, workType: workType, attributes: attributes}
 	asked := withFields(requested, filed.verifyFields()...)
-	fillInDurations(c.spec, workItemSchema, asked)
 	issueBlocks(c.spec, composedWorkItem(), asked)
 	body := filed.body()
 	return c.write(ctx, c.spec, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
@@ -150,7 +149,6 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 	}
 	changed := workItemUpdate{input: written, issue: owner, at: at, workType: workType, attributes: attributes}
 	asked := withFields(requested, changed.verifyFields()...)
-	fillInDurations(c.spec, workItemSchema, asked)
 	issueBlocks(c.spec, composedWorkItem(), asked)
 	body := changed.body()
 	return c.write(ctx, c.spec, workItemSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
@@ -351,7 +349,6 @@ func (p projectWorkItemTypes) fault(name string, catalogue []fieldInfo) *Error {
 
 func workItemRequestFields(spec *schemas, requested []requestedField) []requestedField {
 	asked := cloneFields(requested)
-	fillInDurations(spec, workItemSchema, asked)
 	issueBlocks(spec, composedWorkItem(), asked)
 	return asked
 }
@@ -359,9 +356,6 @@ func workItemRequestFields(spec *schemas, requested []requestedField) []requeste
 func workItemFields(spec *schemas, expression string, defaults string) ([]requestedField, *Error) {
 	written, requested, fault := fieldsOrDefault(expression, defaults, false)
 	if fault != nil {
-		return nil, fault
-	}
-	if fault := rejectDurationParts(spec, workItemSchema, written, requested); fault != nil {
 		return nil, fault
 	}
 	return requested, rejectIssueBlocks(spec, composedWorkItem(), written, requested)

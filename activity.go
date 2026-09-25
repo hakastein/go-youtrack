@@ -252,7 +252,7 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 	}
 	for _, name := range []string{addedKey, removedKey} {
 		if hasField(requested, name) {
-			own = append(own, valuesWithDurationMinutes(name))
+			own = append(own, requestedField{name: name, extraSchemas: activityValueSchemas()})
 		}
 	}
 	var phrases linkPhrases
@@ -294,10 +294,6 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 		printed = append(printed, node)
 	}
 	return truncatedListDocument(activitiesPlural, found, left, printed), nil
-}
-
-func valuesWithDurationMinutes(name string) requestedField {
-	return requestedField{name: name, extraSchemas: activityValueSchemas(), children: []requestedField{{name: minutesKey}}}
 }
 
 func activityRows(a decodedResponse, sent []activityCategory, printingValues bool) ([]activityCategory, *Error) {

@@ -128,6 +128,11 @@ func TestListActivitiesRefusesACallItCannotSend(t *testing.T) {
 		},
 		{name: "a category of nothing at all", categories: []string{""}, want: youtrack.Error{Code: youtrack.CodeBadUsage}},
 		{
+			name:   "a name under the duration of a work item",
+			fields: "target(duration(minutes))",
+			want:   youtrack.Error{Code: youtrack.CodeBadUsage},
+		},
+		{
 			name:   "a name no value of an activity declares",
 			fields: "added(logn)",
 			want: activityUnknown(
@@ -269,6 +274,16 @@ func TestListActivitiesAsksForWhatItReadsBesideWhatItPrints(t *testing.T) {
 			name:   "the values, which a custom field reads by its type and a duration by its minutes",
 			fields: "added",
 			sent:   "added(minutes),timestamp,category(id),field(customField(fieldType(valueType)))",
+		},
+		{
+			name:   "the duration of a work item the activity stands for, which is read by its minutes",
+			fields: "target(duration)",
+			sent:   "target(duration(minutes)),timestamp,category(id)",
+		},
+		{
+			name:   "the duration of a work item among the values, which is read by its minutes",
+			fields: "added(duration)",
+			sent:   "added(duration(minutes),minutes),timestamp,category(id),field(customField(fieldType(valueType)))",
 		},
 	}
 	for _, tc := range tests {
