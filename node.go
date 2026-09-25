@@ -99,11 +99,17 @@ func NewText(s string) *Node {
 
 // NewList is a list node of the items in order.
 func NewList(items ...*Node) *Node {
+	if len(items) == 0 {
+		return &Node{kind: ListNode}
+	}
 	return &Node{kind: ListNode, items: slices.Clone(items)}
 }
 
 // NewMap is a map node of the pairs in order.
 func NewMap(pairs ...Pair) *Node {
+	if len(pairs) == 0 {
+		return &Node{kind: MapNode}
+	}
 	return &Node{kind: MapNode, pairs: slices.Clone(pairs)}
 }
 

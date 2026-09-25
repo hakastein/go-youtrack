@@ -46,6 +46,13 @@ func TestNodeKeepsTheOrderOfItsItemsAndPairs(t *testing.T) {
 	assert.Equal(t, pairs, youtrack.NewMap(pairs...).Pairs())
 }
 
+func TestAnEmptyNodeIsOneHoweverItWasBuilt(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, youtrack.NewList(), youtrack.NewList([]*youtrack.Node{}...))
+	assert.Equal(t, youtrack.NewMap(), youtrack.NewMap([]youtrack.Pair{}...))
+}
+
 func TestNodeIsNotChangedByWhatItWasBuiltOfOrWhatItHandsOut(t *testing.T) {
 	t.Parallel()
 	items := []*youtrack.Node{youtrack.NewString("First")}
