@@ -142,11 +142,12 @@ func TestGetOrdersTheFieldsAsTheProjectDoes(t *testing.T) {
 	issue, err := issueGot(t, server)
 
 	require.NoError(t, err)
-	names := make([]string, 0, len(issue.Fields))
-	for _, f := range issue.Fields {
-		names = append(names, f.Name)
-	}
-	assert.Equal(t, []string{"Second", "Ninth", "Tenth"}, names)
+	stringType := fieldType("string", false)
+	assert.Equal(t, []youtrack.Field{
+		{Name: "Second", Type: stringType, Values: []youtrack.Value{{Text: "c"}}},
+		{Name: "Ninth", Type: stringType, Values: []youtrack.Value{{Text: "a"}}},
+		{Name: "Tenth", Type: stringType, Values: []youtrack.Value{{Text: "b"}}},
+	}, issue.Fields)
 }
 
 func TestGetRefusesCustomFieldsOfAnotherShape(t *testing.T) {
@@ -376,7 +377,7 @@ func issueCancellingOnArrival(cancel context.CancelFunc) http.HandlerFunc {
 	}
 }
 
-func TestWriteFieldsTellsAWriteThatNeverLeftFromOneTheServerMayHaveActedOn(t *testing.T) {
+func TestAWriteThatNeverLeftIsAFailureAndOneThatLeftIsUncertain(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -430,7 +431,7 @@ func TestWriteFieldsTellsAWriteThatNeverLeftFromOneTheServerMayHaveActedOn(t *te
 	}
 }
 
-func TestWriteFieldsTellsACancelledWriteByTheCancellation(t *testing.T) {
+func TestAWriteCancelledAfterItLeftIsUncertainAndUnwrapsToTheCancellation(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -442,7 +443,7 @@ func TestWriteFieldsTellsACancelledWriteByTheCancellation(t *testing.T) {
 	assert.ErrorIs(t, err, youtrack.ErrWriteUncertain)
 }
 
-func TestWriteFieldsReadsTheAnswerToTheWriteByWhoAnsweredIt(t *testing.T) {
+func TestTheAnswerToAWriteIsReadByWhoAnsweredIt(t *testing.T) {
 	t.Parallel()
 	said := func(key, value string) youtrack.Pair {
 		return youtrack.Pair{Key: key, Value: youtrack.NewString(value)}
