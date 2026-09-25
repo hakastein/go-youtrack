@@ -302,28 +302,28 @@ func activityRows(a decodedResponse, sent []activityCategory, printingValues boo
 	for _, activity := range a.objects {
 		moment, isInstant := parseInt64(activity[timestampKey])
 		if !isInstant {
-			return nil, shapeFailure(a.httpResponse, a.body, notAnInstant(timestampKey))
+			return nil, a.invalid(notAnInstant(timestampKey))
 		}
 		if moment > previous {
 			message := "an activity arrived newer than the one before it, and the newest were asked for first"
-			return nil, shapeFailure(a.httpResponse, a.body, message)
+			return nil, a.invalid(message)
 		}
 		previous = moment
 		named, reason := categoryID(activity[categoryKey])
 		if reason != "" {
-			return nil, shapeFailure(a.httpResponse, a.body, reason)
+			return nil, a.invalid(reason)
 		}
 		at := slices.IndexFunc(sent, func(row activityCategory) bool { return row.id == named })
 		if at < 0 {
 			message := fmt.Sprintf("an activity arrived of the category %s, which was not among the categories "+
 				"the request asked for", quote(named))
-			return nil, shapeFailure(a.httpResponse, a.body, message)
+			return nil, a.invalid(message)
 		}
 		row := sent[at]
 		if printingValues && row.field == fieldCustom {
 			form, reason := customFieldValueForm(activity[fieldKey])
 			if reason != "" {
-				return nil, shapeFailure(a.httpResponse, a.body, reason)
+				return nil, a.invalid(reason)
 			}
 			row.valueForm = form
 		}
@@ -415,28 +415,28 @@ func (n converter) changedField(value any) (*Node, *Error) {
 	if n.row.field == fieldCustom {
 		filter, reason := customFilter(value)
 		if reason != "" {
-			return nil, n.malformed(reason)
+			return nil, n.response.invalid(reason)
 		}
 		held, _ := filter[customFieldKey].(map[string]any)
 		name, isText := held[nameKey].(string)
 		if !isText {
-			return nil, n.malformed(fmt.Sprintf("the custom field an activity of %s stands for arrived with no name "+
+			return nil, n.response.invalid(fmt.Sprintf("the custom field an activity of %s stands for arrived with no name "+
 				"of the project's own", n.row.id))
 		}
 		return NewString(name), nil
 	}
 	filter, isObject := value.(map[string]any)
 	if !isObject {
-		return nil, n.malformed(fmt.Sprintf("an activity of %s arrived standing for no field of the issue, and a "+
+		return nil, n.response.invalid(fmt.Sprintf("an activity of %s arrived standing for no field of the issue, and a "+
 			"change of that category is a change of one", n.row.id))
 	}
 	translatedPhrase, isText := filter[nameKey].(string)
 	if !isText {
-		return nil, n.malformed(fmt.Sprintf("an activity of %s arrived with no phrase of the link it stands for", n.row.id))
+		return nil, n.response.invalid(fmt.Sprintf("an activity of %s arrived with no phrase of the link it stands for", n.row.id))
 	}
 	phrase, reason := n.phrases.phrase(translatedPhrase)
 	if reason != "" {
-		return nil, n.malformed(reason)
+		return nil, n.response.invalid(reason)
 	}
 	return NewString(phrase), nil
 }
@@ -471,11 +471,11 @@ func (n converter) oneValue(decl typeRef, field requestedField, value any) (*Nod
 	_, isObject := value.(map[string]any)
 	switch {
 	case form.asObjects && !isObject:
-		return nil, n.malformed(fmt.Sprintf("a value under the %s of an activity of %s arrived as something other "+
+		return nil, n.response.invalid(fmt.Sprintf("a value under the %s of an activity of %s arrived as something other "+
 			"than a JSON object, and the field it stands for holds values that carry names of their own",
 			field.name, n.row.id))
 	case !form.asObjects && isObject:
-		return nil, n.malformed(fmt.Sprintf("a value under the %s of an activity of %s arrived as a JSON object, and "+
+		return nil, n.response.invalid(fmt.Sprintf("a value under the %s of an activity of %s arrived as a JSON object, and "+
 			"a change of the field it stands for carries its values bare, as numbers or texts", field.name, n.row.id))
 	case isObject:
 		return n.value(decl, field, value)
@@ -483,9 +483,9 @@ func (n converter) oneValue(decl typeRef, field requestedField, value any) (*Nod
 	node, present, err := n.readValue(form.bareKind, keyedValue(form.bareKind, value))
 	switch {
 	case err != nil:
-		return nil, n.malformed(fmt.Sprintf("a value under the %s of an activity of %s: %v", field.name, n.row.id, err))
+		return nil, n.response.invalid(fmt.Sprintf("a value under the %s of an activity of %s: %v", field.name, n.row.id, err))
 	case !present:
-		return nil, n.malformed(fmt.Sprintf("a value under the %s of an activity of %s is null", field.name, n.row.id))
+		return nil, n.response.invalid(fmt.Sprintf("a value under the %s of an activity of %s is null", field.name, n.row.id))
 	}
 	return node, nil
 }

@@ -47,24 +47,24 @@ func rejectAttributeNames(spec *schemas, at, expression string, requested []requ
 func (n converter) attributes(value any) (*Node, *Error) {
 	received, isList := value.([]any)
 	if !isList {
-		return nil, n.malformed("the attributes of the work item arrived as something other than an array")
+		return nil, n.response.invalid("the attributes of the work item arrived as something other than an array")
 	}
 	pairs := make([]Pair, 0, len(received))
 	named := make(map[string]bool, len(received))
 	for _, item := range received {
 		name, isText := memberOf(item, nameKey).(string)
 		if !isText {
-			return nil, n.malformed("an attribute of the work item arrived without a name")
+			return nil, n.response.invalid("an attribute of the work item arrived without a name")
 		}
 		if named[name] {
-			return nil, n.malformed(fmt.Sprintf("two attributes of the work item are named %s", quote(name)))
+			return nil, n.response.invalid(fmt.Sprintf("two attributes of the work item are named %s", quote(name)))
 		}
 		named[name] = true
 		held := NewNull()
 		if value := memberOf(item, attributeValueKey); value != nil {
 			valueName, isText := memberOf(value, nameKey).(string)
 			if !isText {
-				return nil, n.malformed(fmt.Sprintf("the value of the attribute %s arrived without a name", quote(name)))
+				return nil, n.response.invalid(fmt.Sprintf("the value of the attribute %s arrived without a name", quote(name)))
 			}
 			held = NewString(valueName)
 		}
@@ -160,8 +160,7 @@ func (p projectWorkItemTypes) resolveAttributes(written []AttributeWrite) ([]res
 	}
 	if len(unknown) > 0 {
 		message := "the names under unknown are not attributes of the work items of the project, or values they take"
-		sent := requestDetail(p.response.httpResponse.Request.Method, p.response.httpResponse.Request.URL.Redacted())
-		return nil, unknownNames(sent, Pair{Key: projectKey, Value: NewString(p.project)}, "unknown", message, unknown)
+		return nil, unknownNames(p.response.sent(), Pair{Key: projectKey, Value: NewString(p.project)}, "unknown", message, unknown)
 	}
 	return filed, nil
 }
@@ -186,7 +185,7 @@ func matchName(name string, catalogue []fieldInfo) (int, bool) {
 func attributesOf(a decodedResponse, settings map[string]any) ([]projectAttribute, *Error) {
 	items, isList := settings[attributesKey].([]any)
 	if !isList {
-		return nil, shapeFailure(a.httpResponse, a.body, "the attributes of work items of the project are not a JSON array")
+		return nil, a.invalid("the attributes of work items of the project are not a JSON array")
 	}
 	attributes := make([]projectAttribute, 0, len(items))
 	for _, item := range items {
@@ -194,14 +193,14 @@ func attributesOf(a decodedResponse, settings map[string]any) ([]projectAttribut
 		name, isNamed := memberOf(item, nameKey).(string)
 		values, isList := memberOf(item, "values").([]any)
 		if !isText || !isNamed || !isList {
-			return nil, shapeFailure(a.httpResponse, a.body, brokenAttribute)
+			return nil, a.invalid(brokenAttribute)
 		}
 		attribute := projectAttribute{id: id, name: name}
 		for _, value := range values {
 			id, isText := memberOf(value, idKey).(string)
 			name, isNamed := memberOf(value, nameKey).(string)
 			if !isText || !isNamed {
-				return nil, shapeFailure(a.httpResponse, a.body, brokenAttribute)
+				return nil, a.invalid(brokenAttribute)
 			}
 			attribute.values = append(attribute.values, workItemType{id: id, name: name})
 		}

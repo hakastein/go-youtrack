@@ -34,7 +34,7 @@ func (c *Client) linkPhrases(ctx context.Context) (linkPhrases, *Error) {
 	if len(a.objects) >= topAllCutOff {
 		message := fmt.Sprintf("the instance answered with as many link types as were asked for, %d, so the "+
 			"phrases of any past them are missing", topAllCutOff)
-		return nil, shapeFailure(a.httpResponse, a.body, message)
+		return nil, a.invalid(message)
 	}
 	phrases := linkPhrases{}
 	for _, kind := range a.objects {
@@ -44,7 +44,7 @@ func (c *Client) linkPhrases(ctx context.Context) (linkPhrases, *Error) {
 		} {
 			label, phrase, held, reason := linkEnd(kind, end[0], end[1])
 			if reason != "" {
-				return nil, shapeFailure(a.httpResponse, a.body, reason)
+				return nil, a.invalid(reason)
 			}
 			if held {
 				phrases.add(label, phrase)

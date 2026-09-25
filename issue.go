@@ -117,21 +117,21 @@ func issueRecordFields() []requestedField {
 
 func readIssue(a decodedResponse) (*Issue, *Error) {
 	object := a.objects[0]
-	n := newConverter(a, blockLayout)
 	id, isID := object[idKey].(string)
 	readable, isReadable := object[idReadableKey].(string)
 	summary, isSummary := object[summaryKey].(string)
 	if !isID || !isReadable || !isSummary {
-		return nil, n.malformed("the id, the readable id or the summary of the issue is not text")
+		return nil, a.invalid("the id, the readable id or the summary of the issue is not text")
 	}
 	description, isText := readLocalized(object[descriptionKey])
 	if !isText {
-		return nil, n.malformed("the description of the issue is neither text nor null")
+		return nil, a.invalid("the description of the issue is neither text nor null")
 	}
 	project, isProject := readIssueProject(object[projectKey])
 	if !isProject {
-		return nil, n.malformed("the project of the issue is not of the shape the specification gives it")
+		return nil, a.invalid("the project of the issue is not of the shape the specification gives it")
 	}
+	n := newConverter(a, blockLayout)
 	fields, fault := n.recordFields(object[customFieldsKey])
 	if fault != nil {
 		return nil, fault
@@ -181,7 +181,7 @@ func (n converter) recordLinks(value any) ([]Link, *Error) {
 		return nil, nil
 	}
 	if _, isList := value.([]any); !isList {
-		return nil, n.malformed("the links of the issue are neither a JSON array nor null")
+		return nil, n.response.invalid("the links of the issue are neither a JSON array nor null")
 	}
 	slots, fault := n.issueLinks(value)
 	if fault != nil {
@@ -204,13 +204,13 @@ func (n converter) recordLink(slot map[string]any) (Link, *Error) {
 	direction, isText := slot[directionKey].(string)
 	kind, isObject := slot[linkTypeKey].(map[string]any)
 	if !isText || !isObject {
-		return Link{}, n.malformed(brokenLinkSlot)
+		return Link{}, n.response.invalid(brokenLinkSlot)
 	}
 	name, isName := kind[nameKey].(string)
 	forward, isForward := readLocalized(kind[sourceToTarget])
 	backward, isBackward := readLocalized(kind[targetToSource])
 	if !isName || !isForward || !isBackward {
-		return Link{}, n.malformed(brokenLinkSlot)
+		return Link{}, n.response.invalid(brokenLinkSlot)
 	}
 	targets, fault := n.targets(slot)
 	if fault != nil {
@@ -221,7 +221,7 @@ func (n converter) recordLink(slot map[string]any) (Link, *Error) {
 		id, isID := target[idKey].(string)
 		readable, isReadable := target[idReadableKey].(string)
 		if !isID || !isReadable {
-			return Link{}, n.malformed(brokenLinkSlot)
+			return Link{}, n.response.invalid(brokenLinkSlot)
 		}
 		issues = append(issues, IssueRef{ID: id, IDReadable: readable})
 	}

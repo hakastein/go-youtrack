@@ -65,7 +65,7 @@ func (s *FieldsService) readMetadata(ctx context.Context, project string) (*Meta
 		return nil, Pair{}, fault
 	}
 	c.cache.store(metadataTarget(code), fields)
-	return &Metadata{Fields: fields}, sentRequest(decoded.httpResponse), nil
+	return &Metadata{Fields: fields}, decoded.sent(), nil
 }
 
 const canBeEmptyKey = "canBeEmpty"
@@ -93,30 +93,30 @@ type placedField struct {
 func readProjectFields(a decodedResponse, code string) ([]ProjectField, *Error) {
 	items, isList := a.objects[0][customFieldsKey].([]any)
 	if !isList {
-		return nil, shapeFailure(a.httpResponse, a.body, "the custom fields of the project are not a JSON array")
+		return nil, a.invalid("the custom fields of the project are not a JSON array")
 	}
 	placed := make([]placedField, 0, len(items))
 	for _, item := range items {
 		object, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, shapeFailure(a.httpResponse, a.body, brokenField)
+			return nil, a.invalid(brokenField)
 		}
 		bindingID, isText := object[idKey].(string)
 		ordinal, isWhole := parseInt64(object[ordinalKey])
 		canBeEmpty, isFlag := object[canBeEmptyKey].(bool)
 		if !isText || !isWhole || !isFlag {
-			return nil, shapeFailure(a.httpResponse, a.body, brokenPlacement)
+			return nil, a.invalid(brokenPlacement)
 		}
 		named, ok := readFieldInfo(object)
 		if !ok {
-			return nil, shapeFailure(a.httpResponse, a.body, brokenFieldInfo)
+			return nil, a.invalid(brokenFieldInfo)
 		}
 		placed = append(placed, placedField{ordinal: ordinal, field: ProjectField{
 			ID: bindingID, Name: named.name, LocalizedName: named.localizedName, Type: named.kind, CanBeEmpty: canBeEmpty,
 		}})
 	}
 	if len(placed) == 0 {
-		return nil, noFields(sentRequest(a.httpResponse), code)
+		return nil, noFields(a, code)
 	}
 	slices.SortStableFunc(placed, func(x, y placedField) int { return cmp.Compare(x.ordinal, y.ordinal) })
 	fields := make([]ProjectField, 0, len(placed))

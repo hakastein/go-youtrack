@@ -177,7 +177,7 @@ func (c *Client) countIssues(ctx context.Context, query string) (count, *Error) 
 	case !whole || found < stillCounting:
 		message := "the count of the issues the search finds is neither a whole number of them nor -1 for a " +
 			"count that is not ready"
-		return count{}, shapeFailure(decoded.httpResponse, decoded.body, message)
+		return count{}, decoded.invalid(message)
 	case found == stillCounting:
 		return count{}, nil
 	}

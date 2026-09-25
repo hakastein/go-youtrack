@@ -199,7 +199,7 @@ func (s *WorkItemsService) delete(ctx context.Context, issue, item string) (*Nod
 func owningIssueID(a decodedResponse) (readableID, *Error) {
 	issue, isObject := a.objects[0][issueOwner.String()].(map[string]any)
 	if !isObject {
-		return readableID{}, shapeFailure(a.httpResponse, a.body, "the issue the work item hangs from is not a JSON object")
+		return readableID{}, a.invalid("the issue the work item hangs from is not a JSON object")
 	}
 	return readableIDAt(a, issue, issueOwner, "a removal")
 }
@@ -207,13 +207,13 @@ func owningIssueID(a decodedResponse) (readableID, *Error) {
 func workItemID(a decodedResponse) (childID, *Error) {
 	id, isText := a.objects[0][idKey].(string)
 	if !isText {
-		return childID{}, shapeFailure(a.httpResponse, a.body, "the id of the work item arrived as something other than a string")
+		return childID{}, a.invalid("the id of the work item arrived as something other than a string")
 	}
 	known, fault := parseChildID(workItemNoun, workItemOwnerNoun, id)
 	if fault != nil {
 		message := fmt.Sprintf("the work item arrived with %s for an id, and a removal is addressed by the id the "+
 			"server gave", quote(id))
-		return childID{}, shapeFailure(a.httpResponse, a.body, message)
+		return childID{}, a.invalid(message)
 	}
 	return known, nil
 }
@@ -271,11 +271,11 @@ func (c *Client) readWorkItemTypes(ctx context.Context, id string, withAttribute
 func workItemTypesOf(a decodedResponse, withAttributes bool) (projectWorkItemTypes, *Error) {
 	project, isObject := a.objects[0][projectKey].(map[string]any)
 	if !isObject {
-		return projectWorkItemTypes{}, shapeFailure(a.httpResponse, a.body, "the project of the issue is not a JSON object")
+		return projectWorkItemTypes{}, a.invalid("the project of the issue is not a JSON object")
 	}
 	code, isText := project[shortNameKey].(string)
 	if !isText {
-		return projectWorkItemTypes{}, shapeFailure(a.httpResponse, a.body, "the short name of the project is not text")
+		return projectWorkItemTypes{}, a.invalid("the short name of the project is not text")
 	}
 	settings, fault := timeTrackingSettingsOf(a, project)
 	if fault != nil {
@@ -283,18 +283,18 @@ func workItemTypesOf(a decodedResponse, withAttributes bool) (projectWorkItemTyp
 	}
 	items, isList := settings[workItemTypesKey].([]any)
 	if !isList {
-		return projectWorkItemTypes{}, shapeFailure(a.httpResponse, a.body, "the types of work of the project are not a JSON array")
+		return projectWorkItemTypes{}, a.invalid("the types of work of the project are not a JSON array")
 	}
 	types := make([]workItemType, 0, len(items))
 	for _, item := range items {
 		object, isObject := item.(map[string]any)
 		if !isObject {
-			return projectWorkItemTypes{}, shapeFailure(a.httpResponse, a.body, brokenWorkItemType)
+			return projectWorkItemTypes{}, a.invalid(brokenWorkItemType)
 		}
 		id, isText := object[idKey].(string)
 		name, isNamed := object[nameKey].(string)
 		if !isText || !isNamed {
-			return projectWorkItemTypes{}, shapeFailure(a.httpResponse, a.body, brokenWorkItemType)
+			return projectWorkItemTypes{}, a.invalid(brokenWorkItemType)
 		}
 		types = append(types, workItemType{id: id, name: name})
 	}
@@ -310,11 +310,11 @@ func workItemTypesOf(a decodedResponse, withAttributes bool) (projectWorkItemTyp
 func timeTrackingSettingsOf(a decodedResponse, project map[string]any) (map[string]any, *Error) {
 	plugins, isObject := project[pluginsKey].(map[string]any)
 	if !isObject {
-		return nil, shapeFailure(a.httpResponse, a.body, "the plugins of the project are not a JSON object")
+		return nil, a.invalid("the plugins of the project are not a JSON object")
 	}
 	settings, isObject := plugins[timeTrackingSettingsKey].(map[string]any)
 	if !isObject {
-		return nil, shapeFailure(a.httpResponse, a.body, "the time tracking settings of the project are not a JSON object")
+		return nil, a.invalid("the time tracking settings of the project are not a JSON object")
 	}
 	return settings, nil
 }
@@ -343,8 +343,7 @@ func (p projectWorkItemTypes) fault(name string, catalogue []fieldInfo) *Error {
 		Pair{Key: typeKey, Value: NewString(name)},
 		Pair{Key: "nearest", Value: NewList(names(nearestNamed(name, catalogue))...)})
 	message := "the name under unknown is not one type of work the project writes work items against"
-	sent := requestDetail(p.response.httpResponse.Request.Method, p.response.httpResponse.Request.URL.Redacted())
-	return unknownNames(sent, Pair{Key: projectKey, Value: NewString(p.project)}, "unknown", message, []*Node{entry})
+	return unknownNames(p.response.sent(), Pair{Key: projectKey, Value: NewString(p.project)}, "unknown", message, []*Node{entry})
 }
 
 func workItemRequestFields(spec *schemas, requested []requestedField) []requestedField {

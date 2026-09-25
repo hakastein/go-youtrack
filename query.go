@@ -44,12 +44,12 @@ func (c *Client) searchMarkup(ctx context.Context, query string) ([]styleRange, 
 	marked := decoded.objects[0]
 	if echoed, isText := marked[queryKey].(string); !isText || echoed != query {
 		message := "the search the markup came back with is not the one that was sent"
-		return nil, shapeFailure(decoded.httpResponse, decoded.body, message)
+		return nil, decoded.invalid(message)
 	}
 	received, isList := marked[styleRangesKey].([]any)
 	if !isList {
 		message := "the styled ranges of the search arrived as something other than an array"
-		return nil, shapeFailure(decoded.httpResponse, decoded.body, message)
+		return nil, decoded.invalid(message)
 	}
 	queryUnits := int64(utf16Units(query))
 	ranges := make([]styleRange, 0, len(received))
@@ -57,7 +57,7 @@ func (c *Client) searchMarkup(ctx context.Context, query string) ([]styleRange, 
 		styled, isObject := item.(map[string]any)
 		if !isObject {
 			message := "a styled range of the search arrived as something other than an object"
-			return nil, shapeFailure(decoded.httpResponse, decoded.body, message)
+			return nil, decoded.invalid(message)
 		}
 		start, startIsWhole := parseInt64(styled[startKey])
 		length, lengthIsWhole := parseInt64(styled[lengthKey])
@@ -65,13 +65,13 @@ func (c *Client) searchMarkup(ctx context.Context, query string) ([]styleRange, 
 		switch {
 		case !startIsWhole || !lengthIsWhole:
 			message := "where a styled range of the search begins, or how far it runs on, is no whole number"
-			return nil, shapeFailure(decoded.httpResponse, decoded.body, message)
+			return nil, decoded.invalid(message)
 		case !styleIsText:
 			message := "the style of a range of the search arrived as something other than text"
-			return nil, shapeFailure(decoded.httpResponse, decoded.body, message)
+			return nil, decoded.invalid(message)
 		case !rangeFitsWithoutOverflow(start, length, queryUnits):
 			message := "a styled range of the search lies outside the text that was sent"
-			return nil, shapeFailure(decoded.httpResponse, decoded.body, message)
+			return nil, decoded.invalid(message)
 		}
 		ranges = append(ranges, styleRange{utf16Start: int(start), utf16Length: int(length), style: style})
 	}

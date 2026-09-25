@@ -72,11 +72,7 @@ func (c *Client) checkCommentNotDeleted(ctx context.Context, held commentTarget,
 	if !gone {
 		return nil
 	}
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: commentKey, Value: NewString(comment.String())},
-	}
-	return &Error{Code: CodeBadUsage, Message: deletedCommentMessage, Details: details}
+	return a.fault(CodeBadUsage, deletedCommentMessage, Pair{Key: commentKey, Value: NewString(comment.String())})
 }
 
 const deletedCommentMessage = "the comment was taken back by whoever wrote it, and YouTrack takes a write into such " +

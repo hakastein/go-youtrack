@@ -207,13 +207,13 @@ type datedComment struct {
 func (c Comments) of(h commentTarget, a decodedResponse, holder map[string]any) (*Node, *Error) {
 	received, isList := holder[commentsKey].([]any)
 	if !isList {
-		return nil, shapeFailure(a.httpResponse, a.body, fmt.Sprintf("the comments of the %s arrived as something other than an array", h.owner))
+		return nil, a.invalid(fmt.Sprintf("the comments of the %s arrived as something other than an array", h.owner))
 	}
 	kept := make([]datedComment, 0, len(received))
 	for _, item := range received {
 		comment, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, shapeFailure(a.httpResponse, a.body, fmt.Sprintf("a comment of the %s arrived as something other than an object", h.owner))
+			return nil, a.invalid(fmt.Sprintf("a comment of the %s arrived as something other than an object", h.owner))
 		}
 		gone, fault := h.deleted(a, comment)
 		if fault != nil {
@@ -224,7 +224,7 @@ func (c Comments) of(h commentTarget, a decodedResponse, holder map[string]any) 
 		}
 		written, isInstant := parseInt64(comment["created"])
 		if !isInstant {
-			return nil, shapeFailure(a.httpResponse, a.body, notAnInstant("created"))
+			return nil, a.invalid(notAnInstant("created"))
 		}
 		kept = append(kept, datedComment{created: written, comment: comment})
 	}
@@ -249,7 +249,7 @@ func (h commentTarget) deleted(a decodedResponse, comment map[string]any) (bool,
 	}
 	gone, isFlag := comment[deletedKey].(bool)
 	if !isFlag {
-		return false, shapeFailure(a.httpResponse, a.body, "whether a comment is deleted arrived as neither true nor false")
+		return false, a.invalid("whether a comment is deleted arrived as neither true nor false")
 	}
 	return gone, nil
 }

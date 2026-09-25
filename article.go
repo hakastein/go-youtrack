@@ -203,7 +203,7 @@ func readArticleToWrite(a decodedResponse, what string) (articleRef, *Error) {
 	code, isNamed := memberOf(found[projectKey], shortNameKey).(string)
 	if !isText || !isNamed {
 		message := "the id or the project of the article is not text"
-		return articleRef{}, shapeFailure(a.httpResponse, a.body, message)
+		return articleRef{}, a.invalid(message)
 	}
 	return articleRef{id: id, readable: readable, project: code, response: a}, nil
 }
@@ -211,14 +211,10 @@ func readArticleToWrite(a decodedResponse, what string) (articleRef, *Error) {
 const parentOfAWrite = "the parent a write names"
 
 func (p articleRef) crossProjectFault(code, message string) *Error {
-	a := p.response
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: projectKey, Value: NewString(code)},
-		{Key: parentKey, Value: NewString(p.readable.String())},
-		{Key: "parent_project", Value: NewString(p.project)},
-	}
-	return &Error{Code: CodeBadUsage, Message: message, Details: details}
+	return p.response.fault(CodeBadUsage, message,
+		Pair{Key: projectKey, Value: NewString(code)},
+		Pair{Key: parentKey, Value: NewString(p.readable.String())},
+		Pair{Key: "parent_project", Value: NewString(p.project)})
 }
 
 const (
@@ -326,7 +322,7 @@ func (c *Client) readAncestors(ctx context.Context, id string) (articleRef, []an
 			}
 			parentObject, isObject := value.(map[string]any)
 			if !isObject {
-				return articleRef{}, nil, shapeFailure(a.httpResponse, a.body, "the parent of an article is neither an object nor null")
+				return articleRef{}, nil, a.invalid("the parent of an article is neither an object nor null")
 			}
 			step, fault := readAncestor(a, parentObject)
 			if fault != nil {
@@ -350,29 +346,21 @@ func readAncestor(a decodedResponse, parent map[string]any) (ancestor, *Error) {
 	id, isText := parent[idKey].(string)
 	readable, isReadable := parent[idReadableKey].(string)
 	if !isText || !isReadable {
-		return ancestor{}, shapeFailure(a.httpResponse, a.body, "the id or the readable id of an ancestor is not text")
+		return ancestor{}, a.invalid("the id or the readable id of an ancestor is not text")
 	}
 	return ancestor{id: id, readable: readable}, nil
 }
 
 func ancestorCycleFault(a decodedResponse, twice ancestor) *Error {
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: articleOwner.String(), Value: NewString(twice.readable)},
-	}
 	message := "the article under article stands twice in the line of parents the server answered with, and no " +
 		"article hangs from itself"
-	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
+	return a.fault(CodeUpstreamInvalid, message, Pair{Key: articleOwner.String(), Value: NewString(twice.readable)})
 }
 
 func brokenAncestryFault(a decodedResponse, at ancestor) *Error {
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: articleOwner.String(), Value: NewString(at.readable)},
-	}
 	message := "the server answered no parent for the article under article and no root above it either, and a " +
 		"line read on from there would be read from the same place again"
-	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
+	return a.fault(CodeUpstreamInvalid, message, Pair{Key: articleOwner.String(), Value: NewString(at.readable)})
 }
 
 func (p articleRef) checkNoCycle(article articleRef, line []ancestor) *Error {
@@ -384,16 +372,12 @@ func (p articleRef) checkNoCycle(article articleRef, line []ancestor) *Error {
 	for _, step := range line[:at+1] {
 		chain = append(chain, NewString(step.readable))
 	}
-	a := p.response
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: articleOwner.String(), Value: NewString(article.readable.String())},
-		{Key: parentKey, Value: NewString(p.readable.String())},
-		{Key: "chain", Value: NewList(chain...)},
-	}
 	message := "the parent the call names is the article itself or one written under it, and chain runs from the " +
 		"parent up to the article: an article hangs from no line of its own"
-	return &Error{Code: CodeBadUsage, Message: message, Details: details}
+	return p.response.fault(CodeBadUsage, message,
+		Pair{Key: articleOwner.String(), Value: NewString(article.readable.String())},
+		Pair{Key: parentKey, Value: NewString(p.readable.String())},
+		Pair{Key: "chain", Value: NewList(chain...)})
 }
 
 func (s *ArticlesService) delete(ctx context.Context, id string) (*Node, *Error) {

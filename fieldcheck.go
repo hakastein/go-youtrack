@@ -61,7 +61,7 @@ func checkMissingFields(spec *schemas, response *http.Response, responseSchema s
 		}
 	}
 	details := []Pair{
-		requestDetail(response.Request.Method, response.Request.URL.Redacted()),
+		sentRequest(response),
 		{Key: "fields", Value: NewString(formatFields(requested))},
 	}
 	if len(missing) > 0 {

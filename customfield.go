@@ -210,7 +210,7 @@ func (n converter) customFields(asked requestedField, value any) (*Node, *Error)
 func (n converter) readCustomFields(value any) ([]issueCustomField, *Error) {
 	received, isList := value.([]any)
 	if !isList {
-		return nil, n.malformed("the custom fields of the issue arrived as something other than an array")
+		return nil, n.response.invalid("the custom fields of the issue arrived as something other than an array")
 	}
 	fields := make([]issueCustomField, 0, len(received))
 	named := make(map[string]bool, len(received))
@@ -220,7 +220,7 @@ func (n converter) readCustomFields(value any) ([]issueCustomField, *Error) {
 			return nil, fault
 		}
 		if named[field.name] {
-			return nil, n.malformed(fmt.Sprintf("two custom fields of the issue are named %s", quote(field.name)))
+			return nil, n.response.invalid(fmt.Sprintf("two custom fields of the issue are named %s", quote(field.name)))
 		}
 		named[field.name] = true
 		fields = append(fields, field)
@@ -303,24 +303,24 @@ func bindingNumbers(id string) ([2]int, bool) {
 func (n converter) readCustomField(item any) (issueCustomField, *Error) {
 	object, isObject := item.(map[string]any)
 	if !isObject {
-		return issueCustomField{}, n.malformed("a custom field of the issue is not a JSON object")
+		return issueCustomField{}, n.response.invalid("a custom field of the issue is not a JSON object")
 	}
 	name, isText := object[nameKey].(string)
 	if !isText {
-		return issueCustomField{}, n.malformed("the name of a custom field of the issue is not text")
+		return issueCustomField{}, n.response.invalid("the name of a custom field of the issue is not text")
 	}
 	place, _ := object["projectCustomField"].(map[string]any)
 	binding, named, whole := readBinding(place)
 	if !whole {
-		return issueCustomField{}, n.malformed(brokenBinding(name))
+		return issueCustomField{}, n.response.invalid(brokenBinding(name))
 	}
 	ordinal, isWhole := parseInt64(place["ordinal"])
 	if !isWhole {
 		message := fmt.Sprintf("the place of the custom field %s among the fields of the project is no whole number", quote(name))
-		return issueCustomField{}, n.malformed(message)
+		return issueCustomField{}, n.response.invalid(message)
 	}
 	if !named.kind.Known() {
-		return issueCustomField{}, n.malformed(unmodelled(named.kind))
+		return issueCustomField{}, n.response.invalid(unmodelled(named.kind))
 	}
 	return issueCustomField{name: name, value: object["value"], kind: named.kind, ordinal: ordinal,
 		binding: binding, localizedName: named.localizedName}, nil
@@ -363,11 +363,11 @@ func (n converter) valuesOf(f issueCustomField) ([]any, *Error) {
 	case f.value == nil:
 		return nil, nil
 	case isList && !f.kind.Multi:
-		return nil, n.malformed(fmt.Sprintf("the custom field %s holds one value by its type and arrived as a list", quote(f.name)))
+		return nil, n.response.invalid(fmt.Sprintf("the custom field %s holds one value by its type and arrived as a list", quote(f.name)))
 	case !isList && f.kind.Multi:
 		message := fmt.Sprintf("the custom field %s holds more than one value by its type and arrived as "+
 			"something other than a list", quote(f.name))
-		return nil, n.malformed(message)
+		return nil, n.response.invalid(message)
 	case !isList:
 		return []any{f.value}, nil
 	}
@@ -407,7 +407,7 @@ func (n converter) valueKeyNode(f issueCustomField, item any) (*Node, bool, *Err
 }
 
 func (n converter) unreadableValue(f issueCustomField, err error) *Error {
-	return n.malformed(fmt.Sprintf("custom field %s: %v", quote(f.name), err))
+	return n.response.invalid(fmt.Sprintf("custom field %s: %v", quote(f.name), err))
 }
 
 const customFieldCatalogue = "[]CustomField"
@@ -429,7 +429,7 @@ func (c *Client) customFieldCatalogue(ctx context.Context) (decodedResponse, []f
 	for _, object := range a.objects {
 		found, ok := readCatalogueEntry(object)
 		if !ok {
-			return decodedResponse{}, nil, shapeFailure(a.httpResponse, a.body, brokenCatalogue)
+			return decodedResponse{}, nil, a.invalid(brokenCatalogue)
 		}
 		catalogue = append(catalogue, found)
 	}
@@ -491,7 +491,7 @@ func resolveNames(a decodedResponse, requested, asked []requestedField, catalogu
 		}
 	}
 	against := Pair{Key: "fields", Value: NewString(formatFields(requested))}
-	if fault := names.fault(sentRequest(a.httpResponse), against, "the instance"); fault != nil {
+	if fault := names.fault(a.sent(), against, "the instance"); fault != nil {
 		return nil, fault
 	}
 	return resolved, nil

@@ -155,12 +155,12 @@ func readableIDAt(a decodedResponse, holder map[string]any, kind ownerKind, what
 	readable, isText := holder[idReadableKey].(string)
 	if !isText {
 		message := fmt.Sprintf("the readable id of the %s arrived as something other than a string", kind)
-		return readableID{}, shapeFailure(a.httpResponse, a.body, message)
+		return readableID{}, a.invalid(message)
 	}
 	if found, fault := parseOwner(readable); fault != nil || found.kind != kind {
 		message := fmt.Sprintf("the %s arrived with %s for a readable id, and %s is addressed by the readable "+
 			"id the server gave", kind, quote(readable), what)
-		return readableID{}, shapeFailure(a.httpResponse, a.body, message)
+		return readableID{}, a.invalid(message)
 	}
 	return readableID{readable: readable}, nil
 }

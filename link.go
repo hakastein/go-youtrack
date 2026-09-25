@@ -211,7 +211,7 @@ func (n converter) linkListing(target []requestedField, value any) (*Node, count
 	for _, link := range links {
 		size, isCount := parseInt64(link[issuesSizeKey])
 		if !isCount || size < 0 {
-			return nil, count{}, 0, n.malformed("how many issues a link of the issue holds is no whole number of them")
+			return nil, count{}, 0, n.response.invalid("how many issues a link of the issue holds is no whole number of them")
 		}
 		held += int(size)
 	}
@@ -222,7 +222,7 @@ func (n converter) linkListing(target []requestedField, value any) (*Node, count
 	if held < received {
 		message := fmt.Sprintf("the issues linked to arrived %d at a time and the links of the issue hold %d of "+
 			"them in all", received, held)
-		return nil, count{}, 0, n.malformed(message)
+		return nil, count{}, 0, n.response.invalid(message)
 	}
 	return block, counted(held), printed, nil
 }
@@ -308,7 +308,7 @@ func (n converter) linkBlock(target []requestedField, links []map[string]any) (*
 			return nil, 0, 0, fault
 		}
 		if printedBy[phrase] {
-			return nil, 0, 0, n.malformed(fmt.Sprintf("two links of the issue go by the phrase %s", quote(phrase)))
+			return nil, 0, 0, n.response.invalid(fmt.Sprintf("two links of the issue go by the phrase %s", quote(phrase)))
 		}
 		printedBy[phrase] = true
 		received += len(targets)
@@ -331,7 +331,7 @@ func (n converter) issueLinks(value any) ([]map[string]any, *Error) {
 	for _, item := range received {
 		link, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, n.malformed("a link of the issue is not a JSON object")
+			return nil, n.response.invalid("a link of the issue is not a JSON object")
 		}
 		links = append(links, link)
 	}
@@ -341,13 +341,13 @@ func (n converter) issueLinks(value any) ([]map[string]any, *Error) {
 func (n converter) targets(link map[string]any) ([]map[string]any, *Error) {
 	received, isList := link[issuesKey].([]any)
 	if !isList {
-		return nil, n.malformed("the issues of a link of the issue arrived as something other than an array")
+		return nil, n.response.invalid("the issues of a link of the issue arrived as something other than an array")
 	}
 	targets := make([]map[string]any, 0, len(received))
 	for _, item := range received {
 		target, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, n.malformed("an issue at the other end of a link of the issue is not a JSON object")
+			return nil, n.response.invalid("an issue at the other end of a link of the issue is not a JSON object")
 		}
 		targets = append(targets, target)
 	}
@@ -357,19 +357,19 @@ func (n converter) targets(link map[string]any) ([]map[string]any, *Error) {
 func (n converter) phrase(link map[string]any) (string, *Error) {
 	direction, isText := link[directionKey].(string)
 	if !isText {
-		return "", n.malformed("the direction of a link of the issue is not text")
+		return "", n.response.invalid("the direction of a link of the issue is not text")
 	}
 	kind, isObject := link[linkTypeKey].(map[string]any)
 	if !isObject {
-		return "", n.malformed("the type of a link of the issue is not a JSON object")
+		return "", n.response.invalid("the type of a link of the issue is not a JSON object")
 	}
 	read := phraseKeys(direction)[0]
 	phrase, isText := kind[read].(string)
 	if !isText {
-		return "", n.malformed(fmt.Sprintf("the %s of a link type of the issue is not text", read))
+		return "", n.response.invalid(fmt.Sprintf("the %s of a link type of the issue is not text", read))
 	}
 	if phrase == "" {
-		return "", n.malformed("a link of the issue holds issues and the phrase it goes by is empty")
+		return "", n.response.invalid("a link of the issue holds issues and the phrase it goes by is empty")
 	}
 	return phrase, nil
 }
@@ -388,7 +388,8 @@ func (c *Client) prepareLinkWrite(ctx context.Context, id, phrase, target string
 		return linkWrite{}, fault
 	}
 	if other.id == source.id {
-		return linkWrite{}, linkFault(other.a, source.readable, CodeBadUsage, oneIssue,
+		return linkWrite{}, other.a.fault(CodeBadUsage, oneIssue,
+			Pair{Key: "issue", Value: NewString(source.readable)},
 			Pair{Key: "target", Value: NewString(other.readable)})
 	}
 	return linkWrite{source: source, target: other, link: link}, nil
@@ -476,7 +477,7 @@ func (c *Client) readLinkedIssue(ctx context.Context, id string, requested []req
 	if !isText || !isInternalID(internal) {
 		message := "the issue arrived with something other than an internal id of the instance for an id, and " +
 			"that is what YouTrack takes an issue at the other end of a link by"
-		return linkIssue{}, shapeFailure(a.httpResponse, a.body, message)
+		return linkIssue{}, a.invalid(message)
 	}
 	return linkIssue{a: a, id: internal, readable: readable.String()}, nil
 }
@@ -490,7 +491,7 @@ func (n converter) parseIssueLinks(value any) ([]issueLink, *Error) {
 	for _, link := range received {
 		id, isText := link.raw[idKey].(string)
 		if !isText {
-			return nil, n.malformed("the id of a link of the issue is not text")
+			return nil, n.response.invalid("the id of a link of the issue is not text")
 		}
 		phrase, named, fault := n.linkNames(link.direction, link.kind)
 		if fault != nil {
@@ -517,15 +518,15 @@ func (n converter) parseLinks(value any) ([]parsedLink, *Error) {
 	for _, held := range received {
 		direction, isEnd := held[directionKey].(string)
 		if !isEnd {
-			return nil, n.malformed("the direction of a link of the issue is not text")
+			return nil, n.response.invalid("the direction of a link of the issue is not text")
 		}
 		kind, isObject := held[linkTypeKey].(map[string]any)
 		if !isObject {
-			return nil, n.malformed("the type of a link of the issue is not a JSON object")
+			return nil, n.response.invalid("the type of a link of the issue is not a JSON object")
 		}
 		typeID, isText := kind[idKey].(string)
 		if !isText {
-			return nil, n.malformed("the id of a link type of the issue is not text")
+			return nil, n.response.invalid("the id of a link type of the issue is not text")
 		}
 		links = append(links, parsedLink{raw: held, direction: direction, kind: kind, typeID: typeID})
 	}
@@ -539,7 +540,7 @@ func (n converter) linkNames(direction string, kind map[string]any) (string, []s
 	for i, name := range read {
 		text, isText := kind[name].(string)
 		if !isText && kind[name] != nil {
-			return "", nil, n.malformed(fmt.Sprintf("the %s of a link type of the issue is neither text nor null", name))
+			return "", nil, n.response.invalid(fmt.Sprintf("the %s of a link type of the issue is neither text nor null", name))
 		}
 		if i == 0 {
 			phrase = text
@@ -666,16 +667,8 @@ const unreadableLink = "the server addresses the link by an id whose end cannot 
 	"stands at either end of is addressed by digits, a dash and digits, one it stands at the source of by the " +
 	"same and an s, and one it stands at the target of by the same and a t"
 
-func linkFault(a decodedResponse, readable string, code Code, message string, own ...Pair) *Error {
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: "issue", Value: NewString(readable)},
-	}
-	return &Error{Code: code, Message: message, Details: append(details, own...)}
-}
-
 func (s linkIssue) fault(code Code, message string, own ...Pair) *Error {
-	return linkFault(s.a, s.readable, code, message, own...)
+	return s.a.fault(code, message, append([]Pair{{Key: "issue", Value: NewString(s.readable)}}, own...)...)
 }
 
 type linkWrite struct {
@@ -714,14 +707,14 @@ func (w linkWrite) verify(a decodedResponse) *Error {
 		return fault
 	}
 	if _, held := findIssue(links, w.link.kind, w.link.direction, w.target.id); !held {
-		return linkMismatchFault(a, "the issue does not hold the target issue at the end of the link the phrase names")
+		return a.fault(CodeUpstreamInvalid, "the issue does not hold the target issue at the end of the link the phrase names")
 	}
 	return nil
 }
 
 func (w linkWrite) findSource(a decodedResponse) (map[string]any, *Error) {
 	if id, isText := a.objects[0][idKey].(string); !isText || id != w.target.id {
-		return nil, linkMismatchFault(a, "the write was answered with an issue other than the target issue it named")
+		return nil, a.fault(CodeUpstreamInvalid, "the write was answered with an issue other than the target issue it named")
 	}
 	links, fault := newConverter(a, inlineLayout).responseLinks(a.objects[0][linksKey])
 	if fault != nil {
@@ -729,7 +722,7 @@ func (w linkWrite) findSource(a decodedResponse) (map[string]any, *Error) {
 	}
 	source, held := findIssue(links, w.link.kind, opposite(w.link.direction), w.source.id)
 	if !held {
-		return nil, linkMismatchFault(a, "the target issue does not hold the issue at the end the other side of the link is read from")
+		return nil, a.fault(CodeUpstreamInvalid, "the target issue does not hold the issue at the end the other side of the link is read from")
 	}
 	return source, nil
 }
@@ -798,17 +791,8 @@ func opposite(direction string) string {
 	return direction
 }
 
-func linkMismatchFault(a decodedResponse, message string) *Error {
-	details := []Pair{requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted())}
-	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
-}
-
 func (w linkWrite) withLinkDetails(fault *Error) *Error {
-	at := 0
-	if len(fault.Details) > 0 && fault.Details[0].Key == "request" {
-		at = 1
-	}
-	fault.Details = slices.Insert(fault.Details, at,
+	fault.Details = insertAfterRequest(fault.Details,
 		Pair{Key: "issue", Value: NewString(w.source.readable)},
 		Pair{Key: "phrase", Value: NewString(w.link.phrase)},
 		Pair{Key: "target", Value: NewString(w.target.readable)})

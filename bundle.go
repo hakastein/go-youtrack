@@ -38,7 +38,7 @@ func (s *FieldsService) bundle(ctx context.Context, project, name string) (*Bund
 	a := read.answer
 	canBeEmpty, isFlag := a.objects[0][canBeEmptyKey].(bool)
 	if !isFlag {
-		return nil, shapeFailure(a.httpResponse, a.body, brokenPlacement)
+		return nil, a.invalid(brokenPlacement)
 	}
 	info := read.field.info
 	if !info.kind.HasBundle() {
@@ -69,23 +69,23 @@ func bundleFields(found fieldInfo) ([]requestedField, bool, *Error) {
 func readBundleValues(a decodedResponse) ([]BundleValue, *Error) {
 	bundle, isObject := a.objects[0]["bundle"].(map[string]any)
 	if !isObject {
-		return nil, shapeFailure(a.httpResponse, a.body, "the bundle of the custom field is not a JSON object")
+		return nil, a.invalid("the bundle of the custom field is not a JSON object")
 	}
 	items, isList := bundle["values"].([]any)
 	if !isList {
-		return nil, shapeFailure(a.httpResponse, a.body, "the values of the bundle are not a JSON array")
+		return nil, a.invalid("the values of the bundle are not a JSON array")
 	}
 	values := make([]BundleValue, 0, len(items))
 	for _, item := range items {
 		object, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, shapeFailure(a.httpResponse, a.body, "a value of the bundle is not a JSON object")
+			return nil, a.invalid("a value of the bundle is not a JSON object")
 		}
 		id, isID := object[idKey].(string)
 		name, isName := object[nameKey].(string)
 		archived, isFlag := object["archived"].(bool)
 		if !isID || !isName || !isFlag {
-			return nil, shapeFailure(a.httpResponse, a.body, "a value of the bundle is not of the shape the specification gives it")
+			return nil, a.invalid("a value of the bundle is not of the shape the specification gives it")
 		}
 		values = append(values, BundleValue{ID: id, Name: name, Archived: archived})
 	}

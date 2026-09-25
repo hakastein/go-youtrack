@@ -55,7 +55,7 @@ func (s *FieldsService) list(ctx context.Context, project string, opts ListField
 		return nil, fault
 	}
 	if len(decoded.objects) == 0 {
-		return nil, noFields(sentRequest(decoded.httpResponse), code)
+		return nil, noFields(decoded, code)
 	}
 	ordered, fault := sortedByOrdinal(decoded)
 	if fault != nil {
@@ -207,7 +207,7 @@ func invalidFieldID(id string) string {
 func (n fieldInfo) verifyUnchanged(a decodedResponse, code string) *Error {
 	answered, ok := readFieldInfo(a.objects[0])
 	if !ok {
-		return shapeFailure(a.httpResponse, a.body, brokenFieldInfo)
+		return a.invalid(brokenFieldInfo)
 	}
 	if answered == n {
 		return nil
@@ -251,11 +251,11 @@ func sortedByOrdinal(decoded decodedResponse) ([]map[string]any, *Error) {
 	for _, field := range decoded.objects {
 		number, isNumber := field[ordinalKey].(json.Number)
 		if !isNumber {
-			return nil, shapeFailure(decoded.httpResponse, decoded.body, "the ordinal of a custom field is not a number")
+			return nil, decoded.invalid("the ordinal of a custom field is not a number")
 		}
 		position, err := number.Int64()
 		if err != nil {
-			return nil, shapeFailure(decoded.httpResponse, decoded.body, "the ordinal of a custom field is not a whole number")
+			return nil, decoded.invalid("the ordinal of a custom field is not a whole number")
 		}
 		placed = append(placed, orderedField{position: position, field: field})
 	}
@@ -267,12 +267,9 @@ func sortedByOrdinal(decoded decodedResponse) ([]map[string]any, *Error) {
 	return ordered, nil
 }
 
-func noFields(sent Pair, code string) *Error {
-	details := []Pair{
-		sent,
-		{Key: "project", Value: NewString(code)},
-		{Key: "permission", Value: NewString(projectRead)},
-	}
+func noFields(a decodedResponse, code string) *Error {
 	message := "not one custom field of the project arrived, and a token without the right under permission is sent an empty list"
-	return &Error{Code: CodeDenied, Message: message, Details: details}
+	return a.fault(CodeDenied, message,
+		Pair{Key: "project", Value: NewString(code)},
+		Pair{Key: "permission", Value: NewString(projectRead)})
 }

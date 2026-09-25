@@ -573,7 +573,7 @@ func (c *Client) readIssueToWrite(ctx context.Context, id string) (issueForUpdat
 	}
 	held, isObject := a.objects[0]["project"].(map[string]any)
 	if !isObject {
-		return issueForUpdate{}, shapeFailure(a.httpResponse, a.body, "the project of the issue is not a JSON object")
+		return issueForUpdate{}, a.invalid("the project of the issue is not a JSON object")
 	}
 	project, fault := readWriteMetadata(a, held)
 	if fault != nil {
@@ -589,26 +589,26 @@ func (c *Client) readIssueToWrite(ctx context.Context, id string) (issueForUpdat
 func readIssueFieldTypes(a decodedResponse) (map[string]string, *Error) {
 	items, isList := a.objects[0][customFieldsKey].([]any)
 	if !isList {
-		return nil, shapeFailure(a.httpResponse, a.body, "the custom fields of the issue are not a JSON array")
+		return nil, a.invalid("the custom fields of the issue are not a JSON array")
 	}
 	typeByProjectFieldID := make(map[string]string, len(items))
 	for _, item := range items {
 		object, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, shapeFailure(a.httpResponse, a.body, "a custom field of the issue is not a JSON object")
+			return nil, a.invalid("a custom field of the issue is not a JSON object")
 		}
 		name, isNamed := object[nameKey].(string)
 		kind, isText := object["$type"].(string)
 		if !isNamed || !isText {
-			return nil, shapeFailure(a.httpResponse, a.body, brokenIssueField)
+			return nil, a.invalid(brokenIssueField)
 		}
 		place, isObject := object["projectCustomField"].(map[string]any)
 		if !isObject {
-			return nil, shapeFailure(a.httpResponse, a.body, brokenBinding(name))
+			return nil, a.invalid(brokenBinding(name))
 		}
 		projectFieldID, isText := place[idKey].(string)
 		if !isText {
-			return nil, shapeFailure(a.httpResponse, a.body, brokenBinding(name))
+			return nil, a.invalid(brokenBinding(name))
 		}
 		typeByProjectFieldID[projectFieldID] = kind
 	}
@@ -623,21 +623,21 @@ func readWriteMetadata(a decodedResponse, project map[string]any) (projectMetada
 	id, isText := project[idKey].(string)
 	code, isName := project["shortName"].(string)
 	if !isText || !isName {
-		return projectMetadata{}, shapeFailure(a.httpResponse, a.body, brokenProject)
+		return projectMetadata{}, a.invalid(brokenProject)
 	}
 	items, isList := project[customFieldsKey].([]any)
 	if !isList {
-		return projectMetadata{}, shapeFailure(a.httpResponse, a.body, "the custom fields of the project are not a JSON array")
+		return projectMetadata{}, a.invalid("the custom fields of the project are not a JSON array")
 	}
 	fields := make([]projectField, 0, len(items))
 	for _, item := range items {
 		object, isObject := item.(map[string]any)
 		if !isObject {
-			return projectMetadata{}, shapeFailure(a.httpResponse, a.body, brokenField)
+			return projectMetadata{}, a.invalid(brokenField)
 		}
 		field, ok := readProjectField(object)
 		if !ok {
-			return projectMetadata{}, shapeFailure(a.httpResponse, a.body, brokenFieldInfo)
+			return projectMetadata{}, a.invalid(brokenFieldInfo)
 		}
 		fields = append(fields, field)
 	}
@@ -742,7 +742,7 @@ func (p projectMetadata) resolveFields(named []namedValue, cleared []string, iss
 		}
 	}
 	project := Pair{Key: projectKey, Value: NewString(p.code)}
-	if fault := names.fault(sentRequest(p.response.httpResponse), project, "the project"); fault != nil {
+	if fault := names.fault(p.response.sent(), project, "the project"); fault != nil {
 		return nil, fault
 	}
 	return p.encodeValues(given, emptied, issueFieldTypes)
@@ -758,7 +758,7 @@ func (p projectMetadata) encodeValues(given [][]string, emptied []bool, issueFie
 		field := p.fields[at]
 		kind := field.info.kind
 		if !kind.Known() {
-			return nil, shapeFailure(p.response.httpResponse, p.response.body, unmodelled(kind))
+			return nil, p.response.invalid(unmodelled(kind))
 		}
 		class := kind.Class()
 		if typeOnIssue, onTheIssue := issueFieldTypes[field.id]; onTheIssue {
@@ -841,13 +841,9 @@ const (
 )
 
 func (p projectMetadata) fault(code Code, message, key string, entries []*Node) *Error {
-	a := p.response
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: "project", Value: NewString(p.code)},
-		{Key: key, Value: NewList(entries...)},
-	}
-	return &Error{Code: code, Message: message, Details: details}
+	return p.response.fault(code, message,
+		Pair{Key: "project", Value: NewString(p.code)},
+		Pair{Key: key, Value: NewList(entries...)})
 }
 
 func names(fields []string) []*Node {

@@ -112,10 +112,8 @@ func mismatchFault(a decodedResponse, identity []Pair, wrong []mismatch) *Error 
 			Pair{Key: "expected", Value: m.expected},
 			Pair{Key: "actual", Value: m.actual}))
 	}
-	details := append([]Pair{requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted())},
-		append(identity, Pair{Key: "mismatch", Value: NewList(entries...)})...)
 	message := "the write went through and the values under mismatch came back as something other than what was written"
-	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
+	return a.fault(CodeUpstreamInvalid, message, append(identity, Pair{Key: "mismatch", Value: NewList(entries...)})...)
 }
 
 func knownAs(named string, id *Node) []Pair {

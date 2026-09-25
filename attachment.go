@@ -166,13 +166,13 @@ func attachmentOwner(a decodedResponse, target attachmentTarget, file childID) (
 	received, isText := a.objects[0][idKey].(string)
 	if !isText || received != file.id {
 		message := fmt.Sprintf("the %s asked for under id %s arrived under another id", attachmentKey, quote(file.String()))
-		return readableID{}, shapeFailure(a.httpResponse, a.body, message)
+		return readableID{}, a.invalid(message)
 	}
 	holder, isObject := a.objects[0][target.owner].(map[string]any)
 	if !isObject {
 		message := fmt.Sprintf("the %s the %s hangs from arrived as something other than an object",
 			target.kind, attachmentKey)
-		return readableID{}, shapeFailure(a.httpResponse, a.body, message)
+		return readableID{}, a.invalid(message)
 	}
 	return readableIDAt(a, holder, target.kind, "a deletion")
 }
@@ -269,7 +269,8 @@ func (u *upload) form(name string) (io.Reader, string) {
 
 func verifyUpload(a decodedResponse, name string, sent int64) *Error {
 	if len(a.objects) != 1 {
-		return ambiguousAttachmentFault(a)
+		message := "one file was sent and the answer carries something other than the one attachment it was filed as"
+		return a.fault(CodeUpstreamInvalid, message, Pair{Key: "actual_count", Value: intNode(len(a.objects))}, bodyDetail(a.body))
 	}
 	filed := a.objects[0]
 	wrong := textMismatch(nil, nameKey, name, filed[nameKey])
@@ -278,16 +279,6 @@ func verifyUpload(a decodedResponse, name string, sent int64) *Error {
 		return nil
 	}
 	return mismatchFault(a, knownAs(attachmentKey, responseID(a, idKey)), wrong)
-}
-
-func ambiguousAttachmentFault(a decodedResponse) *Error {
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: "actual_count", Value: intNode(len(a.objects))},
-		bodyDetail(a.body),
-	}
-	message := "one file was sent and the answer carries something other than the one attachment it was filed as"
-	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
 }
 
 func checkFile(file File) *Error {

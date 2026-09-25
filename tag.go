@@ -479,7 +479,7 @@ func (h tagOp) verify(a decodedResponse) *Error {
 	}
 	message := fmt.Sprintf("the tag the %s carries came back under an id other than the one the name resolved to",
 		h.target.kind)
-	return shapeFailure(a.httpResponse, a.body, message)
+	return a.invalid(message)
 }
 
 func (h tagOp) render(key string) func(decodedResponse) (*Node, *Error) {
@@ -555,12 +555,12 @@ func parseTagCandidates(a decodedResponse) ([]tagCandidate, *Error) {
 	for _, object := range a.objects {
 		name, isText := object[nameKey].(string)
 		if !isText {
-			return nil, shapeFailure(a.httpResponse, a.body, "the name of a tag is not text")
+			return nil, a.invalid("the name of a tag is not text")
 		}
 		login, isText := memberOf(object[ownerKey], loginKey).(string)
 		if !isText {
 			message := fmt.Sprintf("the login of the owner of the tag %s is not text", quote(name))
-			return nil, shapeFailure(a.httpResponse, a.body, message)
+			return nil, a.invalid(message)
 		}
 		shown = append(shown, tagCandidate{name: name, owner: login})
 	}
@@ -666,11 +666,7 @@ func tagsListed(shown []tagCandidate, at []int) *Node {
 }
 
 func unresolvedTag(a decodedResponse, key, message string, entry *Node) *Error {
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: key, Value: NewList(entry)},
-	}
-	return &Error{Code: CodeUnknownName, Message: message, Details: details}
+	return a.fault(CodeUnknownName, message, Pair{Key: key, Value: NewList(entry)})
 }
 
 func textList(texts []string) *Node {
@@ -686,11 +682,11 @@ func (r resolvedTag) pathSafeID() (tagID, *Error) {
 	switch {
 	case !isText:
 		message := fmt.Sprintf("the id of the tag named %s is not text", quote(r.name))
-		return tagID{}, shapeFailure(r.response.httpResponse, r.response.body, message)
+		return tagID{}, r.response.invalid(message)
 	case !isInternalID(id):
 		message := fmt.Sprintf("the tag named %s arrived under the id %s, and a tag is addressed by the internal id "+
 			"the server gives every entity, which is digits, a dash and digits", quote(r.name), quote(id))
-		return tagID{}, shapeFailure(r.response.httpResponse, r.response.body, message)
+		return tagID{}, r.response.invalid(message)
 	}
 	return tagID{id: id}, nil
 }
@@ -726,12 +722,12 @@ func (c *Client) listGroups(ctx context.Context) (groupCatalogue, *Error) {
 	for _, object := range a.objects {
 		name, isText := object[nameKey].(string)
 		if !isText {
-			return groupCatalogue{}, shapeFailure(a.httpResponse, a.body, "the name of a group is not text")
+			return groupCatalogue{}, a.invalid("the name of a group is not text")
 		}
 		id, isText := object[idKey].(string)
 		if !isText {
 			message := fmt.Sprintf("the id of the group named %s is not text", quote(name))
-			return groupCatalogue{}, shapeFailure(a.httpResponse, a.body, message)
+			return groupCatalogue{}, a.invalid(message)
 		}
 		groups = append(groups, groupCandidate{name: name, id: id})
 	}
@@ -816,7 +812,7 @@ func (r *groupResolver) validID(group groupCandidate) (groupID, bool) {
 	if r.broken == nil {
 		message := fmt.Sprintf("the group named %s arrived under the id %s, and a tag is shared with the internal "+
 			"id the server gives every entity, which is digits, a dash and digits", quote(group.name), quote(group.id))
-		r.broken = shapeFailure(r.shown.response.httpResponse, r.shown.response.body, message)
+		r.broken = r.shown.response.invalid(message)
 	}
 	return groupID{}, false
 }
@@ -828,8 +824,7 @@ func (r *groupResolver) fault() *Error {
 	if len(r.unknown) == 0 && len(r.ambiguous) == 0 {
 		return nil
 	}
-	a := r.shown.response
-	details := []Pair{requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted())}
+	details := []Pair{r.shown.response.sent()}
 	if len(r.unknown) > 0 {
 		details = append(details, Pair{Key: "unknown", Value: NewList(r.unknown...)})
 	}

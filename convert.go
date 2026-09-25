@@ -198,12 +198,9 @@ func isAbsolutePath(reference *url.URL) bool {
 func (n converter) invalidURL(field requestedField, value any) *Error {
 	at := fieldPath(n.at, field.name)
 	message := fmt.Sprintf("%s is an address of the instance, and what arrived for it is no absolute path", at)
-	details := []Pair{
-		requestDetail(n.response.httpResponse.Request.Method, n.response.httpResponse.Request.URL.Redacted()),
-		{Key: "field", Value: NewString(at)},
-		{Key: "upstream_value", Value: rawValueNode(value)},
-	}
-	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
+	return n.response.fault(CodeUpstreamInvalid, message,
+		Pair{Key: "field", Value: NewString(at)},
+		Pair{Key: "upstream_value", Value: rawValueNode(value)})
 }
 
 func rawValueNode(value any) *Node {
@@ -235,15 +232,15 @@ const (
 func (n converter) durationNode(value any) (*Node, *Error) {
 	held, isObject := value.(map[string]any)
 	if !isObject {
-		return nil, n.malformed("a duration arrived as something other than a JSON object")
+		return nil, n.response.invalid("a duration arrived as something other than a JSON object")
 	}
 	minutes, ok := held[minutesKey]
 	if !ok {
-		return nil, n.malformed("a duration arrived without the minutes it holds, which is what says how long it is")
+		return nil, n.response.invalid("a duration arrived without the minutes it holds, which is what says how long it is")
 	}
 	count, isWhole := parseInt64(minutes)
 	if !isWhole {
-		return nil, n.malformed("the minutes of a duration are no whole number of them")
+		return nil, n.response.invalid("the minutes of a duration are no whole number of them")
 	}
 	return NewString(duration(count)), nil
 }
@@ -302,13 +299,9 @@ func (c *schemas) declarationsOf(owners []string, field requestedField) (inner [
 func (n converter) instant(name string, value any) (*Node, *Error) {
 	count, isInstant := parseInt64(value)
 	if !isInstant {
-		return nil, shapeFailure(n.response.httpResponse, n.response.body, notAnInstant(name))
+		return nil, n.response.invalid(notAnInstant(name))
 	}
 	return NewString(time.UnixMilli(count).UTC().Format(time.RFC3339Nano)), nil
-}
-
-func (n converter) malformed(message string) *Error {
-	return shapeFailure(n.response.httpResponse, n.response.body, message)
 }
 
 func parseInt64(value any) (int64, bool) {

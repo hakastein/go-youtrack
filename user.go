@@ -152,7 +152,7 @@ func readUser(a decodedResponse, object map[string]any) (User, *Error) {
 	banned, isFlag := object[bannedKey].(bool)
 	email, isEmail := readLocalized(object[emailKey])
 	if !isID || !isLogin || !isName || !isFlag || !isEmail {
-		return User{}, shapeFailure(a.httpResponse, a.body, "a user is not of the shape the specification gives it")
+		return User{}, a.invalid("a user is not of the shape the specification gives it")
 	}
 	return User{ID: id, Login: login, FullName: fullName, Email: email, Banned: banned}, nil
 }

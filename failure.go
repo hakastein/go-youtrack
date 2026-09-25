@@ -126,6 +126,18 @@ func sentRequest(response *http.Response) Pair {
 	return requestDetail(response.Request.Method, response.Request.URL.Redacted())
 }
 
+func (a decodedResponse) sent() Pair {
+	return sentRequest(a.httpResponse)
+}
+
+func (a decodedResponse) invalid(message string) *Error {
+	return shapeFailure(a.httpResponse, a.body, message)
+}
+
+func (a decodedResponse) fault(code Code, message string, details ...Pair) *Error {
+	return &Error{Code: code, Message: message, Details: append([]Pair{a.sent()}, details...)}
+}
+
 func requestDetail(method, address string) Pair {
 	if path, query, split := strings.Cut(address, "?"); split {
 		address = path + "?" + readableQuery(query)
