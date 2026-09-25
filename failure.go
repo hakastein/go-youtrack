@@ -70,6 +70,13 @@ func isYouTrackError(tree any) bool {
 	return named
 }
 
+func notFoundAs(fault *Error, message string) *Error {
+	if fault.Code == CodeNotFound {
+		fault.Message = message
+	}
+	return fault
+}
+
 func markWritten(response *http.Response, fault *Error) *Error {
 	fault.AfterWrite = is2xx(response.StatusCode)
 	return fault

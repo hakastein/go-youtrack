@@ -136,21 +136,17 @@ func badWorkDate(text, because string) *Error {
 
 type createWorkItemBody struct {
 	Duration   minutesBody     `json:"duration"`
-	Type       *workItemIDBody `json:"type,omitempty"`
+	Type       *idBody         `json:"type,omitempty"`
 	Date       *int64          `json:"date,omitempty"`
 	Text       *string         `json:"text,omitempty"`
 	Attributes []attributeBody `json:"attributes,omitempty"`
-}
-
-type workItemIDBody struct {
-	ID string `json:"id"`
 }
 
 func (w workItemCreate) body() []byte {
 	written := createWorkItemBody{Duration: minutesBody{Minutes: w.input.spent.minutes}, Text: w.input.text,
 		Attributes: attributeBodies(w.attributes)}
 	if w.workType != nil {
-		written.Type = &workItemIDBody{ID: w.workType.id}
+		written.Type = &idBody{ID: w.workType.id}
 	}
 	if w.input.day != nil {
 		written.Date = &w.input.day.noon
@@ -345,7 +341,12 @@ type updateWorkItemBody struct {
 }
 
 func (w workItemUpdate) body() []byte {
-	changed := updateWorkItemBody{Type: w.typeJSON(), Text: w.input.textJSON(), Attributes: attributeBodies(w.attributes)}
+	var workType *idBody
+	if w.workType != nil {
+		workType = &idBody{ID: w.workType.id}
+	}
+	changed := updateWorkItemBody{Type: optionalJSON(w.input.clearsType, workType),
+		Text: optionalJSON(w.input.clearsText, w.input.text), Attributes: attributeBodies(w.attributes)}
 	if w.input.spent != nil {
 		changed.Duration = &minutesBody{Minutes: w.input.spent.minutes}
 	}
@@ -354,28 +355,6 @@ func (w workItemUpdate) body() []byte {
 	}
 	body, _ := json.Marshal(changed)
 	return body
-}
-
-func (w workItemUpdate) typeJSON() json.RawMessage {
-	switch {
-	case w.input.clearsType:
-		return json.RawMessage("null")
-	case w.workType == nil:
-		return nil
-	}
-	encoded, _ := json.Marshal(workItemIDBody{ID: w.workType.id})
-	return encoded
-}
-
-func (w workItemUpdateInput) textJSON() json.RawMessage {
-	switch {
-	case w.clearsText:
-		return json.RawMessage("null")
-	case w.text == nil:
-		return nil
-	}
-	encoded, _ := json.Marshal(*w.text)
-	return encoded
 }
 
 func (w workItemUpdateInput) verifyFields() []requestedField {

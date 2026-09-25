@@ -2,6 +2,7 @@ package youtrack
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -25,6 +26,21 @@ const (
 	projectSchema       = "Project"
 	fieldBasedCondition = "FieldBasedCondition"
 )
+
+type idBody struct {
+	ID string `json:"id"`
+}
+
+func optionalJSON[T any](clears bool, value *T) json.RawMessage {
+	switch {
+	case clears:
+		return json.RawMessage("null")
+	case value == nil:
+		return nil
+	}
+	encoded, _ := json.Marshal(*value)
+	return encoded
+}
 
 func writeResultNode(requested []requestedField) func(decodedResponse) (*Node, *Error) {
 	return func(a decodedResponse) (*Node, *Error) {

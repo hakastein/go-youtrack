@@ -169,11 +169,7 @@ type createTagBody struct {
 }
 
 type sharingBody struct {
-	PermittedGroups []groupIDBody `json:"permittedGroups"`
-}
-
-type groupIDBody struct {
-	ID string `json:"id"`
+	PermittedGroups []idBody `json:"permittedGroups"`
 }
 
 func (w tagCreate) body() []byte {
@@ -190,9 +186,9 @@ func sharingOf(groups []groupID) *sharingBody {
 	if groups == nil {
 		return nil
 	}
-	permitted := make([]groupIDBody, 0, len(groups))
+	permitted := make([]idBody, 0, len(groups))
 	for _, group := range groups {
-		permitted = append(permitted, groupIDBody{ID: group.id})
+		permitted = append(permitted, idBody{ID: group.id})
 	}
 	return &sharingBody{PermittedGroups: permitted}
 }
@@ -380,22 +376,15 @@ func (c *Client) removeTag(ctx context.Context, at owner, sought tagRef) (*Node,
 	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
 		return c.apiRemoveTag(ctx, off.target.kind, off.on, off.tag)
 	}); fault != nil {
-		return nil, off.withDetails(notOnTheOwner(off.target.kind, fault))
+		message := fmt.Sprintf("the tag is not on the %s, and the tag itself stands: nothing was taken off, and "+
+			"the tags the %s carries are under its field tags", off.target.kind, off.target.kind)
+		return nil, off.withDetails(notFoundAs(fault, message))
 	}
 	tag, fault := objectNode(off.found.response, printedTagFields(), off.found.object, nil)
 	if fault != nil {
 		return nil, fault
 	}
 	return off.document(removedKey, tag), nil
-}
-
-func notOnTheOwner(kind ownerKind, fault *Error) *Error {
-	if fault.Code != CodeNotFound {
-		return fault
-	}
-	fault.Message = fmt.Sprintf("the tag is not on the %s, and the tag itself stands: nothing was taken off, and "+
-		"the tags the %s carries are under its field tags", kind, kind)
-	return fault
 }
 
 func (c *Client) resolveTagging(ctx context.Context, at owner, sought tagRef) (tagOp, *Error) {
@@ -454,12 +443,8 @@ type tagOp struct {
 	tag    tagID
 }
 
-type tagRefBody struct {
-	ID string `json:"id"`
-}
-
 func (h tagOp) body() []byte {
-	body, _ := json.Marshal(tagRefBody{ID: h.tag.id})
+	body, _ := json.Marshal(idBody{ID: h.tag.id})
 	return body
 }
 

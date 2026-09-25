@@ -292,14 +292,10 @@ const (
 )
 
 type createIssueBody struct {
-	Project      projectIDBody     `json:"project"`
+	Project      idBody            `json:"project"`
 	Summary      string            `json:"summary"`
 	Description  *string           `json:"description,omitempty"`
 	CustomFields []customFieldBody `json:"customFields,omitempty"`
-}
-
-type projectIDBody struct {
-	ID string `json:"id"`
 }
 
 type updateIssueBody struct {
@@ -332,7 +328,7 @@ type resolvedField struct {
 
 func (w issueWrite) createBody() []byte {
 	body, _ := json.Marshal(createIssueBody{
-		Project:      projectIDBody{ID: w.project.id},
+		Project:      idBody{ID: w.project.id},
 		Summary:      *w.text.summary,
 		Description:  w.text.description,
 		CustomFields: w.bodies(),
@@ -343,21 +339,10 @@ func (w issueWrite) createBody() []byte {
 func (w issueWrite) updateBody() []byte {
 	body, _ := json.Marshal(updateIssueBody{
 		Summary:      w.text.summary,
-		Description:  w.text.descriptionJSON(),
+		Description:  optionalJSON(w.text.clearsDescription, w.text.description),
 		CustomFields: w.bodies(),
 	})
 	return body
-}
-
-func (w issueInput) descriptionJSON() json.RawMessage {
-	switch {
-	case w.clearsDescription:
-		return json.RawMessage("null")
-	case w.description == nil:
-		return nil
-	}
-	encoded, _ := json.Marshal(*w.description)
-	return encoded
 }
 
 func (w issueWrite) bodies() []customFieldBody {

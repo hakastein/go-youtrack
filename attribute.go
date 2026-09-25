@@ -109,8 +109,8 @@ type resolvedAttribute struct {
 }
 
 type attributeBody struct {
-	ID    string          `json:"id"`
-	Value *workItemIDBody `json:"value"`
+	ID    string  `json:"id"`
+	Value *idBody `json:"value"`
 }
 
 func attributeBodies(filed []resolvedAttribute) []attributeBody {
@@ -118,7 +118,7 @@ func attributeBodies(filed []resolvedAttribute) []attributeBody {
 	for _, attribute := range filed {
 		sent := attributeBody{ID: attribute.id}
 		if attribute.value != nil {
-			sent.Value = &workItemIDBody{ID: attribute.value.id}
+			sent.Value = &idBody{ID: attribute.value.id}
 		}
 		written = append(written, sent)
 	}

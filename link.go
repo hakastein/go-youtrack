@@ -94,7 +94,7 @@ func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts 
 	if fault != nil {
 		return nil, fault
 	}
-	body, _ := json.Marshal(internalIssueIDBody{ID: w.target.id})
+	body, _ := json.Marshal(idBody{ID: w.target.id})
 	node, fault := writeAs(ctx, c, issueSchema, linkWriteFields(targetBlocks(c.spec, requested)),
 		func(ctx context.Context, fields string) (*http.Response, error) {
 			return c.apiAddLinkedIssue(ctx, w.source.readable, w.link.id, body, fields)
@@ -118,7 +118,7 @@ func (s *LinksService) remove(ctx context.Context, id, phrase, target string) (*
 	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
 		return c.apiRemoveLinkedIssue(ctx, w.source.readable, w.link.id, w.target.id)
 	}); fault != nil {
-		return nil, w.withLinkDetails(noSuchLink(fault))
+		return nil, w.withLinkDetails(notFoundAs(fault, noLinkToRemove))
 	}
 	return w.removed(), nil
 }
@@ -383,22 +383,11 @@ func (c *Client) prepareLinkWrite(ctx context.Context, id, phrase, target string
 	return linkWrite{source: source, target: other, link: link}, nil
 }
 
-func noSuchLink(fault *Error) *Error {
-	if fault.Code == CodeNotFound {
-		fault.Message = noLinkToRemove
-	}
-	return fault
-}
-
 const noLinkToRemove = "the issue holds no link under that phrase to the target issue, and a link is taken away " +
 	"from the end the phrase names"
 
 const oneIssue = "the issue and the target issue are one issue, and YouTrack answers a link of an issue to itself " +
 	"with a 200 and writes nothing"
-
-type internalIssueIDBody struct {
-	ID string `json:"id"`
-}
 
 type linkIssue struct {
 	a        decodedResponse

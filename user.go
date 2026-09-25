@@ -74,7 +74,7 @@ func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOpti
 		return c.apiGetUser(ctx, login, fields)
 	})
 	if fault != nil {
-		return nil, noSuchLogin(login, fault)
+		return nil, notFoundAs(fault, fmt.Sprintf("the server has no user of the login %s, and %s", quote(login), findByLoginOrName))
 	}
 	return objectNode(user, requested, user.objects[0], nil)
 }
@@ -155,14 +155,6 @@ func readUser(a decodedResponse, object map[string]any) (User, *Error) {
 		return User{}, a.invalid("a user is not of the shape the specification gives it")
 	}
 	return User{ID: id, Login: login, FullName: fullName, Email: email, Banned: banned}, nil
-}
-
-func noSuchLogin(login string, fault *Error) *Error {
-	if fault.Code != CodeNotFound {
-		return fault
-	}
-	message := fmt.Sprintf("the server has no user of the login %s, and %s", quote(login), findByLoginOrName)
-	return &Error{Code: fault.Code, Message: message, Details: fault.Details}
 }
 
 const findByLoginOrName = "a search of the users by what their login or full name begins with finds the one meant"

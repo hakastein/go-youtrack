@@ -113,30 +113,13 @@ type updateArticleBody struct {
 }
 
 func (w articleUpdate) body() []byte {
-	body, _ := json.Marshal(updateArticleBody{Summary: w.summary, Content: w.text(), ParentArticle: w.parentJSON()})
+	var parent *idBody
+	if w.parent != nil {
+		parent = &idBody{ID: w.parent.id}
+	}
+	body, _ := json.Marshal(updateArticleBody{Summary: w.summary, Content: optionalJSON(w.clearsContent, w.content),
+		ParentArticle: optionalJSON(w.clearsParent, parent)})
 	return body
-}
-
-func (w articleUpdate) parentJSON() json.RawMessage {
-	switch {
-	case w.clearsParent:
-		return json.RawMessage("null")
-	case w.parent == nil:
-		return nil
-	}
-	encoded, _ := json.Marshal(articleIDBody{ID: w.parent.id})
-	return encoded
-}
-
-func (w articleUpdate) text() json.RawMessage {
-	switch {
-	case w.clearsContent:
-		return json.RawMessage("null")
-	case w.content == nil:
-		return nil
-	}
-	encoded, _ := json.Marshal(*w.content)
-	return encoded
 }
 
 func (w articleUpdate) verifyFields() []requestedField {
@@ -178,15 +161,11 @@ type createArticleBody struct {
 	Project       articleProject `json:"project"`
 	Summary       string         `json:"summary"`
 	Content       string         `json:"content,omitempty"`
-	ParentArticle *articleIDBody `json:"parentArticle,omitempty"`
+	ParentArticle *idBody        `json:"parentArticle,omitempty"`
 }
 
 type articleProject struct {
 	ShortName string `json:"shortName"`
-}
-
-type articleIDBody struct {
-	ID string `json:"id"`
 }
 
 func (w articleCreate) body() []byte {
@@ -196,7 +175,7 @@ func (w articleCreate) body() []byte {
 		Content: w.content,
 	}
 	if w.parent != nil {
-		filed.ParentArticle = &articleIDBody{ID: w.parent.id}
+		filed.ParentArticle = &idBody{ID: w.parent.id}
 	}
 	body, _ := json.Marshal(filed)
 	return body
