@@ -198,7 +198,7 @@ func parseLogin(arg string) (string, *Error) {
 	case arg == "", arg == ".", arg == "..":
 		return "", invalidLoginFault(arg, "would reach an endpoint other than the one user it names")
 	case strings.ContainsFunc(arg, unicode.IsSpace):
-		return "", invalidLoginFault(arg, "holds a space, which no login does, and "+findByName(arg))
+		return "", invalidLoginFault(arg, "holds a space, which no login does, and "+findByLoginOrName)
 	case isInternalID(arg):
 		return "", invalidLoginFault(arg, "is the internal id of a user, which the server reads in place of a login")
 	case isHubID(arg):
