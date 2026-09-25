@@ -273,10 +273,8 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 		return nil, fault
 	}
 	received := decoded.objects
-	if len(received) > page.Limit+truncationProbe {
-		details := []Pair{{Key: "limit", Value: intNode(page.Limit)}, {Key: "returned", Value: intNode(len(received))}}
-		message := "more activities arrived than the limit and the one record asked for past it"
-		return nil, &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
+	if fault := moreThanAsked(activitiesPlural, page.Limit, int(probing.top), len(received)); fault != nil {
+		return nil, fault
 	}
 	rows, fault := activityRows(decoded, categories, values)
 	if fault != nil {

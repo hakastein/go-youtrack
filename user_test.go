@@ -257,6 +257,20 @@ func TestFindUsersRefusesALimitItCannotSend(t *testing.T) {
 	}
 }
 
+func TestFindUsersRefusesMoreUsersThanTheLimit(t *testing.T) {
+	t.Parallel()
+	server := fake.Serve(t, fake.JSON(http.StatusOK, `[`+
+		`{"$type":"User","id":"1-1","login":"first","fullName":"First","email":null,"banned":false},`+
+		`{"$type":"User","id":"1-2","login":"second","fullName":"Second","email":null,"banned":false}]`))
+
+	_, err := client(t, server).Users.Find(t.Context(), "", 1)
+
+	assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
+		{Key: "limit", Value: number(1)},
+		{Key: "returned", Value: number(2)},
+	}}, errorOf(t, err))
+}
+
 func TestFindUsersRefusesUsersOfAnotherShape(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

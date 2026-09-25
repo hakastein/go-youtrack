@@ -128,10 +128,8 @@ func (l list) fetch(ctx context.Context) (*Node, *Error) {
 		return nil, fault
 	}
 	returned := len(page)
-	if returned > l.page.Limit {
-		details := []Pair{{Key: "limit", Value: intNode(l.page.Limit)}, {Key: "returned", Value: intNode(returned)}}
-		message := "more " + l.plural + " arrived than the limit asked for"
-		return nil, &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
+	if fault := moreThanAsked(l.plural, l.page.Limit, l.page.Limit, returned); fault != nil {
+		return nil, fault
 	}
 	found := counted(l.page.Skip + returned)
 	pageIsFull := returned == l.page.Limit
@@ -146,6 +144,14 @@ func (l list) fetch(ctx context.Context) (*Node, *Error) {
 		}
 	}
 	return listDocument(l.plural, found, found.truncationAt(l.page.Skip+returned), page), nil
+}
+
+func moreThanAsked(plural string, limit, top, returned int) *Error {
+	if returned <= top {
+		return nil
+	}
+	details := []Pair{{Key: "limit", Value: intNode(limit)}, {Key: "returned", Value: intNode(returned)}}
+	return &Error{Code: CodeUpstreamInvalid, Message: "more " + plural + " arrived than were asked for", Details: details}
 }
 
 func countedListDocument(plural string, found count, records []*Node) *Node {

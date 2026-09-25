@@ -13,6 +13,7 @@ const (
 
 const (
 	meSchema    = "Me"
+	usersPlural = "users"
 	fullNameKey = "fullName"
 	emailKey    = "email"
 	bannedKey   = "banned"
@@ -88,7 +89,7 @@ func (s *UsersService) list(ctx context.Context, query string, opts ListUsersOpt
 		return nil, fault
 	}
 	c := s.client
-	return c.listPage(ctx, c.spec, "users", "[]"+userSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	return c.listPage(ctx, c.spec, usersPlural, "[]"+userSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.apiGetUsers(ctx, query, fields, w)
 	})
 }
@@ -118,6 +119,9 @@ func (s *UsersService) find(ctx context.Context, query string, limit int) ([]Use
 		return c.apiGetUsers(ctx, query, fields, page.window())
 	})
 	if fault != nil {
+		return nil, fault
+	}
+	if fault := moreThanAsked(usersPlural, page.Limit, page.Limit, len(a.objects)); fault != nil {
 		return nil, fault
 	}
 	users := make([]User, 0, len(a.objects))
