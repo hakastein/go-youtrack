@@ -11,6 +11,12 @@ import (
 	"unicode/utf8"
 )
 
+// WriteOptions: Fields is the fields= expression of the document a write answers with, empty for the defaults of
+// the operation and +x for them and x.
+type WriteOptions struct {
+	Fields string
+}
+
 const (
 	summaryKey          = "summary"
 	descriptionKey      = "description"
