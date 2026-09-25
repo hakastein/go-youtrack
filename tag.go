@@ -12,11 +12,12 @@ import (
 	"unicode/utf8"
 )
 
-const TagListFields = "name,owner(login),readSharingSettings(permittedGroups(name),permittedUsers(login))"
-
-const TagCreateFields = TagListFields +
-	",updateSharingSettings(permittedGroups(name),permittedUsers(login))" +
-	",tagSharingSettings(permittedGroups(name),permittedUsers(login))"
+const (
+	TagListFields   = "name,owner(login),readSharingSettings(permittedGroups(name),permittedUsers(login))"
+	TagCreateFields = TagListFields +
+		",updateSharingSettings(permittedGroups(name),permittedUsers(login))" +
+		",tagSharingSettings(permittedGroups(name),permittedUsers(login))"
+)
 
 const (
 	tagsPlural = "tags"
@@ -33,109 +34,121 @@ const (
 	updateSharingKey   = "updateSharingSettings"
 	tagSharingKey      = "tagSharingSettings"
 	permittedGroupsKey = "permittedGroups"
-	visibleForFlag     = "--visible-for"
-	updateableByFlag   = "--updateable-by"
-	taggableByFlag     = "--taggable-by"
 )
 
-func ListTags(expression string, page Page) (Call, *Error) {
-	page, fault := page.parse()
-	if fault != nil {
-		return nil, fault
-	}
-	requested, fault := tagFields(expression, TagListFields)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listTags(ctx, spec, requested, page)
-	}, nil
+// ListTagsOptions: Fields is a fields= expression, empty for TagListFields and +x for them and x.
+type ListTagsOptions struct {
+	Fields string
+	Page   Page
 }
 
-func tagFields(expression string, defaults string) ([]requestedField, *Error) {
-	if expression == "" {
-		return parseDefault(defaults, false)
-	}
-	return parseFields(expression, defaults)
-}
-
-func (c *Client) listTags(ctx context.Context, spec *schemas, requested []requestedField, page Page) (*Node, *Error) {
-	return c.listPage(ctx, spec, tagsPlural, "[]"+tagSchema, requested, page, c.apiGetTags)
-}
-
-func CreateTag(name string, shared TagSharing, expression string) (Call, *Error) {
-	if fault := rejectNoTagName(name); fault != nil {
-		return nil, fault
-	}
-	if fault := shared.rejectNoGroupName(); fault != nil {
-		return nil, fault
-	}
-	requested, fault := tagFields(expression, TagCreateFields)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.createTag(ctx, spec, name, shared, requested)
-	}, nil
-}
-
+// TagSharing names the groups a new tag is shared with, a set with no group leaving the right to the owner alone.
+// A group name resolves in any letter case, an exact spelling settling a tie.
 type TagSharing struct {
-	VisibleFor  VisibleFor
-	UpdatableBy UpdatableBy
-	TaggableBy  TaggableBy
-}
-
-// The tag's visibleFor member holds one group and grants no right, so VisibleFor fills readSharingSettings.
-type (
+	// VisibleFor fills readSharingSettings: the visibleFor member of a tag holds one group and grants no right.
 	VisibleFor  []string
 	UpdatableBy []string
 	TaggableBy  []string
-)
+}
 
-func (shared TagSharing) rejectNoGroupName() *Error {
-	for _, flag := range []struct {
-		name   string
-		values []string
+// TagOptions: the name of a tag resolves among the tags the token is shown in any letter case, an exact spelling
+// settling a tie; OwnedBy, the login of the user the tag belongs to, narrows it, and empty leaves every owner.
+type TagOptions struct {
+	OwnedBy string
+}
+
+// List is a page of the tags the token owns or that are shared with it; a name may repeat across owners.
+func (s *TagsService) List(ctx context.Context, opts *ListTagsOptions) (*Node, error) {
+	return result(s.list(ctx, optionsOf(opts)))
+}
+
+// Create makes a tag of the owner of the token. YouTrack rejects a name another tag of that owner carries in any
+// letter case.
+func (s *TagsService) Create(ctx context.Context, name string, sharing TagSharing, opts *WriteOptions) (*Node, error) {
+	return result(s.create(ctx, name, sharing, optionsOf(opts)))
+}
+
+// Delete deletes the tag everywhere it hangs; the token of an administrator deletes a tag of another user as well.
+func (s *TagsService) Delete(ctx context.Context, name string, opts *TagOptions) (*Node, error) {
+	return result(s.delete(ctx, name, optionsOf(opts)))
+}
+
+// Add hangs the tag on owner, the readable id of an issue or of an article.
+func (s *TagsService) Add(ctx context.Context, owner, name string, opts *TagOptions) (*Node, error) {
+	return result(s.tagging(ctx, owner, name, optionsOf(opts), (*Client).addTag))
+}
+
+// Remove takes the tag off owner, the readable id of an issue or of an article; the tag itself stays.
+func (s *TagsService) Remove(ctx context.Context, owner, name string, opts *TagOptions) (*Node, error) {
+	return result(s.tagging(ctx, owner, name, optionsOf(opts), (*Client).removeTag))
+}
+
+func (s *TagsService) list(ctx context.Context, opts ListTagsOptions) (*Node, *Error) {
+	page, fault := opts.Page.parse()
+	if fault != nil {
+		return nil, fault
+	}
+	requested, fault := parseFields(opts.Fields, TagListFields)
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	return c.listPage(ctx, c.spec, tagsPlural, "[]"+tagSchema, requested, page, c.apiGetTags)
+}
+
+func (s *TagsService) create(ctx context.Context, name string, sharing TagSharing, opts WriteOptions) (*Node, *Error) {
+	if fault := rejectNoTagName(name); fault != nil {
+		return nil, fault
+	}
+	if fault := sharing.rejectNoGroupName(); fault != nil {
+		return nil, fault
+	}
+	requested, fault := parseFields(opts.Fields, TagCreateFields)
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	written, fault := c.resolveTagCreate(ctx, name, sharing)
+	if fault != nil {
+		return nil, fault
+	}
+	body := written.body()
+	return c.write(ctx, c.spec, tagSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiCreateTag(ctx, body, fields)
+	}, written.verify, writeResultNode(requested))
+}
+
+func (sharing TagSharing) rejectNoGroupName() *Error {
+	for _, set := range []struct {
+		right  string
+		groups []string
 	}{
-		{name: visibleForFlag, values: shared.VisibleFor},
-		{name: updateableByFlag, values: shared.UpdatableBy},
-		{name: taggableByFlag, values: shared.TaggableBy},
+		{right: "see the tag", groups: sharing.VisibleFor},
+		{right: "update the tag", groups: sharing.UpdatableBy},
+		{right: "tag with it", groups: sharing.TaggableBy},
 	} {
-		if slices.Contains(flag.values, "") {
-			message := flag.name + " is empty, and YouTrack keeps no group under an empty name: it takes the " +
-				"name of a group the tag is shared with"
+		if slices.Contains(set.groups, "") {
+			message := "a group to " + set.right + " goes by an empty name, and YouTrack keeps no group under an " +
+				"empty name: the tag is shared with a group by its name"
 			return &Error{Code: CodeBadUsage, Message: message}
 		}
 	}
 	return nil
 }
 
-func (shared TagSharing) any() bool {
-	return len(shared.VisibleFor) > 0 || len(shared.UpdatableBy) > 0 || len(shared.TaggableBy) > 0
+func (sharing TagSharing) any() bool {
+	return len(sharing.VisibleFor) > 0 || len(sharing.UpdatableBy) > 0 || len(sharing.TaggableBy) > 0
 }
 
-func (c *Client) createTag(ctx context.Context, spec *schemas, name string, shared TagSharing, requested []requestedField) (*Node, *Error) {
-	written, fault := c.resolveTagCreate(ctx, spec, name, shared)
-	if fault != nil {
-		return nil, fault
-	}
-	body := written.body()
-	return c.write(ctx, spec, tagSchema, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiCreateTag(ctx, body, fields)
-	}, written.verify, writeResultNode(requested))
-}
-
-func (c *Client) resolveTagCreate(ctx context.Context, spec *schemas, name string, shared TagSharing) (tagCreate, *Error) {
-	if !shared.any() {
+func (c *Client) resolveTagCreate(ctx context.Context, name string, sharing TagSharing) (tagCreate, *Error) {
+	if !sharing.any() {
 		return tagCreate{name: name}, nil
 	}
-	catalogue, fault := c.listGroups(ctx, spec)
+	catalogue, fault := c.listGroups(ctx)
 	if fault != nil {
 		return tagCreate{}, fault
 	}
-	groups, fault := catalogue.resolve(shared)
+	groups, fault := catalogue.resolve(sharing)
 	if fault != nil {
 		return tagCreate{}, fault
 	}
@@ -256,15 +269,26 @@ func sameIDsInAnyOrder(sent, received []string) bool {
 	return slices.Equal(slices.Sorted(slices.Values(sent)), slices.Sorted(slices.Values(received)))
 }
 
-func DeleteTag(name string, ownedBy *string) (Call, *Error) {
-	sought, fault := parseTagRef(name, ownedBy)
+func (s *TagsService) delete(ctx context.Context, name string, opts TagOptions) (*Node, *Error) {
+	sought, fault := parseTagRef(name, opts)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.deleteTag(ctx, spec, sought)
-	}, nil
+	c := s.client
+	found, fault := c.resolveTag(ctx, sought)
+	if fault != nil {
+		return nil, fault
+	}
+	tag, fault := found.pathSafeID()
+	if fault != nil {
+		return nil, fault
+	}
+	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
+		return c.apiDeleteTag(ctx, tag)
+	}); fault != nil {
+		return nil, found.withDetails(fault)
+	}
+	return objectNode(found.response, printedTagFields(), found.object, nil)
 }
 
 type tagRef struct {
@@ -272,17 +296,11 @@ type tagRef struct {
 	owner string
 }
 
-func parseTagRef(name string, ownedBy *string) (tagRef, *Error) {
+func parseTagRef(name string, opts TagOptions) (tagRef, *Error) {
 	if fault := rejectNoTagName(name); fault != nil {
 		return tagRef{}, fault
 	}
-	if ownedBy == nil {
-		return tagRef{name: name}, nil
-	}
-	if *ownedBy == "" {
-		return tagRef{}, &Error{Code: CodeBadUsage, Message: emptyTagOwner}
-	}
-	return tagRef{name: name, owner: *ownedBy}, nil
+	return tagRef{name: name, owner: opts.OwnedBy}, nil
 }
 
 func rejectNoTagName(name string) *Error {
@@ -307,33 +325,14 @@ func isTagNameSpace(r rune) bool {
 }
 
 const (
-	emptyTagName    = "--name is empty, and YouTrack keeps no tag under an empty name"
-	tagNameOfNoUTF8 = "--name is no valid UTF-8, and no name YouTrack keeps is: bytes that are none name no tag " +
-		"there could be"
-	emptyTagOwner = "--owned-by is empty, and YouTrack keeps no user under an empty login: it takes the login of " +
-		"the user the tag belongs to"
+	emptyTagName    = "the name of the tag is empty, and YouTrack keeps no tag under an empty name"
+	tagNameOfNoUTF8 = "the name of the tag is no valid UTF-8, and no name YouTrack keeps is: bytes that are none " +
+		"name no tag there could be"
 )
 
 func tagNameEdgeMessage(where string, r rune) string {
-	return fmt.Sprintf("--name %s with U+%04X, which YouTrack cuts off the edges of the name of a tag: the tag "+
-		"would be kept under a name other than the one written, and no tag it keeps carries one there", where, r)
-}
-
-func (c *Client) deleteTag(ctx context.Context, spec *schemas, sought tagRef) (*Node, *Error) {
-	found, fault := c.resolveTag(ctx, spec, sought)
-	if fault != nil {
-		return nil, fault
-	}
-	tag, fault := found.pathSafeID()
-	if fault != nil {
-		return nil, fault
-	}
-	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return c.apiDeleteTag(ctx, tag)
-	}); fault != nil {
-		return nil, found.withDetails(fault)
-	}
-	return objectNode(found.response, printedTagFields(), found.object, nil)
+	return fmt.Sprintf("the name of the tag %s with U+%04X, which YouTrack cuts off the edges of the name of a tag: "+
+		"the tag would be kept under a name other than the one written, and no tag it keeps carries one there", where, r)
 }
 
 type tagTarget struct {
@@ -356,36 +355,25 @@ func tagTargetOf(kind ownerKind) tagTarget {
 	return issueTagTarget()
 }
 
-func AddTag(id, name string, ownedBy *string) (Call, *Error) {
-	return tagWrite(id, name, ownedBy, (*Client).addTag)
-}
-
-func RemoveTag(id, name string, ownedBy *string) (Call, *Error) {
-	return tagWrite(id, name, ownedBy, (*Client).removeTag)
-}
-
-func tagWrite(id, name string, ownedBy *string, write func(*Client, context.Context, *schemas, owner, tagRef) (*Node, *Error)) (Call, *Error) {
+func (s *TagsService) tagging(ctx context.Context, id, name string, opts TagOptions, write func(*Client, context.Context, owner, tagRef) (*Node, *Error)) (*Node, *Error) {
 	at, fault := parseOwner(id)
 	if fault != nil {
 		return nil, fault
 	}
-	sought, fault := parseTagRef(name, ownedBy)
+	sought, fault := parseTagRef(name, opts)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return write(c, ctx, spec, at, sought)
-	}, nil
+	return write(s.client, ctx, at, sought)
 }
 
-func (c *Client) addTag(ctx context.Context, spec *schemas, at owner, sought tagRef) (*Node, *Error) {
-	hung, fault := c.resolveTagging(ctx, spec, at, sought)
+func (c *Client) addTag(ctx context.Context, at owner, sought tagRef) (*Node, *Error) {
+	hung, fault := c.resolveTagging(ctx, at, sought)
 	if fault != nil {
 		return nil, fault
 	}
 	body := hung.body()
-	node, fault := c.write(ctx, spec, tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+	node, fault := c.write(ctx, c.spec, tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiAddTag(ctx, hung.target.kind, hung.on, body, fields)
 	}, hung.verify, hung.render(addedKey))
 	if fault != nil {
@@ -394,8 +382,8 @@ func (c *Client) addTag(ctx context.Context, spec *schemas, at owner, sought tag
 	return node, nil
 }
 
-func (c *Client) removeTag(ctx context.Context, spec *schemas, at owner, sought tagRef) (*Node, *Error) {
-	off, fault := c.resolveTagging(ctx, spec, at, sought)
+func (c *Client) removeTag(ctx context.Context, at owner, sought tagRef) (*Node, *Error) {
+	off, fault := c.resolveTagging(ctx, at, sought)
 	if fault != nil {
 		return nil, fault
 	}
@@ -416,17 +404,17 @@ func notOnTheOwner(kind ownerKind, fault *Error) *Error {
 		return fault
 	}
 	fault.Message = fmt.Sprintf("the tag is not on the %s, and the tag itself stands: nothing was taken off, and "+
-		"which tags the %s carries is read by ytrack %s show --fields tags(name)", kind, kind, kind)
+		"the tags the %s carries are under its field tags", kind, kind)
 	return fault
 }
 
-func (c *Client) resolveTagging(ctx context.Context, spec *schemas, at owner, sought tagRef) (tagOp, *Error) {
+func (c *Client) resolveTagging(ctx context.Context, at owner, sought tagRef) (tagOp, *Error) {
 	target := tagTargetOf(at.kind)
-	on, fault := c.readTagOwner(ctx, spec, target, at)
+	on, fault := c.readTagOwner(ctx, target, at)
 	if fault != nil {
 		return tagOp{}, fault
 	}
-	found, fault := c.resolveTag(ctx, spec, sought)
+	found, fault := c.resolveTag(ctx, sought)
 	if fault != nil {
 		return tagOp{}, fault
 	}
@@ -437,9 +425,9 @@ func (c *Client) resolveTagging(ctx context.Context, spec *schemas, at owner, so
 	return tagOp{on: on, target: target, found: found, tag: tag}, nil
 }
 
-func (c *Client) readTagOwner(ctx context.Context, spec *schemas, target tagTarget, at owner) (readableID, *Error) {
+func (c *Client) readTagOwner(ctx context.Context, target tagTarget, at owner) (readableID, *Error) {
 	requested := []requestedField{{name: idReadableKey}}
-	a, fault := c.request(ctx, spec, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, c.spec, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.getOwnerToTag(ctx, at, fields)
 	})
 	if fault != nil {
@@ -543,9 +531,9 @@ type tagCandidate struct {
 	owner string
 }
 
-func (c *Client) resolveTag(ctx context.Context, spec *schemas, sought tagRef) (resolvedTag, *Error) {
+func (c *Client) resolveTag(ctx context.Context, sought tagRef) (resolvedTag, *Error) {
 	requested := resolvedTagFields()
-	a, fault := c.request(ctx, spec, "[]"+tagSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, c.spec, "[]"+tagSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetTags(ctx, fields, allRecords)
 	})
 	if fault != nil {
@@ -700,8 +688,8 @@ func (r resolvedTag) pathSafeID() (tagID, *Error) {
 		message := fmt.Sprintf("the id of the tag named %s is not text", quote(r.name))
 		return tagID{}, shapeFailure(r.response.httpResponse, r.response.body, message)
 	case !isInternalID(id):
-		message := fmt.Sprintf("the tag named %s arrived under the id %s, and a deletion is addressed by the "+
-			"internal id the server gives every entity, which is digits, a dash and digits", quote(r.name), quote(id))
+		message := fmt.Sprintf("the tag named %s arrived under the id %s, and a tag is addressed by the internal id "+
+			"the server gives every entity, which is digits, a dash and digits", quote(r.name), quote(id))
 		return tagID{}, shapeFailure(r.response.httpResponse, r.response.body, message)
 	}
 	return tagID{id: id}, nil
@@ -726,9 +714,9 @@ type groupCatalogue struct {
 	groups   []groupCandidate
 }
 
-func (c *Client) listGroups(ctx context.Context, spec *schemas) (groupCatalogue, *Error) {
+func (c *Client) listGroups(ctx context.Context) (groupCatalogue, *Error) {
 	requested := []requestedField{{name: idKey}, {name: nameKey}}
-	a, fault := c.request(ctx, spec, "[]"+groupSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	a, fault := c.request(ctx, c.spec, "[]"+groupSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetGroups(ctx, fields, topAll)
 	})
 	if fault != nil {
@@ -751,33 +739,23 @@ func (c *Client) listGroups(ctx context.Context, spec *schemas) (groupCatalogue,
 }
 
 type resolvedSharing struct {
-	readSharing   visibleForIDs
-	updateSharing updatableByIDs
-	tagSharing    taggableByIDs
+	readSharing   []groupID
+	updateSharing []groupID
+	tagSharing    []groupID
 }
 
-type (
-	visibleForIDs  []groupID
-	updatableByIDs []groupID
-	taggableByIDs  []groupID
-)
-
-func (g groupCatalogue) resolve(shared TagSharing) (resolvedSharing, *Error) {
+func (g groupCatalogue) resolve(sharing TagSharing) (resolvedSharing, *Error) {
 	of := &groupResolver{shown: g}
 	groups := resolvedSharing{
-		readSharing:   shared.VisibleFor.resolve(of),
-		updateSharing: shared.UpdatableBy.resolve(of),
-		tagSharing:    shared.TaggableBy.resolve(of),
+		readSharing:   of.resolveDistinct(sharing.VisibleFor),
+		updateSharing: of.resolveDistinct(sharing.UpdatableBy),
+		tagSharing:    of.resolveDistinct(sharing.TaggableBy),
 	}
 	if fault := of.fault(); fault != nil {
 		return resolvedSharing{}, fault
 	}
 	return groups, nil
 }
-
-func (names VisibleFor) resolve(r *groupResolver) visibleForIDs   { return r.resolveDistinct(names) }
-func (names UpdatableBy) resolve(r *groupResolver) updatableByIDs { return r.resolveDistinct(names) }
-func (names TaggableBy) resolve(r *groupResolver) taggableByIDs   { return r.resolveDistinct(names) }
 
 type groupResolver struct {
 	shown     groupCatalogue
