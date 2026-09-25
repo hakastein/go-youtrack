@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// added and removed print as lists even where the server sends one value or null.
 const ActivityListFields = "timestamp,author(login),category,field," +
 	"added(id,idReadable,login,name,urls),removed(id,idReadable,login,name,urls)"
 
@@ -80,27 +81,38 @@ func categoryIDs(rows []activityCategory) []string {
 	return ids
 }
 
-func ListActivities(id string, expression string, page Page, asked []string) (Call, *Error) {
-	id, fault := parseIssueID(id)
+// ListActivitiesOptions: Fields is a fields= expression, empty for ActivityListFields and +x for them and x.
+// Categories are names from ActivityCategories in any letter case, empty for all of them.
+type ListActivitiesOptions struct {
+	Fields     string
+	Page       Page
+	Categories []string
+}
+
+// Newest first; the total is null unless the page ends where the history does, and a limit is at most MaxInt32-1.
+func (s *ActivitiesService) List(ctx context.Context, issue string, opts *ListActivitiesOptions) (*Node, error) {
+	return result(s.list(ctx, issue, optionsOf(opts)))
+}
+
+func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListActivitiesOptions) (*Node, *Error) {
+	id, fault := parseIssueID(issue)
 	if fault != nil {
 		return nil, fault
 	}
-	page, fault = page.validate(activityLimit)
+	page, fault := opts.Page.validate(activityLimit)
 	if fault != nil {
 		return nil, fault
 	}
-	categories, fault := resolveCategories(asked)
+	categories, fault := resolveCategories(opts.Categories)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	requested, fault := activityFields(spec, expression)
+	c := s.client
+	requested, fault := activityFields(c.spec, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listActivities(ctx, spec, id, requested, categories, page)
-	}, nil
+	return c.listActivities(ctx, id, requested, categories, page)
 }
 
 func resolveCategories(asked []string) ([]activityCategory, *Error) {
@@ -127,7 +139,7 @@ func resolveCategories(asked []string) ([]activityCategory, *Error) {
 		for _, name := range unresolved {
 			unknown = append(unknown, nearestEntry(categoryKey, name, nearestNames(name, categoryIDs(table))))
 		}
-		message := "the names under unknown are not activity categories ytrack asks for"
+		message := "the names under unknown are none of the activity categories a history is listed in"
 		details := []Pair{{Key: "unknown", Value: NewList(unknown...)}}
 		return nil, &Error{Code: CodeUnknownName, Message: message, Details: details}
 	}
@@ -228,7 +240,7 @@ func activityCount(page Page, received int) count {
 	return counted(page.Skip + received)
 }
 
-func (c *Client) listActivities(ctx context.Context, spec *schemas, id string, requested []requestedField, categories []activityCategory, page Page) (*Node, *Error) {
+func (c *Client) listActivities(ctx context.Context, id string, requested []requestedField, categories []activityCategory, page Page) (*Node, *Error) {
 	own := []requestedField{
 		{name: timestampKey},
 		{name: categoryKey, children: []requestedField{{name: idKey}}},
@@ -246,7 +258,7 @@ func (c *Client) listActivities(ctx context.Context, spec *schemas, id string, r
 	var phrases linkPhrases
 	if named && slices.ContainsFunc(categories, func(row activityCategory) bool { return row.field == fieldLinkPhrase }) {
 		var fault *Error
-		phrases, fault = c.linkPhrases(ctx, spec)
+		phrases, fault = c.linkPhrases(ctx, c.spec)
 		if fault != nil {
 			return nil, fault
 		}
@@ -254,7 +266,7 @@ func (c *Client) listActivities(ctx context.Context, spec *schemas, id string, r
 	sent := withFields(requested, own...)
 	probing := page.window()
 	probing.top += truncationProbe
-	decoded, fault := c.request(ctx, spec, "[]"+activitySchema, sent, func(ctx context.Context, fields string) (*http.Response, error) {
+	decoded, fault := c.request(ctx, c.spec, "[]"+activitySchema, sent, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssueActivities(ctx, id, strings.Join(categoryIDs(categories), ","), fields, probing)
 	})
 	if fault != nil {
@@ -365,7 +377,7 @@ func customFieldValueForm(value any) (valueForm, string) {
 	kind := FieldType{ValueType: ValueType(named)}
 	if !kind.Known() {
 		return valueForm{}, fmt.Sprintf("an activity of %s arrived for a field holding values of the type %s, "+
-			"which is none of the custom-field types ytrack models", customFieldCategory, quote(named))
+			"which is none of the custom-field types whose values the client reads", customFieldCategory, quote(named))
 	}
 	if kind.Named() {
 		return valueForm{fromCustomField: true, asObjects: true}, ""
@@ -470,7 +482,7 @@ func (n converter) oneValue(decl typeRef, field requestedField, value any) (*Nod
 			field.name, n.row.id))
 	case !form.asObjects && isObject:
 		return nil, n.malformed(fmt.Sprintf("a value under the %s of an activity of %s arrived as a JSON object, and "+
-			"the field it stands for holds values ytrack reads itself", field.name, n.row.id))
+			"a change of the field it stands for carries its values bare, as numbers or texts", field.name, n.row.id))
 	case isObject:
 		return n.value(decl, field, value)
 	}
