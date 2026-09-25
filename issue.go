@@ -166,11 +166,11 @@ func (n converter) recordFields(value any) ([]Field, *Error) {
 	slices.SortStableFunc(held, inProjectOrder)
 	fields := make([]Field, 0, len(held))
 	for _, f := range held {
-		values, fault := n.fieldValues(f)
+		field, fault := n.recordField(f)
 		if fault != nil {
 			return nil, fault
 		}
-		fields = append(fields, Field{Name: f.name, LocalizedName: f.localizedName, Type: f.kind, Values: values})
+		fields = append(fields, field)
 	}
 	return fields, nil
 }

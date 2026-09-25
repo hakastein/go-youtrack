@@ -420,10 +420,11 @@ func (w issueWrite) verifyCustomFields(a decodedResponse, wrong []mismatch) ([]m
 			wrong = append(wrong, mismatch{field: name, expected: written.node(), actual: NewNull()})
 			continue
 		}
-		texts, fault := n.valueKeys(field)
+		record, fault := n.recordField(field)
 		if fault != nil {
 			return nil, fault
 		}
+		texts := record.Texts()
 		if sameValueSet(written.kind, written.sentKeys, texts) {
 			continue
 		}
@@ -570,11 +571,7 @@ func readIssueFieldTypes(a decodedResponse) (map[string]string, *Error) {
 		if !isNamed || !isText {
 			return nil, a.invalid(brokenIssueField)
 		}
-		place, isObject := object["projectCustomField"].(map[string]any)
-		if !isObject {
-			return nil, a.invalid(brokenBinding(name))
-		}
-		projectFieldID, isText := place[idKey].(string)
+		projectFieldID, isText := memberOf(object["projectCustomField"], idKey).(string)
 		if !isText {
 			return nil, a.invalid(brokenBinding(name))
 		}

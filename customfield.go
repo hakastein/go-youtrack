@@ -94,50 +94,51 @@ func (n converter) readValue(kind FieldType, item any) (*Node, bool, string) {
 	if reason != "" || !present {
 		return nil, present, reason
 	}
+	return n.printedValue(kind, item, value), true, ""
+}
+
+func (n converter) printedValue(kind FieldType, item any, value Value) *Node {
 	number, isNumber := item.(json.Number)
 	switch {
 	case isNumber && (kind.ValueType == IntegerType || kind.ValueType == FloatType):
-		return NewNumber(number), true, ""
+		return NewNumber(number)
 	case kind.ValueType == TextType:
-		return n.textNode(value.Text), true, ""
+		return n.textNode(value.Text)
 	}
-	return NewString(value.Text), true, ""
+	return NewString(value.Text)
 }
 
-func (n converter) valueKeys(f issueCustomField) ([]string, *Error) {
-	values, fault := n.fieldValues(f)
-	if fault != nil {
-		return nil, fault
-	}
-	texts := make([]string, 0, len(values))
-	for _, value := range values {
-		texts = append(texts, value.Text)
-	}
-	return texts, nil
+func (n converter) recordField(f issueCustomField) (Field, *Error) {
+	field := Field{Name: f.name, LocalizedName: f.localizedName, Type: f.kind}
+	fault := n.eachValue(f, func(_ any, value Value) { field.Values = append(field.Values, value) })
+	return field, fault
 }
 
-func (n converter) fieldValues(f issueCustomField) ([]Value, *Error) {
+func (n converter) eachValue(f issueCustomField, read func(item any, value Value)) *Error {
 	items, fault := n.valuesOf(f)
 	if fault != nil {
-		return nil, fault
+		return fault
 	}
-	var values []Value
 	for _, item := range items {
 		value, present, reason := f.kind.read(item)
 		if reason != "" {
-			return nil, n.unreadableValue(f, reason)
+			return n.response.invalid(fmt.Sprintf("custom field %s: %s", quote(f.name), reason))
 		}
 		if present {
-			values = append(values, value)
+			read(item, value)
 		}
 	}
-	return values, nil
+	return nil
 }
 
 const customFieldSchema = "IssueCustomField"
 
+func fieldTypeFields() requestedField {
+	return requestedField{name: fieldTypeKey, children: []requestedField{{name: valueTypeKey}, {name: isMultiValueKey}}}
+}
+
 func customFieldsAsked(translated bool) []requestedField {
-	held := []requestedField{{name: fieldTypeKey, children: []requestedField{{name: valueTypeKey}, {name: "isMultiValue"}}}}
+	held := []requestedField{fieldTypeFields()}
 	if translated {
 		held = append(held, requestedField{name: localizedNameKey})
 	}
@@ -233,18 +234,11 @@ func (n converter) selectedFieldsNode(asked []requestedField, fields []issueCust
 			return nil, fault
 		}
 		if !present {
-			printed = emptyValue(field.kind)
+			printed = valueNode(nil, field.kind)
 		}
 		pairs = append(pairs, DataPair(field.name, printed))
 	}
 	return NewMap(pairs...), nil
-}
-
-func emptyValue(kind FieldType) *Node {
-	if kind.Multi {
-		return NewList()
-	}
-	return NewNull()
 }
 
 func inProjectOrder(a, b issueCustomField) int {
@@ -306,28 +300,17 @@ func brokenBinding(name string) string {
 
 func readBinding(place map[string]any) (binding string, named fieldInfo, ok bool) {
 	binding, isText := place[idKey].(string)
-	if !isText {
-		return "", fieldInfo{}, false
-	}
-	field, isObject := place[fieldKey].(map[string]any)
-	if !isObject {
-		return "", fieldInfo{}, false
-	}
-	kind, isObject := field[fieldTypeKey].(map[string]any)
-	if !isObject {
-		return "", fieldInfo{}, false
-	}
-	valueType, isText := kind[valueTypeKey].(string)
-	isMultiValue, isFlag := kind["isMultiValue"].(bool)
-	if !isText || !isFlag {
-		return "", fieldInfo{}, false
-	}
+	field, _ := place[fieldKey].(map[string]any)
+	kind, typed := readFieldType(field)
 	translated, isName := readLocalized(field[localizedNameKey])
-	if !isName {
-		return "", fieldInfo{}, false
-	}
-	fieldType := FieldType{ValueType: ValueType(valueType), Multi: isMultiValue}
-	return binding, fieldInfo{localizedName: translated, kind: fieldType}, true
+	return binding, fieldInfo{localizedName: translated, kind: kind}, isText && typed && isName
+}
+
+func readFieldType(field map[string]any) (FieldType, bool) {
+	kind, _ := field[fieldTypeKey].(map[string]any)
+	valueType, isText := kind[valueTypeKey].(string)
+	isMultiValue, isFlag := kind[isMultiValueKey].(bool)
+	return FieldType{ValueType: ValueType(valueType), Multi: isMultiValue}, isText && isFlag
 }
 
 func (n converter) valuesOf(f issueCustomField) ([]any, *Error) {
@@ -348,19 +331,9 @@ func (n converter) valuesOf(f issueCustomField) ([]any, *Error) {
 }
 
 func (n converter) valueNode(f issueCustomField) (*Node, bool, *Error) {
-	values, fault := n.valuesOf(f)
-	if fault != nil {
+	var items []*Node
+	if fault := n.eachValue(f, func(item any, value Value) { items = append(items, n.printedValue(f.kind, item, value)) }); fault != nil {
 		return nil, false, fault
-	}
-	items := make([]*Node, 0, len(values))
-	for _, value := range values {
-		node, present, fault := n.valueKeyNode(f, value)
-		if fault != nil {
-			return nil, false, fault
-		}
-		if present {
-			items = append(items, node)
-		}
 	}
 	switch {
 	case len(items) == 0:
@@ -369,18 +342,6 @@ func (n converter) valueNode(f issueCustomField) (*Node, bool, *Error) {
 		return items[0], true, nil
 	}
 	return NewList(items...), true, nil
-}
-
-func (n converter) valueKeyNode(f issueCustomField, item any) (*Node, bool, *Error) {
-	node, present, reason := n.readValue(f.kind, item)
-	if reason != "" {
-		return nil, false, n.unreadableValue(f, reason)
-	}
-	return node, present, nil
-}
-
-func (n converter) unreadableValue(f issueCustomField, reason string) *Error {
-	return n.response.invalid(fmt.Sprintf("custom field %s: %s", quote(f.name), reason))
 }
 
 const customFieldCatalogue = "[]CustomField"
@@ -400,7 +361,7 @@ func (c *Client) customFieldCatalogue(ctx context.Context) (decodedResponse, []f
 	}
 	catalogue := make([]fieldInfo, 0, len(a.objects))
 	for _, object := range a.objects {
-		found, ok := readCatalogueEntry(object)
+		found, ok := readFieldNames(object)
 		if !ok {
 			return decodedResponse{}, nil, a.invalid(brokenCatalogue)
 		}
@@ -409,16 +370,10 @@ func (c *Client) customFieldCatalogue(ctx context.Context) (decodedResponse, []f
 	return a, catalogue, nil
 }
 
-func readCatalogueEntry(object map[string]any) (fieldInfo, bool) {
-	name, isText := object[nameKey].(string)
-	if !isText {
-		return fieldInfo{}, false
-	}
-	translated, isName := readLocalized(object[localizedNameKey])
-	if !isName {
-		return fieldInfo{}, false
-	}
-	return fieldInfo{name: name, localizedName: translated}, true
+func readFieldNames(field map[string]any) (fieldInfo, bool) {
+	name, isText := field[nameKey].(string)
+	translated, isName := readLocalized(field[localizedNameKey])
+	return fieldInfo{name: name, localizedName: translated}, isText && isName
 }
 
 func (c *Client) resolveCustomFields(ctx context.Context, requested []requestedField) *Error {
@@ -515,35 +470,14 @@ func fieldInfoFields() requestedField {
 	return requestedField{name: fieldKey, children: []requestedField{
 		{name: nameKey},
 		{name: localizedNameKey},
-		{name: fieldTypeKey, children: []requestedField{{name: valueTypeKey}, {name: "isMultiValue"}}},
+		fieldTypeFields(),
 	}}
 }
 
 func readFieldInfo(object map[string]any) (fieldInfo, bool) {
-	field, isObject := object[fieldKey].(map[string]any)
-	if !isObject {
-		return fieldInfo{}, false
-	}
-	name, isText := field[nameKey].(string)
-	if !isText {
-		return fieldInfo{}, false
-	}
-	kind, isObject := field[fieldTypeKey].(map[string]any)
-	if !isObject {
-		return fieldInfo{}, false
-	}
-	valueType, isText := kind[valueTypeKey].(string)
-	if !isText {
-		return fieldInfo{}, false
-	}
-	isMultiValue, isBool := kind["isMultiValue"].(bool)
-	if !isBool {
-		return fieldInfo{}, false
-	}
-	translated, isName := readLocalized(field[localizedNameKey])
-	if !isName {
-		return fieldInfo{}, false
-	}
-	fieldType := FieldType{ValueType: ValueType(valueType), Multi: isMultiValue}
-	return fieldInfo{name: name, localizedName: translated, kind: fieldType}, true
+	field, _ := object[fieldKey].(map[string]any)
+	named, isNamed := readFieldNames(field)
+	kind, typed := readFieldType(field)
+	named.kind = kind
+	return named, isNamed && typed
 }

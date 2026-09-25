@@ -20,6 +20,7 @@ const (
 	typeKey          = "type"
 	fieldTypeKey     = "fieldType"
 	valueTypeKey     = "valueType"
+	isMultiValueKey  = "isMultiValue"
 	customFieldsKey  = "customFields"
 	ordinalKey       = "ordinal"
 	canBeEmptyKey    = "canBeEmpty"
