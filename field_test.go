@@ -35,12 +35,12 @@ func listedFields(records ...*youtrack.Node) *youtrack.Node {
 		youtrack.Pair{Key: "fields", Value: youtrack.NewList(records...)})
 }
 
-func unknownField(t *testing.T, server *fake.Server, asked string, nearest ...string) youtrack.Error {
+func unresolvedField(t *testing.T, server *fake.Server, key string, entry *youtrack.Node) youtrack.Error {
 	t.Helper()
 	return youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{
 		lastRequest(t, server),
 		{Key: "project", Value: youtrack.NewString("DEV")},
-		{Key: "unknown", Value: youtrack.NewList(withNearest("field", asked, nearest...))},
+		{Key: key, Value: youtrack.NewList(entry)},
 	}}
 }
 
@@ -359,19 +359,21 @@ func TestShowAndBundleRefuseAProjectWithNoFields(t *testing.T) {
 	}
 }
 
-func TestShowAndBundleNameTheCandidatesOfANameTheyCannotResolve(t *testing.T) {
+func TestShowAndBundleRefuseANameNoSingleFieldAnswersTo(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
 		asked    string
 		metadata string
-		named    []string
+		key      string
+		entry    *youtrack.Node
 	}{
 		{
 			name:     "a name of two fields alike but for letter case",
 			asked:    "upper",
 			metadata: projectJSON(enumField("1-1", "Upper"), enumField("1-2", "UPPER"), enumField("1-3", "Uppe")),
-			named:    []string{"UPPER", "Upper"},
+			key:      "ambiguous",
+			entry:    issueCandidates("upper", "UPPER", "Upper"),
 		},
 		{
 			name:  "a translation of two fields",
@@ -380,7 +382,8 @@ func TestShowAndBundleNameTheCandidatesOfANameTheyCannotResolve(t *testing.T) {
 				metaField{id: "1-1", name: "First", translation: `"Shared"`, valueType: "enum"},
 				metaField{id: "1-2", name: "Second", translation: `"Shared"`, valueType: "enum"},
 				enumField("1-3", "Share")),
-			named: []string{"First", "Second"},
+			key:   "ambiguous",
+			entry: issueCandidates("shared", "First", "Second"),
 		},
 		{
 			name:  "a name of no field, beside five names nearer than the rest",
@@ -388,13 +391,15 @@ func TestShowAndBundleNameTheCandidatesOfANameTheyCannotResolve(t *testing.T) {
 			metadata: projectJSON(
 				enumField("1-1", "Typl"), enumField("1-2", "Typi"), enumField("1-3", "Typf"), enumField("1-4", "Ty"),
 				enumField("1-5", "Typk"), enumField("1-6", "Typg"), enumField("1-7", "Typj"), enumField("1-8", "Typh")),
-			named: []string{"Typf", "Typg", "Typh", "Typi", "Typj"},
+			key:   "unknown",
+			entry: withNearest("field", "Type", "Typf", "Typg", "Typh", "Typi", "Typj"),
 		},
 		{
 			name:     "a name of no field, beside one name nearer than another",
 			asked:    "Type",
 			metadata: projectJSON(enumField("1-1", "Typf"), enumField("1-2", "Typxyz")),
-			named:    []string{"Typf"},
+			key:      "unknown",
+			entry:    withNearest("field", "Type", "Typf"),
 		},
 	}
 	for _, reader := range fieldReaders() {
@@ -405,7 +410,7 @@ func TestShowAndBundleNameTheCandidatesOfANameTheyCannotResolve(t *testing.T) {
 
 				_, err := reader.read(t.Context(), client(t, server), "DEV", tc.asked)
 
-				assert.Equal(t, unknownField(t, server, tc.asked, tc.named...), errorOf(t, err))
+				assert.Equal(t, unresolvedField(t, server, tc.key, tc.entry), errorOf(t, err))
 				assert.Equal(t, []string{projectPath}, server.Paths())
 			})
 		}
@@ -631,7 +636,7 @@ func TestShowAndBundleRefuseANameOnlyAfterReadingTheMetadataAgain(t *testing.T) 
 
 				_, err = reader.read(t.Context(), cached(t, server, root), "DEV", tc.asked)
 
-				assert.Equal(t, unknownField(t, server, tc.asked, tc.nearest...), errorOf(t, err))
+				assert.Equal(t, unresolvedField(t, server, "unknown", withNearest("field", tc.asked, tc.nearest...)), errorOf(t, err))
 				assert.Equal(t, tc.paths, server.Paths())
 			})
 		}

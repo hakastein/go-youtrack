@@ -480,38 +480,59 @@ func hasDefaultNames(spec *schemas, requested []requestedField) bool {
 
 func resolveNames(a decodedResponse, requested, asked []requestedField, catalogue []fieldInfo) ([]requestedField, *Error) {
 	var resolved []requestedField
-	var unknown, ambiguous []*Node
+	names := resolvingNames(catalogue)
 	for _, name := range asked {
 		if !fromCaller(name) {
 			resolved = merge(resolved, name)
 			continue
 		}
-		places := findMatches(name.name, catalogue)
-		written := fieldPath([]string{customFieldsKey}, formatName(name))
-		switch {
-		case len(places) == 0:
-			unknown = append(unknown, unknownEntry(written, nearestNamed(name.name, catalogue)))
-		case len(places) > 1:
-			ambiguous = append(ambiguous, ambiguousEntry(written, canonical(pick(catalogue, places))))
-		default:
-			resolved = merge(resolved, requestedField{name: catalogue[places[0]].name, fromCaller: true})
+		if at, found := names.place(name.name, fieldPath([]string{customFieldsKey}, formatName(name))); found {
+			resolved = merge(resolved, requestedField{name: catalogue[at].name, fromCaller: true})
 		}
 	}
-	switch {
-	case len(unknown) > 0:
-		message := "the names under unknown are not custom fields of the instance"
-		return nil, unresolvedNames(a, requested, "unknown", message, unknown)
-	case len(ambiguous) > 0:
-		message := "the names under ambiguous are the names of more than one custom field of the instance each"
-		return nil, unresolvedNames(a, requested, "ambiguous", message, ambiguous)
+	against := Pair{Key: "fields", Value: NewString(formatFields(requested))}
+	if fault := names.fault(sentRequest(a.httpResponse), against, "the instance"); fault != nil {
+		return nil, fault
 	}
 	return resolved, nil
 }
 
-func unresolvedNames(a decodedResponse, requested []requestedField, key, message string, entries []*Node) *Error {
-	against := Pair{Key: "fields", Value: NewString(formatFields(requested))}
-	sent := requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted())
-	return unknownNames(sent, against, key, message, entries)
+type nameResolver struct {
+	catalogue []fieldInfo
+	reported  map[string]bool
+	unknown   []*Node
+	ambiguous []*Node
+}
+
+func resolvingNames(catalogue []fieldInfo) *nameResolver {
+	return &nameResolver{catalogue: catalogue, reported: map[string]bool{}}
+}
+
+func (r *nameResolver) place(name, written string) (int, bool) {
+	places := findMatches(name, r.catalogue)
+	switch {
+	case len(places) == 1:
+		return places[0], true
+	case r.reported[written]:
+	case len(places) == 0:
+		r.unknown = append(r.unknown, unknownEntry(written, nearestNamed(name, r.catalogue)))
+	default:
+		r.ambiguous = append(r.ambiguous, ambiguousEntry(written, canonical(pick(r.catalogue, places))))
+	}
+	r.reported[written] = true
+	return 0, false
+}
+
+func (r *nameResolver) fault(sent, against Pair, among string) *Error {
+	switch {
+	case len(r.unknown) > 0:
+		message := "the names under unknown are not custom fields of " + among
+		return unknownNames(sent, against, "unknown", message, r.unknown)
+	case len(r.ambiguous) > 0:
+		message := "the names under ambiguous are the names of more than one custom field of " + among + " each"
+		return unknownNames(sent, against, "ambiguous", message, r.ambiguous)
+	}
+	return nil
 }
 
 func unknownNames(sent, against Pair, key, message string, entries []*Node) *Error {

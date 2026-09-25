@@ -132,10 +132,12 @@ func (s *FieldsService) readField(ctx context.Context, code, name string, ask fi
 
 func (s *FieldsService) readFieldFrom(ctx context.Context, code, name string, ask fieldAsk, metadata *Metadata, sent Pair) (fieldRead, *Error, bool) {
 	fields := projectFieldsOf(metadata)
-	found, ok := lookUp(name, fields)
+	names := resolvingNames(fieldInfos(fields))
+	at, ok := names.place(name, name)
 	if !ok {
-		return refuseUnlessCached(metadata, unresolved(sent, code, name, fields))
+		return refuseUnlessCached(metadata, names.fault(sent, Pair{Key: projectKey, Value: NewString(code)}, "the project"))
 	}
+	found := fields[at]
 	if !found.hasValidID() {
 		return refuseUnlessCached(metadata, metadataInvalid(sent, invalidFieldID(found.id)))
 	}
@@ -184,29 +186,6 @@ func metadataInvalid(sent Pair, message string) *Error {
 // looks like.
 func isStale(fault *Error) bool {
 	return fault.Code == CodeNotFound || fault.Code == CodeUpstreamInvalid
-}
-
-func lookUp(name string, fields []customField) (customField, bool) {
-	places := findMatches(name, fieldInfos(fields))
-	if len(places) != 1 {
-		return customField{}, false
-	}
-	return fields[places[0]], true
-}
-
-func unresolved(sent Pair, code, name string, fields []customField) *Error {
-	catalogue := fieldInfos(fields)
-	if places := findMatches(name, catalogue); len(places) > 0 {
-		message := "the name under unknown belongs to more than one custom field of the project"
-		return unknownField(sent, code, name, canonical(pick(catalogue, places)), message)
-	}
-	message := "the name under unknown is not a custom field of the project"
-	return unknownField(sent, code, name, nearestNamed(name, catalogue), message)
-}
-
-func unknownField(sent Pair, code, name string, nearest []string, message string) *Error {
-	against := Pair{Key: "project", Value: NewString(code)}
-	return unknownNames(sent, against, "unknown", message, []*Node{unknownEntry(name, nearest)})
 }
 
 func fieldInfos(fields []customField) []fieldInfo {

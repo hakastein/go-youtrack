@@ -730,37 +730,20 @@ func (p projectMetadata) resolveFields(named []namedValue, cleared []string, iss
 	}
 	given := make([][]string, len(p.fields))
 	emptied := make([]bool, len(p.fields))
-	var unknown, ambiguous []*Node
-	reported := make(map[string]bool, len(named)+len(cleared))
-	place := func(name string) (int, bool) {
-		places := findMatches(name, catalogue)
-		switch {
-		case len(places) == 1:
-			return places[0], true
-		case reported[name]:
-		case len(places) == 0:
-			unknown = append(unknown, unknownEntry(name, nearestNamed(name, catalogue)))
-		default:
-			ambiguous = append(ambiguous, ambiguousEntry(name, canonical(pick(catalogue, places))))
-		}
-		reported[name] = true
-		return 0, false
-	}
+	names := resolvingNames(catalogue)
 	for _, addressed := range named {
-		if at, found := place(addressed.name); found {
+		if at, found := names.place(addressed.name, addressed.name); found {
 			given[at] = append(given[at], addressed.value)
 		}
 	}
 	for _, name := range cleared {
-		if at, found := place(name); found {
+		if at, found := names.place(name, name); found {
 			emptied[at] = true
 		}
 	}
-	switch {
-	case len(unknown) > 0:
-		return nil, p.fault(CodeUnknownName, unknownMessage, "unknown", unknown)
-	case len(ambiguous) > 0:
-		return nil, p.fault(CodeUnknownName, ambiguousMessage, "ambiguous", ambiguous)
+	project := Pair{Key: projectKey, Value: NewString(p.code)}
+	if fault := names.fault(sentRequest(p.response.httpResponse), project, "the project"); fault != nil {
+		return nil, fault
 	}
 	return p.encodeValues(given, emptied, issueFieldTypes)
 }
@@ -848,12 +831,10 @@ func (w issueWrite) sets(field projectField) bool {
 }
 
 const (
-	missingMessage   = "the custom fields under missing are required by the project and the call fills none of them"
-	emptiedMessage   = "the custom fields under missing are required by the project and the call empties them"
-	unknownMessage   = "the names under unknown are not custom fields of the project"
-	ambiguousMessage = "the names under ambiguous are the names of more than one custom field of the project each"
-	invalidMessage   = "the values under invalid are not values the fields they name can be given, and nothing was sent"
-	hiddenMessage    = "the custom fields under invalid do not stand on the issue the call would file, and " +
+	missingMessage = "the custom fields under missing are required by the project and the call fills none of them"
+	emptiedMessage = "the custom fields under missing are required by the project and the call empties them"
+	invalidMessage = "the values under invalid are not values the fields they name can be given, and nothing was sent"
+	hiddenMessage  = "the custom fields under invalid do not stand on the issue the call would file, and " +
 		"nothing was sent"
 	setAndClearedMessage = "the call writes a value into the custom field and empties it both, and one write " +
 		"leaves it one way"
