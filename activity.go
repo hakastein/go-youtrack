@@ -281,10 +281,11 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 	if len(received) > page.Limit {
 		received, rows, found, left = received[:page.Limit], rows[:page.Limit], count{}, true
 	}
-	printer := newActivityWriter(decoded, phrases)
+	n := converter{response: decoded, layout: inlineLayout, phrases: phrases, activityRoot: true}
 	printed := make([]*Node, 0, len(received))
 	for at, activity := range received {
-		node, fault := printer.record(rows[at], requested, activity)
+		n.row = rows[at]
+		node, fault := n.object(activitySchema, requested, activity)
 		if fault != nil {
 			return nil, fault
 		}
@@ -327,19 +328,6 @@ func activityRows(a decodedResponse, sent []activityCategory, printingValues boo
 		rows = append(rows, row)
 	}
 	return rows, nil
-}
-
-type activityWriter struct{ writer converter }
-
-func newActivityWriter(a decodedResponse, phrases linkPhrases) activityWriter {
-	return activityWriter{writer: converter{response: a, layout: inlineLayout, phrases: phrases}}
-}
-
-func (p activityWriter) record(row activityCategory, requested []requestedField, object map[string]any) (*Node, *Error) {
-	n := p.writer
-	n.row = row
-	n.activityRoot = true
-	return n.object(activitySchema, requested, object)
 }
 
 func customFilter(value any) (map[string]any, string) {
