@@ -3,7 +3,6 @@ package youtrack
 import (
 	"context"
 	"fmt"
-	"math"
 	"net/http"
 )
 
@@ -55,7 +54,7 @@ func (s *UsersService) Me(ctx context.Context) (*User, error) {
 	return result(s.me(ctx))
 }
 
-// Find is up to limit of the users List finds for query, limit from 1 to math.MaxInt32.
+// Find is up to limit of the users List finds for query, DefaultLimit when limit is zero.
 func (s *UsersService) Find(ctx context.Context, query string, limit int) ([]User, error) {
 	return result(s.find(ctx, query, limit))
 }
@@ -110,13 +109,13 @@ func (s *UsersService) me(ctx context.Context) (*User, *Error) {
 }
 
 func (s *UsersService) find(ctx context.Context, query string, limit int) ([]User, *Error) {
-	if limit < 1 || limit > math.MaxInt32 {
-		message := fmt.Sprintf("limit %d is not between 1 and %d", limit, math.MaxInt32)
-		return nil, &Error{Code: CodeBadUsage, Message: message}
+	page, fault := Page{Limit: limit}.parse()
+	if fault != nil {
+		return nil, fault
 	}
 	c := s.client
 	a, fault := c.request(ctx, c.spec, "[]"+userSchema, userFields(), func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiGetUsers(ctx, query, fields, window{top: int32(limit)})
+		return c.apiGetUsers(ctx, query, fields, page.window())
 	})
 	if fault != nil {
 		return nil, fault
@@ -141,9 +140,8 @@ func readUser(a decodedResponse, object map[string]any) (User, *Error) {
 	login, isLogin := object[loginKey].(string)
 	fullName, isName := object[fullNameKey].(string)
 	banned, isFlag := object[bannedKey].(bool)
-	email, isEmail := object[emailKey].(string)
-	hidesEmail := object[emailKey] == nil
-	if !isID || !isLogin || !isName || !isFlag || !isEmail && !hidesEmail {
+	email, isEmail := readLocalized(object[emailKey])
+	if !isID || !isLogin || !isName || !isFlag || !isEmail {
 		return User{}, shapeFailure(a.httpResponse, a.body, "a user is not of the shape the specification gives it")
 	}
 	return User{ID: id, Login: login, FullName: fullName, Email: email, Banned: banned}, nil

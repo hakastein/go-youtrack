@@ -220,6 +220,16 @@ func TestFindUsersSendsTheQueryAsWrittenWithTheLimit(t *testing.T) {
 	}
 }
 
+func TestFindUsersTakesTheDefaultLimitForNone(t *testing.T) {
+	t.Parallel()
+	server := fake.Serve(t, fake.JSON(http.StatusOK, `[]`))
+
+	_, err := client(t, server).Users.Find(t.Context(), "", 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, []url.Values{{"fields": {userFieldsSent}, "$top": {"50"}, "query": {""}}}, server.Queries())
+}
+
 func TestFindUsersReadsTheUsersTheServerFound(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, `[`+
@@ -237,7 +247,7 @@ func TestFindUsersReadsTheUsersTheServerFound(t *testing.T) {
 
 func TestFindUsersRefusesALimitItCannotSend(t *testing.T) {
 	t.Parallel()
-	for _, limit := range []int{0, -1, math.MaxInt32 + 1} {
+	for _, limit := range []int{-1, math.MaxInt32 + 1} {
 		t.Run(strconv.Itoa(limit), func(t *testing.T) {
 			t.Parallel()
 			_, err := client(t, fake.ServeNothing(t)).Users.Find(t.Context(), "", limit)
