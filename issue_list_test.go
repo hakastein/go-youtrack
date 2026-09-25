@@ -194,16 +194,15 @@ func TestListIssuesWarnsOfTheFreeTextOfTheSearch(t *testing.T) {
 	}
 }
 
-func TestListIssuesSearchesWithoutAWarnToHandTheFreeTextTo(t *testing.T) {
+func TestListIssuesAsksForNoMarkupWithoutAWarnToHandTheFreeTextTo(t *testing.T) {
 	t.Parallel()
-	const query = "field: word"
-	server := issueMarkedUp(t, fake.Markup(t, query, fake.StyleRange(7, 4, "text")), fake.JSON(http.StatusOK, `[]`))
+	server := fake.Serve(t, fake.JSON(http.StatusOK, `[]`))
 
-	node, err := client(t, server).Issues.List(t.Context(), query, &youtrack.ListIssuesOptions{Fields: "idReadable"})
+	node, err := client(t, server).Issues.List(t.Context(), "field: word", &youtrack.ListIssuesOptions{Fields: "idReadable"})
 
 	require.NoError(t, err)
 	assert.Equal(t, issuesListed(0, false), node)
-	assert.Equal(t, []string{fake.AssistPath, issuesPath}, server.Paths())
+	assert.Equal(t, []string{issuesPath}, server.Paths())
 }
 
 func TestListIssuesWarnsOfTheFreeTextOfASearchTheServerThenRefuses(t *testing.T) {

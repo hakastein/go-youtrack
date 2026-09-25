@@ -33,7 +33,7 @@ type ShowIssueOptions struct {
 }
 
 // ListIssuesOptions: Fields is a fields= expression, empty for IssueListFields and +x for them and x. Warn is handed
-// the parts of the search YouTrack looks for as free text, before the search is sent; nil drops the warning.
+// the parts of the search YouTrack looks for as free text, before the search is sent; nil asks YouTrack for none.
 type ListIssuesOptions struct {
 	Fields string
 	Page   Page
@@ -120,12 +120,8 @@ func rejectUnreadableQuery(query string) *Error {
 }
 
 func (c *Client) listIssues(ctx context.Context, spec *schemas, query string, requested []requestedField, page Page, warn func(*Warning)) (*Node, *Error) {
-	marked, fault := c.searchMarkup(ctx, spec, query)
-	if fault != nil {
+	if fault := c.warnOfFreeText(ctx, spec, query, warn); fault != nil {
 		return nil, fault
-	}
-	if warning := freeTextWarning(query, marked); warning != nil && warn != nil {
-		warn(warning)
 	}
 	asked, named, fault := c.issueRequest(ctx, spec, requested)
 	if fault != nil {
@@ -145,6 +141,20 @@ func (c *Client) listIssues(ctx context.Context, spec *schemas, query string, re
 		countTotal: func(ctx context.Context) (count, *Error) { return c.countIssuesWithRetry(ctx, spec, query) },
 	}
 	return selection.fetch(ctx)
+}
+
+func (c *Client) warnOfFreeText(ctx context.Context, spec *schemas, query string, warn func(*Warning)) *Error {
+	if warn == nil {
+		return nil
+	}
+	marked, fault := c.searchMarkup(ctx, spec, query)
+	if fault != nil {
+		return fault
+	}
+	if warning := freeTextWarning(query, marked); warning != nil {
+		warn(warning)
+	}
+	return nil
 }
 
 func (c *Client) countIssuesWithRetry(ctx context.Context, spec *schemas, query string) (count, *Error) {
