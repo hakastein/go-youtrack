@@ -97,7 +97,7 @@ func NewText(s string) *Node {
 	return &Node{kind: TextNode, value: s}
 }
 
-// NewList is a list node of the items in order.
+// NewList of no items, whether none or an empty slice, equals every other empty list under reflect.DeepEqual.
 func NewList(items ...*Node) *Node {
 	if len(items) == 0 {
 		return &Node{kind: ListNode}
@@ -105,7 +105,7 @@ func NewList(items ...*Node) *Node {
 	return &Node{kind: ListNode, items: slices.Clone(items)}
 }
 
-// NewMap is a map node of the pairs in order.
+// NewMap of no pairs, whether none or an empty slice, equals every other empty map under reflect.DeepEqual.
 func NewMap(pairs ...Pair) *Node {
 	if len(pairs) == 0 {
 		return &Node{kind: MapNode}
