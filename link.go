@@ -133,7 +133,13 @@ func parseLinkWrite(id, phrase, target string) (string, string, *Error) {
 	if fault != nil {
 		return "", "", fault
 	}
-	return id, target, validatePhrase(phrase)
+	if fault := validatePhrase(phrase); fault != nil {
+		return "", "", fault
+	}
+	if strings.EqualFold(id, target) {
+		return "", "", &Error{Code: CodeBadUsage, Message: oneIssue}
+	}
+	return id, target, nil
 }
 
 func linkFields(spec *schemas, expression string) ([]requestedField, *Error) {

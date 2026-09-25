@@ -630,30 +630,59 @@ func TestAddLinkRefusesATargetUnderTheIDItIsAddressedByRatherThanTheInternalOne(
 	assert.Equal(t, []string{"/api/issues/DEV-1", "/api/issues/DEV-2"}, server.Paths())
 }
 
-func TestAddLinkRefusesLinkingAnIssueToItself(t *testing.T) {
+func TestLinkWriteRefusesAnIssueNamedAsItsOwnTarget(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name   string
-		target string
+		name  string
+		write linkCall
 	}{
-		{name: "the same id twice", target: "DEV-1"},
-		{name: "the same issue in another letter case", target: "dev-1"},
+		{
+			name: "an addition to the same id",
+			write: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
+				return links.Add(ctx, "DEV-1", "ties", "DEV-1", nil)
+			},
+		},
+		{
+			name: "an addition to the same id in another letter case",
+			write: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
+				return links.Add(ctx, "DEV-1", "ties", "dev-1", nil)
+			},
+		},
+		{
+			name: "a removal from the same id",
+			write: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
+				return links.Remove(ctx, "DEV-1", "ties", "DEV-1")
+			},
+		},
+		{
+			name: "a removal from the same id in another letter case",
+			write: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
+				return links.Remove(ctx, "dev-1", "ties", "DEV-1")
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := fake.Serve(t, fake.JSON(http.StatusOK, linkEverySlot()))
+			_, err := tc.write(t.Context(), client(t, fake.ServeNothing(t)).Links)
 
-			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "ties", tc.target, nil)
-
-			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage, Details: []youtrack.Pair{
-				requestTo(http.MethodGet, server, "/api/issues/"+tc.target+"?fields="+linkTargetFields),
-				{Key: "issue", Value: youtrack.NewString("DEV-1")},
-				{Key: "target", Value: youtrack.NewString("DEV-1")},
-			}}, errorOf(t, err))
-			assert.Equal(t, []string{"/api/issues/DEV-1", "/api/issues/" + tc.target}, server.Paths())
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
+}
+
+func TestAddLinkRefusesATargetThatIsTheIssueUnderAnotherID(t *testing.T) {
+	t.Parallel()
+	server := fake.Serve(t, fake.JSON(http.StatusOK, linkEverySlot()))
+
+	_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "ties", "OLD-1", nil)
+
+	assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage, Details: []youtrack.Pair{
+		requestTo(http.MethodGet, server, "/api/issues/OLD-1?fields="+linkTargetFields),
+		{Key: "issue", Value: youtrack.NewString("DEV-1")},
+		{Key: "target", Value: youtrack.NewString("DEV-1")},
+	}}, errorOf(t, err))
+	assert.Equal(t, []string{"/api/issues/DEV-1", "/api/issues/OLD-1"}, server.Paths())
 }
 
 func TestAddLinkRefusesAnIssueTheServerDoesNotHave(t *testing.T) {
@@ -820,7 +849,7 @@ func TestRemoveLinkRefusesBeforeTheRemovalTheWayAddDoes(t *testing.T) {
 		{
 			name:   "a phrase no slot goes by",
 			phrase: "Neds",
-			target: "DEV-2",
+			target: linkTarget,
 			code:   youtrack.CodeUnknownName,
 			read:   "/api/issues/DEV-1?fields=" + linkSourceFields,
 			details: []youtrack.Pair{
@@ -830,24 +859,24 @@ func TestRemoveLinkRefusesBeforeTheRemovalTheWayAddDoes(t *testing.T) {
 			paths: []string{"/api/issues/DEV-1"},
 		},
 		{
-			name:   "the issue and the target issue being one issue",
+			name:   "a target that is the issue under another id",
 			phrase: "ties",
-			target: "DEV-1",
+			target: `{"$type":"Issue","id":"3-1","idReadable":"DEV-1"}`,
 			code:   youtrack.CodeBadUsage,
-			read:   "/api/issues/DEV-1?fields=" + linkTargetFields,
+			read:   "/api/issues/DEV-2?fields=" + linkTargetFields,
 			details: []youtrack.Pair{
 				{Key: "issue", Value: youtrack.NewString("DEV-1")},
 				{Key: "target", Value: youtrack.NewString("DEV-1")},
 			},
-			paths: []string{"/api/issues/DEV-1", "/api/issues/DEV-1"},
+			paths: []string{"/api/issues/DEV-1", "/api/issues/DEV-2"},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			server := linkServer(t, linkEverySlot(), linkTarget, fake.JSON(http.StatusOK, ""))
+			server := linkServer(t, linkEverySlot(), tc.target, fake.JSON(http.StatusOK, ""))
 
-			_, err := client(t, server).Links.Remove(t.Context(), "DEV-1", tc.phrase, tc.target)
+			_, err := client(t, server).Links.Remove(t.Context(), "DEV-1", tc.phrase, "DEV-2")
 
 			assert.Equal(t, youtrack.Error{
 				Code:    tc.code,
