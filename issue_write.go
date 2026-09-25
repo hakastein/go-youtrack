@@ -388,7 +388,7 @@ func (w issueWrite) verify(a decodedResponse) *Error {
 	if fault != nil {
 		return fault
 	}
-	return mismatchFault(a, wrong, Pair{Key: issueOwner.String(), Value: responseID(a, idReadableKey)})
+	return mismatchFault(a, wrong, Pair{Key: issueKey, Value: responseID(a, idReadableKey)})
 }
 
 func (w issueWrite) verifyCustomFields(a decodedResponse, wrong []mismatch) ([]mismatch, *Error) {

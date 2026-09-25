@@ -161,7 +161,7 @@ func (w workItemCreateInput) verifyFields() []requestedField {
 		{name: durationKey},
 		{name: dateKey},
 		{name: textKey},
-		{name: issueOwner.String(), children: []requestedField{{name: idReadableKey}}},
+		{name: issueKey, children: []requestedField{{name: idReadableKey}}},
 	}
 }
 
@@ -200,7 +200,7 @@ func (w workItemCreateInput) diff(item map[string]any) []mismatch {
 
 func (w workItemCreate) verify(a decodedResponse) *Error {
 	return verifyWorkItem(a, w.input.diff(a.objects[0]), w.workType, w.attributes, []Pair{
-		{Key: issueOwner.String(), Value: owningIssue(a)},
+		{Key: issueKey, Value: owningIssue(a)},
 		{Key: idKey, Value: responseID(a, idKey)},
 	})
 }
@@ -245,7 +245,7 @@ func sameDayUTC(a, b int64) bool {
 }
 
 func owningIssue(a decodedResponse) *Node {
-	if readable, isText := memberOf(a.objects[0][issueOwner.String()], idReadableKey).(string); isText {
+	if readable, isText := memberOf(a.objects[0][issueKey], idReadableKey).(string); isText {
 		return NewString(readable)
 	}
 	return NewNull()
@@ -373,7 +373,7 @@ func (w workItemUpdate) verifyFields() []requestedField {
 
 func (w workItemUpdate) verify(a decodedResponse) *Error {
 	return verifyWorkItem(a, w.input.diff(a.objects[0]), w.workType, w.attributes, []Pair{
-		{Key: issueOwner.String(), Value: NewString(w.issue)},
+		{Key: issueKey, Value: NewString(w.issue)},
 		{Key: idKey, Value: NewString(w.at.String())},
 	})
 }

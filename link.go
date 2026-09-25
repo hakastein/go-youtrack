@@ -349,7 +349,7 @@ func (c *Client) prepareLinkWrite(ctx context.Context, id, phrase, target string
 	}
 	if other.id == source.id {
 		return linkWrite{}, other.a.fault(CodeBadUsage, oneIssue,
-			Pair{Key: "issue", Value: NewString(source.readable)},
+			Pair{Key: issueKey, Value: NewString(source.readable)},
 			Pair{Key: "target", Value: NewString(other.readable)})
 	}
 	return linkWrite{source: source, target: other, link: link}, nil
@@ -603,7 +603,7 @@ const unreadableLink = "the server addresses the link by an id whose end cannot 
 	"same and an s, and one it stands at the target of by the same and a t"
 
 func (s linkIssue) fault(code Code, message string, own ...Pair) *Error {
-	return s.a.fault(code, message, append([]Pair{{Key: "issue", Value: NewString(s.readable)}}, own...)...)
+	return s.a.fault(code, message, append([]Pair{{Key: issueKey, Value: NewString(s.readable)}}, own...)...)
 }
 
 type linkWrite struct {
@@ -728,7 +728,7 @@ func opposite(direction string) string {
 
 func (w linkWrite) withLinkDetails(fault *Error) *Error {
 	fault.Details = insertAfterRequest(fault.Details,
-		Pair{Key: "issue", Value: NewString(w.source.readable)},
+		Pair{Key: issueKey, Value: NewString(w.source.readable)},
 		Pair{Key: "phrase", Value: NewString(w.link.phrase)},
 		Pair{Key: "target", Value: NewString(w.target.readable)})
 	return fault

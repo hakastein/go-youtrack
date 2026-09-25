@@ -30,6 +30,8 @@ const (
 	shortNameKey     = "shortName"
 	addedKey         = "added"
 	removedKey       = "removed"
+	issueKey         = "issue"
+	articleKey       = "article"
 )
 
 type requestedField struct {

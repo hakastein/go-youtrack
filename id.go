@@ -83,6 +83,13 @@ func (k ownerKind) String() string {
 	return "issue"
 }
 
+func (k ownerKind) key() string {
+	if k == articleOwner {
+		return articleKey
+	}
+	return issueKey
+}
+
 type owner struct {
 	kind ownerKind
 	id   string

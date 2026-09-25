@@ -453,7 +453,7 @@ func (h tagOp) document(key string, tag *Node) *Node {
 func (h tagOp) withDetails(fault *Error) *Error {
 	named := h.found.withDetails(fault)
 	named.Details = insertAfterRequest(named.Details,
-		Pair{Key: h.target.kind.String(), Value: NewString(h.on.String())})
+		Pair{Key: h.target.kind.key(), Value: NewString(h.on.String())})
 	return named
 }
 

@@ -77,7 +77,7 @@ func childOwner(noun string, asked childID, kind ownerKind) func(decodedResponse
 		if received, isText := child[idKey].(string); !isText || received != asked.id {
 			return readableID{}, a.invalid(fmt.Sprintf("the %s asked for under id %s arrived under another id", noun, quote(asked.String())))
 		}
-		holder, isObject := child[kind.String()].(map[string]any)
+		holder, isObject := child[kind.key()].(map[string]any)
 		if !isObject {
 			return readableID{}, a.invalid(fmt.Sprintf("the %s the %s hangs from arrived as something other than an object", kind, noun))
 		}

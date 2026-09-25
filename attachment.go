@@ -136,7 +136,7 @@ func (s *AttachmentsService) delete(ctx context.Context, owner, id string) (*Nod
 	requested := []requestedField{
 		{name: idKey},
 		{name: nameKey},
-		{name: at.kind.String(), children: []requestedField{{name: idReadableKey}}},
+		{name: at.kind.key(), children: []requestedField{{name: idReadableKey}}},
 	}
 	return c.deleteAsRead(ctx, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return target.get(c, ctx, at, file, fields)

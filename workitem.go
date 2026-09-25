@@ -163,7 +163,7 @@ func (s *WorkItemsService) delete(ctx context.Context, issue, item string) (*Nod
 	c := s.client
 	requested := []requestedField{
 		{name: idKey},
-		{name: issueOwner.String(), children: []requestedField{{name: idReadableKey}}},
+		{name: issueKey, children: []requestedField{{name: idReadableKey}}},
 	}
 	return c.deleteAsRead(ctx, workItemSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetIssueWorkItem(ctx, id, at, fields)

@@ -351,7 +351,7 @@ func ancestorsIn(a decodedResponse, line []ancestor) ([]ancestor, bool, *Error) 
 }
 
 func ancestorFault(a decodedResponse, message string, at ancestor) *Error {
-	return a.fault(CodeUpstreamInvalid, message, Pair{Key: articleOwner.String(), Value: NewString(at.readable)})
+	return a.fault(CodeUpstreamInvalid, message, Pair{Key: articleKey, Value: NewString(at.readable)})
 }
 
 const (
@@ -373,7 +373,7 @@ func (p articleRef) checkNoCycle(article articleRef, line []ancestor) *Error {
 	message := "the parent the call names is the article itself or one written under it, and chain runs from the " +
 		"parent up to the article: an article hangs from no line of its own"
 	return p.response.fault(CodeBadUsage, message,
-		Pair{Key: articleOwner.String(), Value: NewString(article.readable.String())},
+		Pair{Key: articleKey, Value: NewString(article.readable.String())},
 		Pair{Key: parentKey, Value: NewString(p.readable.String())},
 		Pair{Key: "chain", Value: NewList(chain...)})
 }
