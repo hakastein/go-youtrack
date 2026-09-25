@@ -95,7 +95,7 @@ func TestListIssuesSendsTheSearchAsWritten(t *testing.T) {
 		{name: "brackets and a quote that never close", query: `(((( "open`},
 		{name: "characters a query escapes", query: "a&b=c?d#e%20+f"},
 		{name: "a tab and a line feed inside", query: "field:\tvalue\nnext"},
-		{name: "a line separator inside", query: "a b"},
+		{name: "a line separator inside", query: "a\u2028b"},
 		{name: "a character outside the basic plane", query: "\U0001F600"},
 		{name: "four kilobytes of it", query: strings.Repeat("word ", 820)},
 	}
@@ -166,9 +166,9 @@ func TestListIssuesWarnsOfTheFreeTextOfTheSearch(t *testing.T) {
 		},
 		{
 			name:     "one range over a token holding a line separator",
-			query:    "a b",
+			query:    "a\u2028b",
 			ranges:   []string{fake.StyleRange(0, 3, "text")},
-			warnings: []youtrack.Warning{issueFreeText("a b", "a b")},
+			warnings: []youtrack.Warning{issueFreeText("a\u2028b", "a\u2028b")},
 		},
 		{
 			name:  "every style but text",

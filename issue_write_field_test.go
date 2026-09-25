@@ -186,8 +186,8 @@ func TestIssueWriteRefusesAValueItsFieldCannotHold(t *testing.T) {
 			shown: "\x1eFirst"},
 		{name: "a string that ends with a unit separator", valueType: "string", given: "First\x1f", shown: "First\x1f"},
 		{name: "a string holding a NEL", valueType: "string", given: "a\u0085b", shown: "a\u0085b"},
-		{name: "a string holding a line separator", valueType: "string", given: "a b", shown: "a b"},
-		{name: "a string holding a paragraph separator", valueType: "string", given: "a b", shown: "a b"},
+		{name: "a string holding a line separator", valueType: "string", given: "a\u2028b", shown: "a\u2028b"},
+		{name: "a string holding a paragraph separator", valueType: "string", given: "a\u2029b", shown: "a\u2029b"},
 		{name: "a string that is no UTF-8", valueType: "string", given: "a\xffb", shown: "a\xffb"},
 		{name: "a string of nothing at all", valueType: "string", given: "", shown: ""},
 		{name: "a text that is no UTF-8", valueType: "text", given: "a\xffb", shown: "a\xffb"},

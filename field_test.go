@@ -35,12 +35,6 @@ func listedFields(records ...*youtrack.Node) *youtrack.Node {
 		youtrack.Pair{Key: "fields", Value: youtrack.NewList(records...)})
 }
 
-func withNearest(key, written string, nearest ...string) *youtrack.Node {
-	return youtrack.NewMap(
-		youtrack.Pair{Key: key, Value: youtrack.NewString(written)},
-		youtrack.Pair{Key: "nearest", Value: texts(nearest...)})
-}
-
 func unknownField(t *testing.T, server *fake.Server, asked string, nearest ...string) youtrack.Error {
 	t.Helper()
 	return youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{

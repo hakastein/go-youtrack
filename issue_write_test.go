@@ -184,8 +184,8 @@ func TestCreateIssueRefusesACallBeforeAnyRequest(t *testing.T) {
 		{name: "a line feed in the title", in: &youtrack.IssueInput{Summary: "a\nb"}},
 		{name: "a carriage return in the title", in: &youtrack.IssueInput{Summary: "a\rb"}},
 		{name: "a NEL in the title", in: &youtrack.IssueInput{Summary: "a\u0085b"}},
-		{name: "a line separator in the title", in: &youtrack.IssueInput{Summary: "a b"}},
-		{name: "a paragraph separator in the title", in: &youtrack.IssueInput{Summary: "a b"}},
+		{name: "a line separator in the title", in: &youtrack.IssueInput{Summary: "a\u2028b"}},
+		{name: "a paragraph separator in the title", in: &youtrack.IssueInput{Summary: "a\u2029b"}},
 		{name: "a title that is no UTF-8", in: &youtrack.IssueInput{Summary: "a\xffb"}},
 		{name: "a carriage return in the description", in: &youtrack.IssueInput{Summary: "First", Description: "a\rb"}},
 		{name: "a description that is no UTF-8", in: &youtrack.IssueInput{Summary: "First", Description: "a\xffb"}},

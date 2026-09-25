@@ -78,3 +78,9 @@ func texts(values ...string) *youtrack.Node {
 	}
 	return youtrack.NewList(items...)
 }
+
+func withNearest(key, written string, nearest ...string) *youtrack.Node {
+	return youtrack.NewMap(
+		youtrack.Pair{Key: key, Value: youtrack.NewString(written)},
+		youtrack.Pair{Key: "nearest", Value: texts(nearest...)})
+}

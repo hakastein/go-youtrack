@@ -101,12 +101,6 @@ func activityAt(moment string) *youtrack.Node {
 	return youtrack.NewMap(youtrack.Pair{Key: "timestamp", Value: youtrack.NewString(moment)})
 }
 
-func activityNearest(key, written string, nearest ...string) *youtrack.Node {
-	return youtrack.NewMap(
-		youtrack.Pair{Key: key, Value: youtrack.NewString(written)},
-		youtrack.Pair{Key: "nearest", Value: texts(nearest...)})
-}
-
 func activityUnknown(pairs ...youtrack.Pair) youtrack.Error {
 	return youtrack.Error{Code: youtrack.CodeUnknownName, Details: pairs}
 }
@@ -138,14 +132,14 @@ func TestListActivitiesRefusesACallItCannotSend(t *testing.T) {
 			fields: "added(logn)",
 			want: activityUnknown(
 				youtrack.Pair{Key: "fields", Value: youtrack.NewString("added(logn)")},
-				youtrack.Pair{Key: "unknown", Value: youtrack.NewList(activityNearest("field", "added(logn)", "login"))}),
+				youtrack.Pair{Key: "unknown", Value: youtrack.NewList(withNearest("field", "added(logn)", "login"))}),
 		},
 		{
 			name:   "a name no value declares added to the default",
 			fields: "+removed(idReadabel)",
 			want: activityUnknown(
 				youtrack.Pair{Key: "fields", Value: youtrack.NewString("+removed(idReadabel)")},
-				youtrack.Pair{Key: "unknown", Value: youtrack.NewList(activityNearest("field", "removed(idReadabel)", "idReadable"))}),
+				youtrack.Pair{Key: "unknown", Value: youtrack.NewList(withNearest("field", "removed(idReadabel)", "idReadable"))}),
 		},
 		{
 			name:   "a name no value declares at either end",
@@ -153,39 +147,39 @@ func TestListActivitiesRefusesACallItCannotSend(t *testing.T) {
 			want: activityUnknown(
 				youtrack.Pair{Key: "fields", Value: youtrack.NewString("added(verson),removed(urlz)")},
 				youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
-					activityNearest("field", "added(verson)", "version"),
-					activityNearest("field", "removed(urlz)", "url", "urls"))}),
+					withNearest("field", "added(verson)", "version"),
+					withNearest("field", "removed(urlz)", "url", "urls"))}),
 		},
 		{
 			name:       "a category a letter short",
 			categories: []string{"LinksCategry"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
-				activityNearest("category", "LinksCategry", "LinksCategory"))}),
+				withNearest("category", "LinksCategry", "LinksCategory"))}),
 		},
 		{
 			name:       "a category holding a letter of another alphabet",
 			categories: []string{"LinksСategory"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
-				activityNearest("category", "LinksСategory", "LinksCategory"))}),
+				withNearest("category", "LinksСategory", "LinksCategory"))}),
 		},
 		{
 			name:       "two categories written as one name",
 			categories: []string{"LinksCategory,CommentsCategory"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
-				activityNearest("category", "LinksCategory,CommentsCategory", every...))}),
+				withNearest("category", "LinksCategory,CommentsCategory", every...))}),
 		},
 		{
 			name:       "one misspelling written in two letter cases",
 			categories: []string{"Bogus", "BOGUS"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
-				activityNearest("category", "Bogus", every...))}),
+				withNearest("category", "Bogus", every...))}),
 		},
 		{
 			name:       "two misspellings beside a category that resolves",
 			categories: []string{"Bogus", "LinksCategory", "Nope"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
-				activityNearest("category", "Bogus", every...),
-				activityNearest("category", "Nope", every...))}),
+				withNearest("category", "Bogus", every...),
+				withNearest("category", "Nope", every...))}),
 		},
 	}
 	for _, tc := range tests {

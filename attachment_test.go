@@ -160,8 +160,8 @@ func TestCreateAttachmentSendsTheNameAsWritten(t *testing.T) {
 		{name: "a space", file: "a b.txt"},
 		{name: "a semicolon and a per cent", file: "a;100%.txt"},
 		{name: "a tab inside", file: "a\tb.txt"},
-		{name: "a line separator inside", file: "a b.txt"},
-		{name: "a non-breaking space first", file: " a.txt"},
+		{name: "a line separator inside", file: "a\u2028b.txt"},
+		{name: "a non-breaking space first", file: "\u00a0a.txt"},
 		{name: "Cyrillic", file: "заметка.txt"},
 		{name: "254 bytes of Cyrillic", file: strings.Repeat("я", 127)},
 		{name: "three dots", file: "..."},
