@@ -112,7 +112,6 @@ func TestFieldTypeRefusesToEncodeAValueItsTypeCannotHold(t *testing.T) {
 		{name: "an empty name", fieldType: fieldType("enum", false), text: ""},
 		{name: "a period of days", fieldType: fieldType("period", false), text: "P1D"},
 		{name: "a string with a space around it", fieldType: fieldType("string", false), text: " a"},
-		{name: "a type the module does not model", fieldType: fieldType("quantum", false), text: "a"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -123,6 +122,14 @@ func TestFieldTypeRefusesToEncodeAValueItsTypeCannotHold(t *testing.T) {
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
+}
+
+func TestFieldTypeRefusesToEncodeForATypeItDoesNotModel(t *testing.T) {
+	t.Parallel()
+
+	_, err := fieldType("quantum", false).Encode("a")
+
+	assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamInvalid}, errorOf(t, err))
 }
 
 func TestFieldTypeReadsOneValueByTheKeyOfItsType(t *testing.T) {
@@ -171,6 +178,9 @@ func TestFieldTypeRefusesToReadAValueOfAnotherShape(t *testing.T) {
 		{name: "minutes that are text", fieldType: fieldType("period", false), item: map[string]any{"minutes": "90"}},
 		{name: "a string that is a number", fieldType: fieldType("string", false), item: json.Number("5")},
 		{name: "a type the module does not model", fieldType: fieldType("quantum", false), item: "x"},
+		{name: "an id that is a number", fieldType: fieldType("enum", false), item: map[string]any{"id": json.Number("5"), "name": "First"}},
+		{name: "a translation that is a number", fieldType: fieldType("state", false),
+			item: map[string]any{"id": "3-1", "name": "First", "localizedName": json.Number("5")}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -178,7 +188,7 @@ func TestFieldTypeRefusesToReadAValueOfAnotherShape(t *testing.T) {
 
 			_, _, err := tc.fieldType.ReadValue(tc.item)
 
-			assert.Error(t, err)
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamInvalid}, errorOf(t, err))
 		})
 	}
 }

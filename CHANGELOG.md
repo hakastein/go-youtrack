@@ -18,7 +18,8 @@
   Код — из словаря ytrack (`bad_usage`, `unknown_name`, `missing_required`, `not_found`, `denied`, `rejected`,
   `upstream_failed`, `upstream_invalid`, `write_uncertain`), сентинелы `Err…` сравниваются `errors.Is` по коду,
   `MayHaveWritten` заменяет `TransportError.Written`, `StatusError.Uncertain` и `ResponseError.Write`.
-- `Send` и `FieldType.Encode` отвечают `*Error`.
+- `Send`, `FieldType.Encode` и `FieldType.ReadValue` отвечают `*Error`: тип вне таблицы у обоих —
+  `upstream_invalid`, и `ReadValue` отвергает `id` или `localizedName` значения, которые не строка и не `null`.
 - Тип `Request` и `Metadata.Request` удалены: запрос стоит в `Details` ошибки под `request`.
 - Токен больше не попадает в текст ошибки `NewClient`.
 

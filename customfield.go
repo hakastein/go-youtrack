@@ -89,43 +89,19 @@ const (
 	brokenFieldInfo = "the name or the type of a custom field is not of the shape the specification gives it"
 )
 
-func encodeValue(kind FieldType, text string) (Encoded, string) {
-	if text == "" {
-		return Encoded{}, emptyValueReason(kind)
-	}
-	k, known := kind.kind()
-	if !known {
-		return Encoded{}, unmodelled(kind)
-	}
-	encoded, reason := k.encode(text)
-	return Encoded{Body: encoded.body, Key: encoded.key}, reason
-}
-
-func emptyValueReason(kind FieldType) string {
-	const leftAlone = "; a field is emptied by clearing it, and a field the call does not name is left as it stands"
-	switch {
-	case kind.ValueType == StringType || kind.ValueType == TextType:
-		return fmt.Sprintf("YouTrack keeps a %s field it is given nothing for as holding nothing at all",
-			kind.ValueType) + leftAlone
-	case kind.Named():
-		return fmt.Sprintf("a value of a %s field is a name, and no value is named by nothing", kind.ValueType) + leftAlone
-	}
-	return fmt.Sprintf("no value of a %s field is empty", kind.ValueType) + leftAlone
-}
-
-func (n converter) readValue(kind FieldType, item any) (*Node, bool, error) {
-	value, present, err := kind.ReadValue(item)
-	if err != nil || !present {
-		return nil, present, err
+func (n converter) readValue(kind FieldType, item any) (*Node, bool, string) {
+	value, present, reason := kind.read(item)
+	if reason != "" || !present {
+		return nil, present, reason
 	}
 	number, isNumber := item.(json.Number)
 	switch {
 	case isNumber && (kind.ValueType == IntegerType || kind.ValueType == FloatType):
-		return NewNumber(number), true, nil
+		return NewNumber(number), true, ""
 	case kind.ValueType == TextType:
-		return n.textNode(value.Text), true, nil
+		return n.textNode(value.Text), true, ""
 	}
-	return NewString(value.Text), true, nil
+	return NewString(value.Text), true, ""
 }
 
 func (n converter) valueKeys(f issueCustomField) ([]string, *Error) {
@@ -147,9 +123,9 @@ func (n converter) fieldValues(f issueCustomField) ([]Value, *Error) {
 	}
 	var values []Value
 	for _, item := range items {
-		value, present, err := f.kind.ReadValue(item)
-		if err != nil {
-			return nil, n.unreadableValue(f, err)
+		value, present, reason := f.kind.read(item)
+		if reason != "" {
+			return nil, n.unreadableValue(f, reason)
 		}
 		if present {
 			values = append(values, value)
@@ -396,15 +372,15 @@ func (n converter) valueNode(f issueCustomField) (*Node, bool, *Error) {
 }
 
 func (n converter) valueKeyNode(f issueCustomField, item any) (*Node, bool, *Error) {
-	node, present, err := n.readValue(f.kind, item)
-	if err != nil {
-		return nil, false, n.unreadableValue(f, err)
+	node, present, reason := n.readValue(f.kind, item)
+	if reason != "" {
+		return nil, false, n.unreadableValue(f, reason)
 	}
 	return node, present, nil
 }
 
-func (n converter) unreadableValue(f issueCustomField, err error) *Error {
-	return n.response.invalid(fmt.Sprintf("custom field %s: %v", quote(f.name), err))
+func (n converter) unreadableValue(f issueCustomField, reason string) *Error {
+	return n.response.invalid(fmt.Sprintf("custom field %s: %s", quote(f.name), reason))
 }
 
 const customFieldCatalogue = "[]CustomField"

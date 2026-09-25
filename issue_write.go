@@ -725,7 +725,8 @@ func (p projectMetadata) encodeValues(given [][]string, emptied []bool, issueFie
 		}
 		field := p.fields[at]
 		kind := field.info.kind
-		if !kind.Known() {
+		k, known := kind.kind()
+		if !known {
 			return nil, p.response.invalid(unmodelled(kind))
 		}
 		class := kind.Class()
@@ -747,7 +748,7 @@ func (p projectMetadata) encodeValues(given [][]string, emptied []bool, issueFie
 			continue
 		}
 		for _, value := range values {
-			sent, reason := encodeValue(kind, value)
+			sent, reason := k.encode(value)
 			if reason != "" {
 				invalid = append(invalid, invalidEntry(field.info.name, value, reason))
 				continue

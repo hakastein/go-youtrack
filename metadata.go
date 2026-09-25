@@ -3,7 +3,6 @@ package youtrack
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"net/http"
 	"slices"
 )
@@ -122,9 +121,4 @@ func readProjectFields(a decodedResponse, code string) ([]ProjectField, *Error) 
 		fields = append(fields, p.field)
 	}
 	return fields, nil
-}
-
-func unmodelled(t FieldType) string {
-	return fmt.Sprintf("valueType %s with isMultiValue %t is not one of the twenty custom-field types the module models",
-		quote(string(t.ValueType)), t.Multi)
 }

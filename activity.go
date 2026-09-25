@@ -465,10 +465,10 @@ func (n converter) oneValue(decl typeRef, field requestedField, value any) (*Nod
 	case isObject:
 		return n.value(decl, field, value)
 	}
-	node, present, err := n.readValue(form.bareKind, keyedValue(form.bareKind, value))
+	node, present, reason := n.readValue(form.bareKind, keyedValue(form.bareKind, value))
 	switch {
-	case err != nil:
-		return nil, n.response.invalid(fmt.Sprintf("a value under the %s of an activity of %s: %v", field.name, n.row.id, err))
+	case reason != "":
+		return nil, n.response.invalid(fmt.Sprintf("a value under the %s of an activity of %s: %s", field.name, n.row.id, reason))
 	case !present:
 		return nil, n.response.invalid(fmt.Sprintf("a value under the %s of an activity of %s is null", field.name, n.row.id))
 	}
