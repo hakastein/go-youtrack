@@ -269,7 +269,7 @@ func (w FieldWrite) check() *Error {
 
 func rejectReplacedText(summary, description *string) *Error {
 	if summary != nil {
-		if fault := rejectReplaced("the summary", *summary, summaryEmpty, summaryRewrites()); fault != nil {
+		if fault := rejectReplaced("the summary", *summary, summaryEmpty, append(lineBreakRewrites(), stringFieldRewrites()...)); fault != nil {
 			return fault
 		}
 	}
@@ -279,16 +279,6 @@ func rejectReplacedText(summary, description *string) *Error {
 		}
 	}
 	return nil
-}
-
-func summaryRewrites() []charReplacement {
-	return []charReplacement{
-		{rune: '\n', into: "a space"},
-		{rune: '\r', into: "a space"},
-		{rune: 0x85, into: "nothing at all"},
-		{rune: 0x2028, into: "a space"},
-		{rune: 0x2029, into: "a space"},
-	}
 }
 
 func descriptionRewrites() []charReplacement {

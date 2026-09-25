@@ -36,10 +36,10 @@ const (
 )
 
 func checkArticleInput(in ArticleInput) *Error {
-	if fault := rejectReplaced(titleOfAnArticle, in.Summary, emptyTitle, articleTitleRewrites()); fault != nil {
+	if fault := rejectReplaced(titleOfAnArticle, in.Summary, emptyTitle, lineBreakRewrites()); fault != nil {
 		return fault
 	}
-	if fault := rejectNoUTF8(contentOfAnArticle, in.Content); fault != nil {
+	if fault := rejectRewritten(contentOfAnArticle, in.Content); fault != nil {
 		return fault
 	}
 	if in.Parent == "" {
@@ -49,7 +49,7 @@ func checkArticleInput(in ArticleInput) *Error {
 	return fault
 }
 
-func articleTitleRewrites() []charReplacement {
+func lineBreakRewrites() []charReplacement {
 	return []charReplacement{
 		{rune: '\n', into: "a space"},
 		{rune: '\r', into: "a space"},
@@ -86,7 +86,7 @@ func checkArticleUpdate(in ArticleUpdate) *Error {
 		}
 	}
 	if in.Summary != nil {
-		if fault := rejectReplaced(titleOfAnArticle, *in.Summary, emptyTitle, articleTitleRewrites()); fault != nil {
+		if fault := rejectReplaced(titleOfAnArticle, *in.Summary, emptyTitle, lineBreakRewrites()); fault != nil {
 			return fault
 		}
 	}

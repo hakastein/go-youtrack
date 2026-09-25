@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"unicode/utf8"
 )
 
 const (
@@ -133,7 +132,7 @@ func parseLinkWrite(id, phrase, target string) (string, string, *Error) {
 	if fault != nil {
 		return "", "", fault
 	}
-	if fault := validatePhrase(phrase); fault != nil {
+	if fault := rejectReplaced("the phrase", phrase, emptyPhrase, nil); fault != nil {
 		return "", "", fault
 	}
 	if strings.EqualFold(id, target) {
@@ -162,18 +161,7 @@ func linkFields(spec *schemas, expression string) ([]requestedField, *Error) {
 	return requested, nil
 }
 
-func validatePhrase(phrase string) *Error {
-	switch {
-	case phrase == "":
-		return &Error{Code: CodeBadUsage, Message: emptyPhrase}
-	case !utf8.ValidString(phrase):
-		message := fmt.Sprintf("phrase %s is no valid UTF-8, and the phrases a link goes by are text", quote(phrase))
-		return &Error{Code: CodeBadUsage, Message: message}
-	}
-	return nil
-}
-
-const emptyPhrase = "the phrase is empty, and a link is named by the phrase it goes by from the issue, such as " +
+const emptyPhrase = "is empty, and a link is named by the phrase it goes by from the issue, such as " +
 	`"depends on"`
 
 func (n converter) linkDocument(target []requestedField, issue map[string]any) (*Node, *Error) {

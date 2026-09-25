@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"unicode/utf8"
 )
 
 // customFields(Name) stands for the value of that field alone, and a bare customFields for every field of the issue.
@@ -73,7 +72,7 @@ func (s *IssuesService) show(ctx context.Context, id string, opts ShowIssueOptio
 }
 
 func (s *IssuesService) list(ctx context.Context, query string, opts ListIssuesOptions) (*Node, *Error) {
-	if fault := rejectUnreadableQuery(query); fault != nil {
+	if fault := rejectRewritten("the query", query); fault != nil {
 		return nil, fault
 	}
 	page, fault := opts.Page.parse()
@@ -109,14 +108,6 @@ func issueFields(spec *schemas, expression string, defaults, comments string) ([
 		return nil, fault
 	}
 	return requested, rejectIssueBlocks(spec, composedIssue(), written, requested)
-}
-
-func rejectUnreadableQuery(query string) *Error {
-	if utf8.ValidString(query) {
-		return nil
-	}
-	message := "the query is no valid UTF-8, and YouTrack reads a search as text"
-	return &Error{Code: CodeBadUsage, Message: message}
 }
 
 func (c *Client) listIssues(ctx context.Context, query string, requested []requestedField, page Page, warn func(*Warning)) (*Node, *Error) {

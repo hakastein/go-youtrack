@@ -301,11 +301,8 @@ func parseTagRef(name string, opts TagOptions) (tagRef, *Error) {
 }
 
 func rejectNoTagName(name string) *Error {
-	switch {
-	case name == "":
-		return &Error{Code: CodeBadUsage, Message: emptyTagName}
-	case !utf8.ValidString(name):
-		return &Error{Code: CodeBadUsage, Message: tagNameOfNoUTF8}
+	if fault := rejectReplaced("the name of the tag", name, emptyTagName, nil); fault != nil {
+		return fault
 	}
 	if first, _ := utf8.DecodeRuneInString(name); isTagNameSpace(first) {
 		return &Error{Code: CodeBadUsage, Message: tagNameEdgeMessage("begins", first)}
@@ -321,11 +318,7 @@ func isTagNameSpace(r rune) bool {
 		(r >= 0x1C && r <= 0x1F) || unicode.In(r, unicode.Zs, unicode.Zl, unicode.Zp)
 }
 
-const (
-	emptyTagName    = "the name of the tag is empty, and YouTrack keeps no tag under an empty name"
-	tagNameOfNoUTF8 = "the name of the tag is no valid UTF-8, and no name YouTrack keeps is: bytes that are none " +
-		"name no tag there could be"
-)
+const emptyTagName = "is empty, and YouTrack keeps no tag under an empty name"
 
 func tagNameEdgeMessage(where string, r rune) string {
 	return fmt.Sprintf("the name of the tag %s with U+%04X, which YouTrack cuts off the edges of the name of a tag: "+

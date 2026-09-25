@@ -53,35 +53,31 @@ func (c *Client) deleteOwner(ctx context.Context, kind ownerKind, schema string,
 	return objectNode(decoded, requested, decoded.objects[0], nil)
 }
 
-func rejectReplaced(flag, text, empty string, replacements []charReplacement) *Error {
+func rejectReplaced(what, text, empty string, replacements []charReplacement) *Error {
 	if text == "" {
-		return &Error{Code: CodeBadUsage, Message: flag + " " + empty}
+		return &Error{Code: CodeBadUsage, Message: what + " " + empty}
 	}
-	if fault := rejectNoUTF8(flag, text); fault != nil {
-		return fault
-	}
-	for _, rewritten := range replacements {
-		if strings.ContainsRune(text, rewritten.rune) {
-			return &Error{Code: CodeBadUsage, Message: rewrittenAs(flag, rewritten)}
-		}
+	return rejectRewritten(what, text, replacements...)
+}
+
+func rejectRewritten(what, text string, replacements ...charReplacement) *Error {
+	if reason := rewrittenReason(what, text, replacements...); reason != "" {
+		return &Error{Code: CodeBadUsage, Message: reason}
 	}
 	return nil
 }
 
-func rejectNoUTF8(flag, text string) *Error {
-	if utf8.ValidString(text) {
-		return nil
+func rewrittenReason(what, text string, replacements ...charReplacement) string {
+	if !utf8.ValidString(text) {
+		return fmt.Sprintf("%s is no valid UTF-8, and every byte of it that is none would reach YouTrack as %s",
+			what, quote(string(utf8.RuneError)))
 	}
-	return &Error{Code: CodeBadUsage, Message: noUTF8(flag)}
-}
-
-func noUTF8(what string) string {
-	return fmt.Sprintf("%s is no valid UTF-8, and every byte of it that is none would reach YouTrack as %s",
-		what, quote(string(utf8.RuneError)))
-}
-
-func rewrittenAs(what string, rewritten charReplacement) string {
-	return fmt.Sprintf("%s holds U+%04X, which YouTrack stores as %s", what, rewritten.rune, rewritten.into)
+	for _, rewritten := range replacements {
+		if strings.ContainsRune(text, rewritten.rune) {
+			return fmt.Sprintf("%s holds U+%04X, which YouTrack stores as %s", what, rewritten.rune, rewritten.into)
+		}
+	}
+	return ""
 }
 
 type mismatch struct {

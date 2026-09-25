@@ -93,7 +93,7 @@ func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleO
 }
 
 func (s *ArticlesService) list(ctx context.Context, query string, opts ListArticlesOptions) (*Node, *Error) {
-	if fault := rejectUnreadableQuery(query); fault != nil {
+	if fault := rejectRewritten("the query", query); fault != nil {
 		return nil, fault
 	}
 	page, fault := opts.Page.parse()

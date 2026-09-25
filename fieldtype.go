@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 )
 
 // ValueType is the type of a custom field's value as the server names it in fieldType.valueType.
@@ -415,21 +414,14 @@ func jsonNumber(text string) (json.Number, bool) {
 }
 
 func encodeString(text string) (encodedValue, string) {
-	if !utf8.ValidString(text) {
-		return encodedValue{}, notUTF8
-	}
-	for _, rewritten := range stringFieldRewrites() {
-		if strings.ContainsRune(text, rewritten.rune) {
-			return encodedValue{}, fmt.Sprintf("the value holds U+%04X, which YouTrack stores as %s", rewritten.rune, rewritten.into)
-		}
+	if reason := rewrittenReason("the value", text, stringFieldRewrites()...); reason != "" {
+		return encodedValue{}, reason
 	}
 	if strings.TrimFunc(text, trimmedByYouTrack) != text {
 		return encodedValue{}, "YouTrack trims the spaces off a string, so it would keep less than what was written"
 	}
 	return encodedValue{body: text, key: text}, ""
 }
-
-const notUTF8 = "the value is no valid UTF-8, and every byte of it that is none would reach YouTrack as �"
 
 type charReplacement struct {
 	rune rune
@@ -449,8 +441,8 @@ func trimmedByYouTrack(r rune) bool {
 }
 
 func encodeText(text string) (encodedValue, string) {
-	if !utf8.ValidString(text) {
-		return encodedValue{}, notUTF8
+	if reason := rewrittenReason("the value", text); reason != "" {
+		return encodedValue{}, reason
 	}
 	return encodedValue{body: map[string]string{textKey: text}, key: text}, ""
 }

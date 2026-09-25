@@ -66,7 +66,7 @@ func parseWorkItemCreate(in WorkItemInput) (workItemCreateInput, *Error) {
 	if fault != nil {
 		return workItemCreateInput{}, fault
 	}
-	if fault := rejectNoUTF8(workItemText, in.Text); fault != nil {
+	if fault := rejectRewritten(workItemText, in.Text); fault != nil {
 		return workItemCreateInput{}, fault
 	}
 	written := workItemCreateInput{spent: spent, text: workItemOptional(in.Text), workType: workItemOptional(in.Type),
@@ -293,7 +293,7 @@ func parseWorkItemUpdate(in WorkItemUpdate) (workItemUpdateInput, *Error) {
 	}
 	written := workItemUpdateInput{clearsType: in.ClearType, clearsText: in.ClearText, attributes: in.Attributes}
 	if in.Text != nil {
-		if fault := rejectNoUTF8(workItemText, *in.Text); fault != nil {
+		if fault := rejectRewritten(workItemText, *in.Text); fault != nil {
 			return workItemUpdateInput{}, fault
 		}
 		text := *in.Text

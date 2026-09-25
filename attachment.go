@@ -302,9 +302,10 @@ func checkFileName(name string) *Error {
 }
 
 func rewrittenName(name string) (because string, rewritten bool) {
+	if because := rewrittenReason("its name", name); because != "" {
+		return because, true
+	}
 	switch {
-	case !utf8.ValidString(name):
-		return "the bytes of that name are no valid UTF-8: YouTrack would keep each byte it cannot read as U+FFFD", true
 	case strings.Contains(name, `\`):
 		return `it holds a backslash, and YouTrack keeps only what stands after the last one`, true
 	case strings.Contains(name, `"`):
