@@ -3,11 +3,9 @@ package youtrack
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
-	"strconv"
 )
 
 const (
@@ -19,42 +17,80 @@ const (
 
 const CommentFields = "id,author(login),created,updated,text"
 
-const everyComment = "all"
+// ListCommentsOptions: Fields is a fields= expression, empty for the defaults of the owner and +x for them and x.
+type ListCommentsOptions struct {
+	Fields string
+	Page   Page
+}
 
+// Comments is how many of the latest comments a read of an issue or an article brings, oldest first by created and
+// without the ones taken back by their authors; the zero value brings none and asks the server for none.
 type Comments struct {
 	last int
 	all  bool
+}
+
+// LastComments is refused by the read it is passed to when n is negative.
+func LastComments(n int) Comments {
+	return Comments{last: n}
 }
 
 func AllComments() Comments {
 	return Comments{all: true}
 }
 
-func ParseComments(text string) (Comments, error) {
-	if text == everyComment {
-		return AllComments(), nil
+func (c Comments) check() *Error {
+	if c.last >= 0 {
+		return nil
 	}
-	last, err := strconv.Atoi(text)
-	switch {
-	case errors.Is(err, strconv.ErrRange):
-		return Comments{}, errors.New("it is a larger number than there could ever be comments")
-	case err != nil:
-		return Comments{}, fmt.Errorf("it is neither %s nor a whole number of comments", everyComment)
-	case last < 0:
-		return Comments{}, errors.New("a number of comments is not negative")
-	}
-	return Comments{last: last}, nil
-}
-
-func (c Comments) String() string {
-	if c.all {
-		return everyComment
-	}
-	return strconv.Itoa(c.last)
+	message := fmt.Sprintf("the read asks for the latest %d comments, and a count of them is 0 for none or more", c.last)
+	return &Error{Code: CodeBadUsage, Message: message}
 }
 
 func (c Comments) asked() bool {
 	return c.all || c.last > 0
+}
+
+// List runs oldest first, and owner is the readable id of an issue or an article. An issue lists the comments taken
+// back by their authors too, with text null, so its defaults carry deleted; a comment of an article has none.
+func (s *CommentsService) List(ctx context.Context, owner string, opts *ListCommentsOptions) (*Node, error) {
+	return result(s.list(ctx, owner, optionsOf(opts)))
+}
+
+// Create refuses an empty text before the request: YouTrack refuses one on an issue and keeps it on an article.
+func (s *CommentsService) Create(ctx context.Context, owner, text string, opts *WriteOptions) (*Node, error) {
+	return result(s.create(ctx, owner, text, optionsOf(opts)))
+}
+
+// A comment of an issue is read before the write, and one its author deleted is refused: YouTrack would take the
+// write silently.
+func (s *CommentsService) Update(ctx context.Context, owner, id, text string, opts *WriteOptions) (*Node, error) {
+	return result(s.update(ctx, owner, id, text, optionsOf(opts)))
+}
+
+// The answer holds the id alone: the comment is not read before the deletion.
+func (s *CommentsService) Delete(ctx context.Context, owner, id string) (*Node, error) {
+	return result(s.delete(ctx, owner, id))
+}
+
+func (s *CommentsService) list(ctx context.Context, owner string, opts ListCommentsOptions) (*Node, *Error) {
+	at, fault := parseOwner(owner)
+	if fault != nil {
+		return nil, fault
+	}
+	page, fault := opts.Page.parse()
+	if fault != nil {
+		return nil, fault
+	}
+	held := commentTargetOf(at.kind)
+	requested, fault := parseFields(opts.Fields, formatFields(held.listed()))
+	if fault != nil {
+		return nil, fault
+	}
+	c := s.client
+	return c.listPage(ctx, c.spec, commentsKey, "[]"+held.comment, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+		return held.api.list(c, ctx, at, fields, w)
+	})
 }
 
 type commentTarget struct {
@@ -102,17 +138,17 @@ func commentTargetOf(kind ownerKind) commentTarget {
 	return issueCommentTarget()
 }
 
-const commentsOfAShow = "is filled by --comments, which settles how many comments are printed and what each of " +
-	"them holds"
+const commentsOfAShow = "is filled by the count of comments the read asks for, which settles how many comments " +
+	"come and what each of them holds"
 
 func (h commentTarget) commentsOfAList() string {
-	return fmt.Sprintf("holds the comments of an %s, which are printed a record at a time by ytrack comment "+
-		"list, and with the %s itself by ytrack %s show --comments", h.owner, h.owner, h.owner)
+	return fmt.Sprintf("holds the comments of an %s, which come a record at a time in a list of its comments, and "+
+		"with the %s itself in a read of it that asks for them", h.owner, h.owner)
 }
 
 func (h commentTarget) commentsOfAWrite() string {
-	return fmt.Sprintf("holds the comments of an %s, which no write changes; they are printed by ytrack %s "+
-		"show --comments", h.owner, h.owner)
+	return fmt.Sprintf("holds the comments of an %s, which no write of it changes; they come with a read of the %s "+
+		"that asks for them", h.owner, h.owner)
 }
 
 func (h commentTarget) reject(spec *schemas, expression string, requested []requestedField, because string) *Error {
@@ -133,126 +169,6 @@ func commentOutputFields() []requestedField {
 	}
 }
 
-func CreateComment(id, text string, expression string) (Call, *Error) {
-	at, fault := parseOwner(id)
-	if fault != nil {
-		return nil, fault
-	}
-	written, fault := parseCommentText(text)
-	if fault != nil {
-		return nil, fault
-	}
-	requested, fault := commentFields(expression)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.createComment(ctx, spec, at, written, requested)
-	}, nil
-}
-
-func (c *Client) createComment(ctx context.Context, spec *schemas, at owner, written commentCreate, requested []requestedField) (*Node, *Error) {
-	held := commentTargetOf(at.kind)
-	body := written.body()
-	return c.write(ctx, spec, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.api.create(c, ctx, at, body, fields)
-	}, written.verify, writeResultNode(requested))
-}
-
-func UpdateComment(id, comment, text string, expression string) (Call, *Error) {
-	at, fault := parseOwner(id)
-	if fault != nil {
-		return nil, fault
-	}
-	which, fault := parseChildID(commentKey, commentOwnerNoun, comment)
-	if fault != nil {
-		return nil, fault
-	}
-	written, fault := parseCommentText(text)
-	if fault != nil {
-		return nil, fault
-	}
-	requested, fault := commentFields(expression)
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	rewritten := commentUpdate{commentCreate: written, at: which}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.updateComment(ctx, spec, at, rewritten, requested)
-	}, nil
-}
-
-func (c *Client) updateComment(ctx context.Context, spec *schemas, at owner, written commentUpdate, requested []requestedField) (*Node, *Error) {
-	held := commentTargetOf(at.kind)
-	if held.keepsDeleted() {
-		if fault := c.checkCommentNotDeleted(ctx, spec, held, at, written.at); fault != nil {
-			return nil, fault
-		}
-	}
-	body := written.body()
-	return c.write(ctx, spec, held.comment, withFields(requested, written.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.api.update(c, ctx, at, written.at, body, fields)
-	}, written.verify, writeResultNode(requested))
-}
-
-func (c *Client) checkCommentNotDeleted(ctx context.Context, spec *schemas, held commentTarget, at owner, comment childID) *Error {
-	a, fault := c.request(ctx, spec, held.comment, []requestedField{{name: deletedKey}}, func(ctx context.Context, fields string) (*http.Response, error) {
-		return held.api.getComment(c, ctx, at, comment, fields)
-	})
-	if fault != nil {
-		return fault
-	}
-	gone, fault := held.deleted(a, a.objects[0])
-	if fault != nil {
-		return fault
-	}
-	if !gone {
-		return nil
-	}
-	details := []Pair{
-		requestDetail(a.httpResponse.Request.Method, a.httpResponse.Request.URL.Redacted()),
-		{Key: commentKey, Value: NewString(comment.String())},
-	}
-	return &Error{Code: CodeBadUsage, Message: deletedCommentMessage, Details: details}
-}
-
-const deletedCommentMessage = "the comment was taken back by whoever wrote it, and YouTrack takes a write into such " +
-	"a comment without a word: the text would be changed where nothing prints it and the answer would carry " +
-	"none. A comment taken back is removed for good by ytrack comment delete and changed by nothing at all"
-
-func DeleteComment(id, comment string) (Call, *Error) {
-	at, fault := parseOwner(id)
-	if fault != nil {
-		return nil, fault
-	}
-	which, fault := parseChildID(commentKey, commentOwnerNoun, comment)
-	if fault != nil {
-		return nil, fault
-	}
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.deleteComment(ctx, at, which)
-	}, nil
-}
-
-func (c *Client) deleteComment(ctx context.Context, at owner, comment childID) (*Node, *Error) {
-	held := commentTargetOf(at.kind)
-	if fault := writeEmpty(ctx, func(ctx context.Context) (*http.Response, error) {
-		return held.api.remove(c, ctx, at, comment)
-	}); fault != nil {
-		return nil, fault
-	}
-	return NewMap(Pair{Key: idKey, Value: NewString(comment.String())}), nil
-}
-
-func commentFields(expression string) ([]requestedField, *Error) {
-	if expression == "" {
-		return parseDefault(CommentFields, false)
-	}
-	return parseFields(expression, CommentFields)
-}
-
 func (h commentTarget) listed() []requestedField {
 	held := commentOutputFields()
 	if h.keepsDeleted() {
@@ -263,36 +179,6 @@ func (h commentTarget) listed() []requestedField {
 
 func CommentListFields() string {
 	return formatFields(issueCommentTarget().listed())
-}
-
-func ListComments(id string, expression string, page Page) (Call, *Error) {
-	at, fault := parseOwner(id)
-	if fault != nil {
-		return nil, fault
-	}
-	page, fault = page.parse()
-	if fault != nil {
-		return nil, fault
-	}
-	held := commentTargetOf(at.kind)
-	defaults := formatFields(held.listed())
-	requested, fault := parseDefault(defaults, false)
-	if expression != "" {
-		requested, fault = parseFields(expression, defaults)
-	}
-	if fault != nil {
-		return nil, fault
-	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listComments(ctx, spec, held, at, requested, page)
-	}, nil
-}
-
-func (c *Client) listComments(ctx context.Context, spec *schemas, held commentTarget, at owner, requested []requestedField, page Page) (*Node, *Error) {
-	return c.listPage(ctx, spec, commentsKey, "[]"+held.comment, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
-		return held.api.list(c, ctx, at, fields, w)
-	})
 }
 
 func (c Comments) merged(h commentTarget, asked []requestedField) []requestedField {

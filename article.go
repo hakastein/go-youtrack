@@ -28,6 +28,9 @@ func ShowArticle(id string, expression string, comments Comments) (Call, *Error)
 	if fault != nil {
 		return nil, fault
 	}
+	if fault := comments.check(); fault != nil {
+		return nil, fault
+	}
 	return func(ctx context.Context, c *Client) (*Node, *Error) {
 		return c.showArticle(ctx, spec, id, requested, comments)
 	}, nil
