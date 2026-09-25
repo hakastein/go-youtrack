@@ -1,17 +1,30 @@
 package youtrack
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"unicode/utf8"
 )
 
+// The url in it is a signed link: it fetches the file without a token for up to three days.
 const AttachmentListFields = "id,name,size,mimeType,url"
+
+// ListAttachmentsOptions: Fields is a fields= expression, empty for AttachmentListFields and +x for them and x.
+type ListAttachmentsOptions struct {
+	Fields string
+	Page   Page
+}
+
+type File struct {
+	Name    string
+	Content io.Reader
+}
 
 const attachmentsPlural = "attachments"
 
@@ -21,52 +34,55 @@ const (
 	filePart      = "files[0]"
 )
 
+// The page holds the files of the comments of owner too.
+func (s *AttachmentsService) List(ctx context.Context, owner string, opts *ListAttachmentsOptions) (*Node, error) {
+	return result(s.list(ctx, owner, optionsOf(opts)))
+}
+
+// Create streams Content to its end and leaves it open: the caller closes it, and nothing reads it once Create has
+// returned. A name YouTrack would keep as another is refused before the request.
+func (s *AttachmentsService) Create(ctx context.Context, owner string, file File, opts *WriteOptions) (*Node, error) {
+	return result(s.create(ctx, owner, file, optionsOf(opts)))
+}
+
+// Delete answers with the attachment as read just before the deletion: id is its internal id, as 12-1, and the
+// deletion goes to the owner the read named.
+func (s *AttachmentsService) Delete(ctx context.Context, owner, id string) (*Node, error) {
+	return result(s.delete(ctx, owner, id))
+}
+
 type attachmentTarget struct {
 	schema string
 	owner  string
 	kind   ownerKind
 }
 
-func issueAttachmentTarget() attachmentTarget {
-	return attachmentTarget{schema: issueAttachmentSchema, owner: "issue", kind: issueOwner}
-}
-
-func articleAttachmentTarget() attachmentTarget {
-	return attachmentTarget{schema: articleAttachmentSchema, owner: "article", kind: articleOwner}
-}
-
 func attachmentTargetOf(kind ownerKind) attachmentTarget {
 	if kind == articleOwner {
-		return articleAttachmentTarget()
+		return attachmentTarget{schema: articleAttachmentSchema, owner: "article", kind: articleOwner}
 	}
-	return issueAttachmentTarget()
+	return attachmentTarget{schema: issueAttachmentSchema, owner: "issue", kind: issueOwner}
 }
 
 func (h attachmentTarget) listSchema() string {
 	return "[]" + h.schema
 }
 
-func ListAttachments(id string, expression string, page Page) (Call, *Error) {
-	at, fault := parseOwner(id)
+func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAttachmentsOptions) (*Node, *Error) {
+	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
 	}
-	page, fault = page.parse()
+	page, fault := opts.Page.parse()
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := attachmentFields(expression)
+	requested, fault := parseFields(opts.Fields, AttachmentListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.listAttachments(ctx, spec, at, requested, page)
-	}, nil
-}
-
-func (c *Client) listAttachments(ctx context.Context, spec *schemas, at owner, requested []requestedField, page Page) (*Node, *Error) {
-	return c.listPage(ctx, spec, attachmentsPlural, attachmentTargetOf(at.kind).listSchema(), requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+	c := s.client
+	return c.listPage(ctx, c.spec, attachmentsPlural, attachmentTargetOf(at.kind).listSchema(), requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
 		return c.getAttachments(ctx, at, fields, w)
 	})
 }
@@ -78,47 +94,27 @@ func (c *Client) getAttachments(ctx context.Context, at owner, fields string, w 
 	return c.apiGetIssueAttachments(ctx, at, fields, w)
 }
 
-func attachmentFields(expression string) ([]requestedField, *Error) {
-	if expression == "" {
-		return parseDefault(AttachmentListFields, false)
-	}
-	return parseFields(expression, AttachmentListFields)
-}
-
-type AttachedFile struct {
-	Name string
-	Body io.ReadCloser
-}
-
-type FileOpener func() (AttachedFile, *Error)
-
-func CreateAttachment(id string, open FileOpener, expression string) (Call, *Error) {
-	at, fault := parseOwner(id)
+func (s *AttachmentsService) create(ctx context.Context, owner string, file File, opts WriteOptions) (*Node, *Error) {
+	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
 	}
-	file, fault := open()
+	if fault := checkFile(file); fault != nil {
+		return nil, fault
+	}
+	requested, fault := parseFields(opts.Fields, AttachmentListFields)
 	if fault != nil {
 		return nil, fault
 	}
-	sent, fault := newUpload(file)
-	if fault != nil {
-		return nil, fault
+	sent := &upload{content: file.Content}
+	defer sent.stop()
+	body, contentType := sent.form(file.Name)
+	confirmed := func(a decodedResponse) *Error {
+		return verifyUpload(a, file.Name, sent.streamed())
 	}
-	requested, fault := attachmentFields(expression)
-	if fault != nil {
-		_ = sent.body.Close()
-		return nil, fault
-	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.createAttachment(ctx, spec, at, sent, requested)
-	}, nil
-}
-
-func (c *Client) createAttachment(ctx context.Context, spec *schemas, at owner, sent *upload, requested []requestedField) (*Node, *Error) {
-	body, contentType, confirmed := sent.form()
-	return c.write(ctx, spec, attachmentTargetOf(at.kind).listSchema(), withFields(requested, sent.verifyFields()...), func(ctx context.Context, fields string) (*http.Response, error) {
+	c := s.client
+	checked := withFields(requested, requestedField{name: nameKey}, requestedField{name: sizeKey})
+	return c.write(ctx, c.spec, attachmentTargetOf(at.kind).listSchema(), checked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateAttachment(ctx, at, contentType, body, fields)
 	}, confirmed, writeResultNode(requested))
 }
@@ -130,29 +126,23 @@ func (c *Client) apiCreateAttachment(ctx context.Context, at owner, contentType 
 	return c.apiCreateIssueAttachment(ctx, at, contentType, body, fields)
 }
 
-func DeleteAttachment(id, attachment string) (Call, *Error) {
-	at, fault := parseOwner(id)
+func (s *AttachmentsService) delete(ctx context.Context, owner, id string) (*Node, *Error) {
+	at, fault := parseOwner(owner)
 	if fault != nil {
 		return nil, fault
 	}
-	file, fault := parseChildID(attachmentKey, "the issue or the article", attachment)
+	file, fault := parseChildID(attachmentKey, "the issue or the article", id)
 	if fault != nil {
 		return nil, fault
 	}
-	spec := loadSchemas()
-	return func(ctx context.Context, c *Client) (*Node, *Error) {
-		return c.deleteAttachment(ctx, spec, at, file)
-	}, nil
-}
-
-func (c *Client) deleteAttachment(ctx context.Context, spec *schemas, at owner, file childID) (*Node, *Error) {
+	c := s.client
 	target := attachmentTargetOf(at.kind)
 	requested := []requestedField{
 		{name: idKey},
 		{name: nameKey},
 		{name: target.owner, children: []requestedField{{name: idReadableKey}}},
 	}
-	found, fault := c.request(ctx, spec, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+	found, fault := c.request(ctx, c.spec, target.schema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.getAttachment(ctx, at, file, fields)
 	})
 	if fault != nil {
@@ -199,54 +189,55 @@ func (c *Client) apiDeleteAttachment(ctx context.Context, kind ownerKind, at rea
 	return c.apiDeleteIssueAttachment(ctx, at, file)
 }
 
+// net/http may go on reading a request body after the response has come, and the caller closes Content once Create
+// returns: stop waits out a read in progress and refuses every later one.
 type upload struct {
-	name string
-	body io.ReadCloser
+	mu      sync.Mutex
+	content io.Reader
+	read    int64
+	stopped bool
 }
 
-func newUpload(file AttachedFile) (*upload, *Error) {
-	if fault := checkFileName(file.Name); fault != nil {
-		_ = file.Body.Close()
-		return nil, fault
+func (u *upload) Read(p []byte) (int, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.stopped {
+		return 0, io.ErrClosedPipe
 	}
-	return &upload{name: file.Name, body: file.Body}, nil
+	n, err := u.content.Read(p)
+	u.read += int64(n)
+	return n, err
 }
 
-func (u *upload) form() (io.ReadCloser, string, func(decodedResponse) *Error) {
-	reading, writing := io.Pipe()
-	form := multipart.NewWriter(writing)
-	var sent atomic.Int64
-	go func() {
-		defer u.body.Close()
-		part, err := form.CreateFormFile(filePart, u.name)
-		if err != nil {
-			_ = writing.CloseWithError(err)
-			return
-		}
-		written, err := io.Copy(part, u.body)
-		sent.Store(written)
-		if err != nil {
-			_ = writing.CloseWithError(err)
-			return
-		}
-		_ = writing.CloseWithError(form.Close())
-	}()
-	confirmed := func(a decodedResponse) *Error {
-		return u.verify(a, sent.Load())
-	}
-	return reading, form.FormDataContentType(), confirmed
+func (u *upload) stop() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.stopped = true
 }
 
-func (u *upload) verifyFields() []requestedField {
-	return []requestedField{{name: nameKey}, {name: sizeKey}}
+func (u *upload) streamed() int64 {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.read
 }
 
-func (u *upload) verify(a decodedResponse, sent int64) *Error {
+func (u *upload) form(name string) (io.Reader, string) {
+	var framing bytes.Buffer
+	form := multipart.NewWriter(&framing)
+	// A multipart writer fails only where the writer under it does, and a bytes.Buffer takes every write.
+	_, _ = form.CreateFormFile(filePart, name)
+	head := bytes.Clone(framing.Bytes())
+	framing.Reset()
+	_ = form.Close()
+	return io.MultiReader(bytes.NewReader(head), u, &framing), form.FormDataContentType()
+}
+
+func verifyUpload(a decodedResponse, name string, sent int64) *Error {
 	if len(a.objects) != 1 {
 		return ambiguousAttachmentFault(a)
 	}
 	filed := a.objects[0]
-	wrong := textMismatch(nil, nameKey, u.name, filed[nameKey])
+	wrong := textMismatch(nil, nameKey, name, filed[nameKey])
 	wrong = sizeMismatch(wrong, sent, filed[sizeKey])
 	if len(wrong) == 0 {
 		return nil
@@ -262,6 +253,17 @@ func ambiguousAttachmentFault(a decodedResponse) *Error {
 	}
 	message := "one file was sent and the answer carries something other than the one attachment it was filed as"
 	return &Error{Code: CodeUpstreamInvalid, Message: message, Details: details}
+}
+
+func checkFile(file File) *Error {
+	switch {
+	case file.Name == "":
+		return &Error{Code: CodeBadUsage, Message: "the file to attach has no name to be filed under"}
+	case file.Content == nil:
+		return &Error{Code: CodeBadUsage, Message: "the file to attach has nothing to read its bytes from, " +
+			"and an empty file is one whose reader ends at once"}
+	}
+	return checkFileName(file.Name)
 }
 
 const maxTrimmedRune = ' '
