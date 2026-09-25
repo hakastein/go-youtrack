@@ -191,25 +191,25 @@ func TestListProjectsRefusesAPageTheCollectionCannotHold(t *testing.T) {
 		name    string
 		handler http.HandlerFunc
 		page    youtrack.Page
-		want    youtrack.Error
+		code    youtrack.Code
+		sent    string
+		details []youtrack.Pair
 	}{
 		{
 			name:    "fewer projects counted than the skip and the page hold",
 			handler: projectPageAndCount(projectsAnswer(2, 3), projectsAnswer(0, 1, 2)),
 			page:    youtrack.Page{Limit: 2, Skip: 2},
-			want: youtrack.Error{Code: youtrack.CodeUpstreamFailed, Details: []youtrack.Pair{
-				{Key: "total", Value: number(3)},
-				{Key: "returned", Value: number(2)},
-			}},
+			code:    youtrack.CodeUpstreamFailed,
+			sent:    "/api/admin/projects?fields=id&$skip=2&$top=2",
+			details: []youtrack.Pair{{Key: "total", Value: number(3)}, {Key: "returned", Value: number(2)}},
 		},
 		{
 			name:    "more projects than the limit",
 			handler: fake.JSON(http.StatusOK, projectsAnswer(0, 1)),
 			page:    youtrack.Page{Limit: 1},
-			want: youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
-				{Key: "limit", Value: number(1)},
-				{Key: "returned", Value: number(2)},
-			}},
+			code:    youtrack.CodeUpstreamInvalid,
+			sent:    "/api/admin/projects?fields=id&$top=1",
+			details: []youtrack.Pair{{Key: "limit", Value: number(1)}, {Key: "returned", Value: number(2)}},
 		},
 	}
 	for _, tc := range tests {
@@ -218,7 +218,8 @@ func TestListProjectsRefusesAPageTheCollectionCannotHold(t *testing.T) {
 			server := fake.Serve(t, tc.handler)
 			_, err := client(t, server).Projects.List(t.Context(), &youtrack.ListProjectsOptions{Fields: "id", Page: tc.page})
 
-			assert.Equal(t, tc.want, errorOf(t, err))
+			details := append([]youtrack.Pair{requestTo(http.MethodGet, server, tc.sent)}, tc.details...)
+			assert.Equal(t, youtrack.Error{Code: tc.code, Details: details}, errorOf(t, err))
 		})
 	}
 }

@@ -127,7 +127,7 @@ func (s *UsersService) find(ctx context.Context, query string, limit int) ([]Use
 	if fault != nil {
 		return nil, fault
 	}
-	if fault := moreThanAsked(usersPlural, page.Limit, page.Limit, len(a.objects)); fault != nil {
+	if fault := moreThanAsked(a, usersPlural, page.Limit, page.Limit); fault != nil {
 		return nil, fault
 	}
 	users := make([]User, 0, len(a.objects))

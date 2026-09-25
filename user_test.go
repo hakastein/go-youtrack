@@ -292,6 +292,7 @@ func TestFindUsersRefusesMoreUsersThanTheLimit(t *testing.T) {
 	_, err := client(t, server).Users.Find(t.Context(), "", 1)
 
 	assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
+		lastRequest(t, server),
 		{Key: "limit", Value: number(1)},
 		{Key: "returned", Value: number(2)},
 	}}, errorOf(t, err))

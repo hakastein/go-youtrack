@@ -602,6 +602,7 @@ func TestListActivitiesRefusesMoreActivitiesThanTheLimitAndTheOnePastIt(t *testi
 	_, err := client(t, server).Activities.List(t.Context(), "DEV-1", opts)
 
 	want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
+		lastRequest(t, server),
 		{Key: "limit", Value: number(1)},
 		{Key: "returned", Value: number(3)},
 	}}

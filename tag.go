@@ -432,7 +432,7 @@ func (op tagOp) verify(a decodedResponse) *Error {
 	}
 	message := fmt.Sprintf("the tag the %s carries came back under an id other than the one the name resolved to",
 		op.target.kind)
-	return a.invalid(message)
+	return a.fault(CodeUpstreamInvalid, message)
 }
 
 func (op tagOp) render(a decodedResponse) (*Node, *Error) {

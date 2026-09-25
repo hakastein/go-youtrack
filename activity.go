@@ -257,7 +257,7 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 		return nil, fault
 	}
 	received := decoded.objects
-	if fault := moreThanAsked(activitiesPlural, page.Limit, int(probing.top), len(received)); fault != nil {
+	if fault := moreThanAsked(decoded, activitiesPlural, page.Limit, int(probing.top)); fault != nil {
 		return nil, fault
 	}
 	rows, fault := activityRows(decoded, categories, values)

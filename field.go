@@ -182,10 +182,9 @@ func (f ProjectField) verifyUnchanged(a decodedResponse, code string) *Error {
 	if answered == f.info() {
 		return nil
 	}
-	details := append(responseDetails(a.httpResponse),
+	details := insertAfterRequest(append(responseDetails(a.httpResponse), bodyDetail(a.body)),
 		Pair{Key: projectKey, Value: NewString(code)},
-		Pair{Key: fieldKey, Value: NewString(f.Name)},
-		bodyDetail(a.body))
+		Pair{Key: fieldKey, Value: NewString(f.Name)})
 	message := "the custom field the id addresses is no longer the one the name resolved to"
 	return &Error{Code: CodeUpstreamFailed, Message: message, Details: details}
 }

@@ -976,8 +976,6 @@ func TestAddTagRefusesATagOtherThanTheOneResolved(t *testing.T) {
 				requestTo(http.MethodPost, server, tc.write+"?fields=id,name,owner(login)"),
 				{Key: tc.kind, Value: youtrack.NewString(tc.written)},
 				{Key: "tag", Value: youtrack.NewString("early")},
-				{Key: "upstream_status", Value: number(http.StatusOK)},
-				{Key: "upstream_body", Value: youtrack.NewString(other)},
 			}}
 			assert.Equal(t, want, errorOf(t, err))
 		})

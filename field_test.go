@@ -478,9 +478,9 @@ func TestShowAndBundleRefuseAFieldThatChangedBetweenTheTwoRequests(t *testing.T)
 
 				want := youtrack.Error{Code: youtrack.CodeUpstreamFailed, Details: []youtrack.Pair{
 					lastRequest(t, server),
-					{Key: "upstream_status", Value: number(http.StatusOK)},
 					{Key: "project", Value: youtrack.NewString("DEV")},
 					{Key: "field", Value: youtrack.NewString("Field")},
+					{Key: "upstream_status", Value: number(http.StatusOK)},
 					{Key: "upstream_body", Value: youtrack.NewString(answer)},
 				}}
 				assert.Equal(t, want, errorOf(t, err))
