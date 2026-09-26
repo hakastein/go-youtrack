@@ -176,7 +176,6 @@ func TestShowFieldRefusesACallItCannotSend(t *testing.T) {
 		{name: "a field of no name", project: "DEV", field: "", fields: "canBeEmpty"},
 		{name: "fields that close nothing", project: "DEV", field: "First", fields: "field("},
 		{name: "no fields", project: "DEV", field: "First"},
-		{name: "fields added to others", project: "DEV", field: "First", fields: "+canBeEmpty"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

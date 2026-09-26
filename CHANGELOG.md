@@ -6,8 +6,8 @@
 
 Ломающие:
 
-- Выражение полей документной операции обязательно: пустое, в том числе при `nil` вместо опций, и начатое с `+` —
-  `bad_usage` до запроса.
+- Выражение полей — `fields=` REST API как есть: `+x` к полям по умолчанию удалён, а пустое выражение, в том числе
+  при `nil` вместо опций, — `bad_usage` до запроса.
 - Удалены наборы полей по умолчанию: `IssueShowFields`, `IssueListFields`, `ArticleShowFields`, `ArticleListFields`,
   `CommentFields`, `CommentListFields`, `AttachmentListFields`, `LinkListFields`, `TagListFields`, `TagCreateFields`,
   `WorkItemListFields`, `WorkItemWriteFields`, `ActivityListFields`, `ProjectShowFields`, `ProjectListFields`,

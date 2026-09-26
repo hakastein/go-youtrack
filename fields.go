@@ -82,10 +82,6 @@ func readExpression(expression string, named bool) ([]requestedField, *Error) {
 	if given.skipSpace(); given.at == len(expression) {
 		return nil, &Error{Code: CodeBadUsage, Message: "the fields expression is empty, and every field to read is named in it"}
 	}
-	if given.take('+') {
-		message := fmt.Sprintf("fields %s: a plus at the start adds to nothing, and every field to read is named in the expression", quote(expression))
-		return nil, &Error{Code: CodeBadUsage, Message: message}
-	}
 	requested, fault := given.expression(nil)
 	if fault == nil {
 		fault = rejectFileContent(expression, requested)

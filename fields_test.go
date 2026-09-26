@@ -48,8 +48,6 @@ func TestShowProjectRefusesAnExpressionItCannotRead(t *testing.T) {
 		{name: "no fields", expression: ""},
 		{name: "spaces and tabs alone", expression: " \t"},
 		{name: "a plus alone", expression: "+"},
-		{name: "a name added to others", expression: "+description"},
-		{name: "spaces around a plus at the start", expression: " + description"},
 		{name: "a comma at the end", expression: "a,"},
 		{name: "a comma at the start", expression: ",a"},
 		{name: "two commas", expression: "a,,b"},
@@ -509,7 +507,7 @@ func fieldsCalls() map[string]fieldsCall {
 	}
 }
 
-func TestEveryDocumentOperationRefusesAnExpressionThatNamesNotEveryField(t *testing.T) {
+func TestEveryDocumentOperationRefusesToReadWithoutFields(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -517,7 +515,6 @@ func TestEveryDocumentOperationRefusesAnExpressionThatNamesNotEveryField(t *test
 	}{
 		{name: "no options"},
 		{name: "no fields", fields: new("")},
-		{name: "a name added to others", fields: new("+id")},
 	}
 	for operation, call := range fieldsCalls() {
 		for _, tc := range tests {
