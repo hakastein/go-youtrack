@@ -17,7 +17,7 @@ _Avoid_: соединение, сессия
 _Avoid_: ресурс, эндпойнт, репозиторий
 
 **Операция** (operation):
-Метод сервиса. Документная называется как подкоманда ytrack (`Show`, `List`, `Create`, `Update`, `Delete`, `Add`,
+Метод сервиса. Документная называется по действию над сущностью (`Show`, `List`, `Create`, `Update`, `Delete`, `Add`,
 `Remove`, `Children`) и отвечает документом; типизированная (`Issues.Get`, `Fields.Bundle`, `Users.Find`) — значением Go.
 _Avoid_: вызов API, запрос, команда
 
@@ -217,7 +217,7 @@ _Avoid_: notice, лог
 ### Спецификация и тесты
 
 **Спецификация** (`api/openapi.json`):
-OpenAPI YouTrack, снятая с дев-инстанса ytrack `make openapi`. Правится только overlay `api/overlay.yaml`.
+OpenAPI YouTrack, снятая `make openapi` с дев-инстанса YouTrack 2026.1.13757. Правится только overlay `api/overlay.yaml`.
 _Avoid_: схема API, сваггер
 
 **Фейковый сервер** (`fake.Server`):

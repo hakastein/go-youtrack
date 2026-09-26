@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const Token = "perm-ytrack-test-token"
+const Token = "perm-youtrack-test-token"
 
 // Port 1 is tcpmux, which nothing on a test machine serves.
 const NobodyListens = "http://127.0.0.1:1"

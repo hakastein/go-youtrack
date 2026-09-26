@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Сборка YouTrack, на которой измерены факты о сервере в docs/adr: дев-инстанс ytrack (dev/).
+# Сборка YouTrack, на которой измерены факты о сервере в docs/adr.
 readonly pinned=2026.1.13757
 url=${YOUTRACK_URL:-http://localhost:8091}
 

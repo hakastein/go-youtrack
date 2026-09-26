@@ -2,7 +2,7 @@
 
 ## v0.3.0
 
-Модуль становится SDK: операции ytrack переезжают в него сервисами на клиенте, ytrack — обёртка над модулем.
+Операции над сущностями — методы сервисов на клиенте.
 
 Ломающие:
 
@@ -15,14 +15,14 @@
 - Десять типов ошибок (`ArgumentError`, `TransportError`, `StatusError`, `ResponseError`, `MismatchError`,
   `FieldNameError`, `ValueError`, `RequiredFieldError`, `PermissionError`, `ChangedFieldError` и их `Mismatch`,
   `AmbiguousName`, `InvalidValue`) заменены одной `*Error` с `Code`, `Message`, `Details`, `AfterWrite` и `Err`.
-  Код — из словаря ytrack (`bad_usage`, `unknown_name`, `missing_required`, `not_found`, `denied`, `rejected`,
+  Код — из закрытого словаря (`bad_usage`, `unknown_name`, `missing_required`, `not_found`, `denied`, `rejected`,
   `upstream_failed`, `upstream_invalid`, `write_uncertain`), сентинелы `Err…` сравниваются `errors.Is` по коду,
   `MayHaveWritten` заменяет `TransportError.Written`, `StatusError.Uncertain` и `ResponseError.Write`, `AfterWrite` —
   `StatusError.Accepted`.
 - `Send`, `FieldType.Encode` и `FieldType.ReadValue` отвечают `*Error`: тип вне таблицы у обоих —
   `upstream_invalid`, и `ReadValue` отвергает `id` или `localizedName` значения, которые не строка и не `null`.
 - Тип `Request` и `Metadata.Request` удалены: запрос стоит в `Details` ошибки под `request`.
-- `fake.Server.Env()` удалён: окружение входа ytrack собирает сам.
+- `fake.Server.Env()` удалён.
 - Токен больше не попадает в текст ошибки `NewClient`.
 
 Новое:
