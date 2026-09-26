@@ -2,132 +2,71 @@ package youtrack
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 )
 
-// Bundle is the set of values a custom field of a project accepts.
+// Field.CanBeEmpty comes from the read of the field, not from the metadata.
 type Bundle struct {
 	Field  ProjectField
 	Values []BundleValue
 }
 
-// BundleValue is one value of a bundle: its internal id, which survives a rename, its name and whether it is archived.
 type BundleValue struct {
 	ID       string
 	Name     string
 	Archived bool
 }
 
-// Bundle reads the values of the custom field of the project the name resolves to, by name and then by
-// translation, without regard to letter case. Only a field whose type HasBundle has one. With a metadata
-// cache the id of the field comes from the cache, and the project is read again when the cache disagrees
-// with the server; the field itself always comes from the server.
-func (c *Client) Bundle(ctx context.Context, project, field string) (*Bundle, error) {
-	code, err := parseProjectCode(project)
-	if err != nil {
-		return nil, err
-	}
-	if field == "" {
-		return nil, &ArgumentError{Argument: "field", Value: field, Reason: "names no custom field"}
-	}
-	target := metadataTarget(code)
-	if cached, hit := c.cache.load(target); hit {
-		bundle, err, stale := c.bundleFrom(ctx, code, field, cached, answer{}, true)
-		if !stale {
-			return bundle, err
-		}
-	}
-	metadata, a, err := c.readProjectMetadata(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-	bundle, err, _ := c.bundleFrom(ctx, code, field, metadata.fields, a, false)
-	return bundle, err
+// Bundle finds the field as Show does. Only a field whose type HasBundle has one, and the type is taken from the
+// server before a field is refused for it.
+func (s *FieldsService) Bundle(ctx context.Context, project, field string) (*Bundle, error) {
+	return result(s.bundle(ctx, project, field))
 }
 
-func (c *Client) bundleFrom(ctx context.Context, code, name string, fields []ProjectField, a answer, fromCache bool) (*Bundle, error, bool) {
-	at := matchFields(name, fields)
-	if len(at) != 1 {
-		if fromCache {
-			return nil, nil, true
-		}
-		return nil, unresolvedName(a, code, name, fields, at), false
+func (s *FieldsService) bundle(ctx context.Context, project, name string) (*Bundle, *Error) {
+	code, fault := parseProjectCode(project)
+	if fault != nil {
+		return nil, fault
 	}
-	found := fields[at[0]]
-	if !isInternalID(found.ID) {
-		if fromCache {
-			return nil, nil, true
-		}
-		return nil, a.invalid(fmt.Sprintf("the id %s of a custom field is not two numbers with a dash between them", quote(found.ID))), false
+	if fault := checkFieldName(name); fault != nil {
+		return nil, fault
 	}
-	kind, known := found.Type.kind()
-	if !known {
-		if fromCache {
-			return nil, nil, true
-		}
-		return nil, a.invalid(unmodelled(found.Type)), false
+	read, fault := s.readField(ctx, code, name, bundleFields)
+	if fault != nil {
+		return nil, fault
 	}
-	asked := []field{fieldNaming(), {name: canBeEmptyKey}}
-	if kind.bundle {
-		asked = append(asked, field{name: "bundle", children: []field{{name: "values", children: []field{{name: idKey}, {name: nameKey}, {name: "archived"}}}}})
-	}
-	read, err := c.read(ctx, func(ctx context.Context) (*http.Response, error) {
-		return c.apiGetProjectCustomField(ctx, code, found.ID, formatFields(asked))
-	})
-	if err != nil {
-		return nil, err, fromCache && isStale(err)
-	}
-	object, err := read.object()
-	if err != nil {
-		return nil, err, fromCache
-	}
-	naming, ok := readFieldNaming(object["field"])
-	if !ok {
-		return nil, read.invalid(brokenFieldInfo), fromCache
-	}
-	canBeEmpty, isFlag := object[canBeEmptyKey].(bool)
+	a, field := read.answer, read.field
+	canBeEmpty, isFlag := a.objects[0][canBeEmptyKey].(bool)
 	if !isFlag {
-		return nil, read.invalid(brokenBinding), fromCache
+		return nil, a.invalid(brokenPlacement)
 	}
-	if naming != namingOf(found) {
-		if fromCache {
-			return nil, nil, true
-		}
-		return nil, &ChangedFieldError{Request: read.request, Project: code, Field: found.Name, Body: read.body}, false
+	field.CanBeEmpty = canBeEmpty
+	if !field.Type.HasBundle() {
+		message := fmt.Sprintf("the custom field %s is a %s field, and a %s field holds no bundle of values",
+			quote(field.Name), field.Type, field.Type.ValueType)
+		return nil, &Error{Code: CodeBadUsage, Message: message}
 	}
-	if !kind.bundle {
-		reason := fmt.Sprintf("is a %s field, and a %s field holds no bundle of values", found.Type, found.Type.ValueType)
-		return nil, &ArgumentError{Argument: "field", Value: name, Reason: reason}, false
+	values, fault := readBundleValues(a)
+	if fault != nil {
+		return nil, fault
 	}
-	values, err := readBundleValues(read, object["bundle"])
-	if err != nil {
-		return nil, err, false
-	}
-	found.CanBeEmpty = canBeEmpty
-	return &Bundle{Field: found, Values: values}, nil, false
+	return &Bundle{Field: field, Values: values}, nil
 }
 
-// A field the server no longer finds under its cached id and an answer that does not fit are what a stale cache looks like.
-func isStale(err error) bool {
-	var status *StatusError
-	var response *ResponseError
-	return errors.As(err, &status) && status.Status == http.StatusNotFound || errors.As(err, &response)
-}
-
-func unresolvedName(a answer, code, name string, fields []ProjectField, at []int) error {
-	failed := &FieldNameError{Request: a.request, Project: code, Known: allFieldNames(fields)}
-	if len(at) > 1 {
-		failed.Ambiguous = []AmbiguousName{{Name: name, Candidates: fieldNames(fields, at)}}
-	} else {
-		failed.Unknown = []string{name}
+func bundleFields(found ProjectField) ([]requestedField, bool, *Error) {
+	if !found.Type.Known() {
+		return nil, false, nil
 	}
-	return failed
+	asked := []requestedField{fieldInfoFields(), {name: canBeEmptyKey}}
+	if found.Type.HasBundle() {
+		values := requestedField{name: "values", children: []requestedField{{name: idKey}, {name: nameKey}, {name: "archived"}}}
+		asked = append(asked, requestedField{name: "bundle", children: []requestedField{values}})
+	}
+	return asked, true, nil
 }
 
-func readBundleValues(a answer, value any) ([]BundleValue, error) {
-	bundle, isObject := value.(map[string]any)
+func readBundleValues(a decodedResponse) ([]BundleValue, *Error) {
+	bundle, isObject := a.objects[0]["bundle"].(map[string]any)
 	if !isObject {
 		return nil, a.invalid("the bundle of the custom field is not a JSON object")
 	}

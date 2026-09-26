@@ -112,7 +112,6 @@ func TestFieldTypeRefusesToEncodeAValueItsTypeCannotHold(t *testing.T) {
 		{name: "an empty name", fieldType: fieldType("enum", false), text: ""},
 		{name: "a period of days", fieldType: fieldType("period", false), text: "P1D"},
 		{name: "a string with a space around it", fieldType: fieldType("string", false), text: " a"},
-		{name: "a type the module does not model", fieldType: fieldType("quantum", false), text: "a"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -120,9 +119,17 @@ func TestFieldTypeRefusesToEncodeAValueItsTypeCannotHold(t *testing.T) {
 
 			_, err := tc.fieldType.Encode(tc.text)
 
-			assert.Equal(t, youtrack.ArgumentError{Argument: "value", Value: tc.text}, argumentErrorOf(t, err))
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
+}
+
+func TestFieldTypeRefusesToEncodeForATypeItDoesNotModel(t *testing.T) {
+	t.Parallel()
+
+	_, err := fieldType("quantum", false).Encode("a")
+
+	assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamInvalid}, errorOf(t, err))
 }
 
 func TestFieldTypeReadsOneValueByTheKeyOfItsType(t *testing.T) {
@@ -171,6 +178,9 @@ func TestFieldTypeRefusesToReadAValueOfAnotherShape(t *testing.T) {
 		{name: "minutes that are text", fieldType: fieldType("period", false), item: map[string]any{"minutes": "90"}},
 		{name: "a string that is a number", fieldType: fieldType("string", false), item: json.Number("5")},
 		{name: "a type the module does not model", fieldType: fieldType("quantum", false), item: "x"},
+		{name: "an id that is a number", fieldType: fieldType("enum", false), item: map[string]any{"id": json.Number("5"), "name": "First"}},
+		{name: "a translation that is a number", fieldType: fieldType("state", false),
+			item: map[string]any{"id": "3-1", "name": "First", "localizedName": json.Number("5")}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -178,28 +188,59 @@ func TestFieldTypeRefusesToReadAValueOfAnotherShape(t *testing.T) {
 
 			_, _, err := tc.fieldType.ReadValue(tc.item)
 
-			assert.Error(t, err)
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamInvalid}, errorOf(t, err))
 		})
 	}
 }
 
 func TestFieldTypeComparesNamedValuesWithoutRegardToCase(t *testing.T) {
 	t.Parallel()
-	assert.True(t, fieldType("enum", false).Named())
-	assert.True(t, fieldType("user", true).Named())
-	assert.False(t, fieldType("string", false).Named())
-	assert.False(t, fieldType("text", false).Named())
-	assert.True(t, fieldType("enum", false).Same("first", "First"))
-	assert.False(t, fieldType("string", false).Same("first", "First"))
-	assert.True(t, fieldType("period", false).Same("PT1H", "PT1H"))
+	tests := []struct {
+		fieldType     youtrack.FieldType
+		written, held string
+		named, same   bool
+	}{
+		{fieldType: fieldType("enum", false), written: "first", held: "First", named: true, same: true},
+		{fieldType: fieldType("user", true), written: "first", held: "First", named: true, same: true},
+		{fieldType: fieldType("string", false), written: "first", held: "First"},
+		{fieldType: fieldType("text", false), written: "first", held: "First"},
+		{fieldType: fieldType("period", false), written: "PT1H", held: "PT1H", same: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.fieldType.String(), func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.named, tc.fieldType.Named())
+			assert.Equal(t, tc.same, tc.fieldType.Same(tc.written, tc.held))
+		})
+	}
 }
 
 func TestFieldTypeNamesTheBundleFieldsOfItsType(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "bundle(values(name,archived))", fieldType("enum", true).BundleFields())
-	assert.Equal(t, "bundle(values(name,archived))", fieldType("ownedField", false).BundleFields())
-	assert.Equal(t, "bundle(aggregatedUsers(login))", fieldType("user", false).BundleFields())
-	assert.Equal(t, "", fieldType("group", false).BundleFields())
-	assert.Equal(t, "", fieldType("period", false).BundleFields())
+	tests := []struct {
+		fieldType youtrack.FieldType
+		fields    string
+	}{
+		{fieldType: fieldType("enum", true), fields: "bundle(values(name,archived))"},
+		{fieldType: fieldType("ownedField", false), fields: "bundle(values(name,archived))"},
+		{fieldType: fieldType("user", false), fields: "bundle(aggregatedUsers(login))"},
+		{fieldType: fieldType("group", false)},
+		{fieldType: fieldType("period", false)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.fieldType.String(), func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.fields, tc.fieldType.BundleFields())
+		})
+	}
+}
+
+func TestValueKeysAreTheMembersValuesOfEveryTypeAreNamedBy(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, []string{"name", "login", "minutes", "text"}, youtrack.ValueKeys())
+}
+
+func fieldType(valueType string, multi bool) youtrack.FieldType {
+	return youtrack.FieldType{ValueType: youtrack.ValueType(valueType), Multi: multi}
 }

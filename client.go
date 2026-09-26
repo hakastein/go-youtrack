@@ -5,63 +5,114 @@ import (
 	"net/url"
 )
 
-// Client reaches one YouTrack instance with one permanent token.
 type Client struct {
+	Issues      *IssuesService
+	Articles    *ArticlesService
+	Comments    *CommentsService
+	Attachments *AttachmentsService
+	Links       *LinksService
+	Tags        *TagsService
+	WorkItems   *WorkItemsService
+	Activities  *ActivitiesService
+	Projects    *ProjectsService
+	Fields      *FieldsService
+	Users       *UsersService
+
 	address    *url.URL
 	token      string
 	httpClient *http.Client
 	cache      metaCache
+	spec       *schemas
 }
 
-// Option configures a Client.
+type service struct {
+	client *Client
+}
+
+type IssuesService service
+
+type ArticlesService service
+
+type CommentsService service
+
+type AttachmentsService service
+
+type LinksService service
+
+type TagsService service
+
+type WorkItemsService service
+
+type ActivitiesService service
+
+type ProjectsService service
+
+type FieldsService service
+
+type UsersService service
+
 type Option func(*Client)
 
-// WithMetadataCache keeps the field metadata of a project that Bundle reads under root, in a directory of
-// the address and the token: the next Bundle of the same client skips the read of the project.
-func WithMetadataCache(root string) Option {
+// WithMetadataCache: a directory 0700 per address and token, files 0600, no token inside; an empty dir keeps none.
+func WithMetadataCache(dir string) Option {
 	return func(c *Client) {
-		c.cache = newMetaCache(root, c.address.String(), c.token)
+		c.cache = newMetaCache(dir, c.address.String(), c.token)
 	}
 }
 
-// New is a client of the instance at address, an absolute http or https URL, with a permanent token.
-func New(address, token string, options ...Option) (*Client, error) {
-	parsed, err := parseAddress(address)
-	if err != nil {
-		return nil, err
+// NewClient is a client of the instance at address, an absolute http or https URL, with a permanent token.
+func NewClient(address, token string, opts ...Option) (*Client, error) {
+	parsed, fault := parseAddress(address)
+	if fault != nil {
+		return nil, fault
 	}
-	if err := checkToken(token); err != nil {
-		return nil, err
+	if fault := checkToken(token); fault != nil {
+		return nil, fault
 	}
-	c := &Client{address: parsed, token: token, httpClient: newSendOnceHTTPClient()}
-	for _, option := range options {
-		option(c)
+	c := &Client{address: parsed, token: token, httpClient: newSendOnceHTTPClient(), spec: loadSchemas()}
+	for _, opt := range opts {
+		opt(c)
 	}
+	common := service{client: c}
+	c.Issues = (*IssuesService)(&common)
+	c.Articles = (*ArticlesService)(&common)
+	c.Comments = (*CommentsService)(&common)
+	c.Attachments = (*AttachmentsService)(&common)
+	c.Links = (*LinksService)(&common)
+	c.Tags = (*TagsService)(&common)
+	c.WorkItems = (*WorkItemsService)(&common)
+	c.Activities = (*ActivitiesService)(&common)
+	c.Projects = (*ProjectsService)(&common)
+	c.Fields = (*FieldsService)(&common)
+	c.Users = (*UsersService)(&common)
 	return c, nil
 }
 
-func parseAddress(address string) (*url.URL, error) {
+func parseAddress(address string) (*url.URL, *Error) {
 	parsed, err := url.Parse(address)
+	var reason string
 	switch {
 	case err != nil:
-		return nil, &ArgumentError{Argument: "address", Value: address, Reason: "is no URL: " + err.Error()}
+		reason = "is no URL: " + err.Error()
 	case parsed.Scheme != "http" && parsed.Scheme != "https":
-		return nil, &ArgumentError{Argument: "address", Value: address, Reason: "is not an http or https URL"}
+		reason = "is not an http or https URL"
 	case parsed.Host == "":
-		return nil, &ArgumentError{Argument: "address", Value: address, Reason: "names no host"}
-	case parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawFragment != "":
-		return nil, &ArgumentError{Argument: "address", Value: address, Reason: "carries a query or a fragment, and the address of an instance is a host and a path"}
+		reason = "names no host"
+	case parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "":
+		reason = "carries a query or a fragment, and the address of an instance is a host and a path"
+	default:
+		return parsed, nil
 	}
-	return parsed, nil
+	return nil, &Error{Code: CodeBadUsage, Message: "address " + quote(address) + " " + reason}
 }
 
-func checkToken(token string) error {
+func checkToken(token string) *Error {
 	if token == "" {
-		return &ArgumentError{Argument: "token", Value: token, Reason: "is empty"}
+		return &Error{Code: CodeBadUsage, Message: "the token is empty"}
 	}
 	for i := range len(token) {
 		if c := token[i]; c < ' ' && c != '\t' || c == 0x7f {
-			return &ArgumentError{Argument: "token", Value: token, Reason: "holds a control character, which no header carries"}
+			return &Error{Code: CodeBadUsage, Message: "the token holds a control character, which no header carries"}
 		}
 	}
 	return nil

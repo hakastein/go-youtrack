@@ -1,0 +1,214 @@
+package youtrack
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
+)
+
+type Kind int
+
+const (
+	// NullNode is a value the server sent as null or a counter it did not name.
+	NullNode Kind = iota + 1
+	// StringNode is a string of one line in spirit: a name, an id, a moment, a period.
+	StringNode
+	// NumberNode is a number as the server wrote it.
+	NumberNode
+	BoolNode
+	// TextNode is prose that may span lines: a description, the text of a comment, the content of an article.
+	TextNode
+	ListNode
+	// MapNode keeps its keys in the order the fields expression named them.
+	MapNode
+)
+
+func (k Kind) String() string {
+	switch k {
+	case NullNode:
+		return "null"
+	case StringNode:
+		return "string"
+	case NumberNode:
+		return "number"
+	case BoolNode:
+		return "bool"
+	case TextNode:
+		return "text"
+	case ListNode:
+		return "list"
+	case MapNode:
+		return "map"
+	}
+	return "Kind(" + strconv.Itoa(int(k)) + ")"
+}
+
+// Node is one value of a document, the answer of an operation: every decision about the data is taken when the
+// node is built, so whoever prints it only writes bytes. The zero Node holds no value of any kind.
+type Node struct {
+	kind  Kind
+	value string
+	items []*Node
+	pairs []Pair
+}
+
+// Pair is one key of a map node and its value. FromData says the key is a name from the server's data, as the
+// name of a custom field or a link phrase, rather than a name of the module's own that CheckKey holds to a grammar.
+type Pair struct {
+	Key      string
+	Value    *Node
+	FromData bool
+}
+
+func DataPair(key string, value *Node) Pair {
+	return Pair{Key: key, Value: value, FromData: true}
+}
+
+func NewNull() *Node {
+	return &Node{kind: NullNode}
+}
+
+func NewString(s string) *Node {
+	return &Node{kind: StringNode, value: s}
+}
+
+func NewNumber(n json.Number) *Node {
+	return &Node{kind: NumberNode, value: string(n)}
+}
+
+func NewBool(b bool) *Node {
+	return &Node{kind: BoolNode, value: strconv.FormatBool(b)}
+}
+
+func NewText(s string) *Node {
+	return &Node{kind: TextNode, value: s}
+}
+
+// NewList of no items, whether none or an empty slice, equals every other empty list under reflect.DeepEqual.
+func NewList(items ...*Node) *Node {
+	if len(items) == 0 {
+		return &Node{kind: ListNode}
+	}
+	return &Node{kind: ListNode, items: slices.Clone(items)}
+}
+
+// NewMap of no pairs, whether none or an empty slice, equals every other empty map under reflect.DeepEqual.
+func NewMap(pairs ...Pair) *Node {
+	if len(pairs) == 0 {
+		return &Node{kind: MapNode}
+	}
+	return &Node{kind: MapNode, pairs: slices.Clone(pairs)}
+}
+
+func (n *Node) Kind() Kind {
+	return n.kind
+}
+
+// Value is a scalar as text, a bool as true or false; empty for null, a list and a map.
+func (n *Node) Value() string {
+	return n.value
+}
+
+// Items is nil for a node of any kind but a list.
+func (n *Node) Items() []*Node {
+	return slices.Clone(n.items)
+}
+
+// Pairs is nil for a node of any kind but a map.
+func (n *Node) Pairs() []Pair {
+	return slices.Clone(n.pairs)
+}
+
+// Lookup is false for a node of any kind but a map.
+func (n *Node) Lookup(key string) (*Node, bool) {
+	for _, pair := range n.pairs {
+		if pair.Key == key {
+			return pair.Value, true
+		}
+	}
+	return nil, false
+}
+
+// MarshalJSON writes the node as JSON with the keys of a map in its order; a string and prose alike are strings.
+func (n *Node) MarshalJSON() ([]byte, error) {
+	var written bytes.Buffer
+	if err := n.writeJSON(&written); err != nil {
+		return nil, err
+	}
+	return written.Bytes(), nil
+}
+
+func (n *Node) writeJSON(w *bytes.Buffer) error {
+	if n == nil {
+		return errors.New("a nil node is no value")
+	}
+	switch n.kind {
+	case NullNode:
+		w.WriteString("null")
+	case NumberNode, BoolNode:
+		w.WriteString(n.value)
+	case StringNode, TextNode:
+		writeJSONString(w, n.value)
+	case ListNode:
+		w.WriteByte('[')
+		for i, item := range n.items {
+			if i > 0 {
+				w.WriteByte(',')
+			}
+			if err := item.writeJSON(w); err != nil {
+				return err
+			}
+		}
+		w.WriteByte(']')
+	case MapNode:
+		w.WriteByte('{')
+		for i, pair := range n.pairs {
+			if i > 0 {
+				w.WriteByte(',')
+			}
+			writeJSONString(w, pair.Key)
+			w.WriteByte(':')
+			if err := pair.Value.writeJSON(w); err != nil {
+				return fmt.Errorf("under %s: %w", quote(pair.Key), err)
+			}
+		}
+		w.WriteByte('}')
+	default:
+		return fmt.Errorf("a node of %s is no value", n.kind)
+	}
+	return nil
+}
+
+func writeJSONString(w *bytes.Buffer, s string) {
+	written, _ := json.Marshal(s)
+	w.Write(written)
+}
+
+// CheckKey says whether key is a name of the module's own: ASCII letters, digits, _ and $, not starting with a
+// digit, and no word a YAML 1.1 reader takes for a bool or null. A fields expression names only such keys, and a
+// key from the data is a DataPair instead.
+func CheckKey(key string) error {
+	for i, c := range []byte(key) {
+		switch {
+		case !isNameByte(c):
+			return fmt.Errorf("the key %s holds more than ASCII letters, digits, _ and $", quote(key))
+		case i == 0 && '0' <= c && c <= '9':
+			return fmt.Errorf("the key %s starts with a digit", quote(key))
+		}
+	}
+	switch strings.ToLower(key) {
+	case "", "null", "true", "false", "yes", "no", "on", "off", "y", "n":
+		return fmt.Errorf("the key %s reads as a bool or null", quote(key))
+	}
+	return nil
+}
+
+func quote(s string) string {
+	goQuoted := strconv.Quote(s)
+	escaped := strings.ReplaceAll(goQuoted[1:len(goQuoted)-1], `\"`, `"`)
+	return "`" + strings.ReplaceAll(escaped, "`", "\\`") + "`"
+}

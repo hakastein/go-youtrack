@@ -3,46 +3,158 @@ package youtrack
 import (
 	"context"
 	"fmt"
-	"math"
 	"net/http"
-	"strconv"
 )
 
-// User is a user of the instance.
+const (
+	UserShowFields = "login,fullName,email,banned"
+	UserListFields = "login,fullName,banned"
+)
+
+const (
+	meSchema    = "Me"
+	usersPlural = "users"
+	fullNameKey = "fullName"
+	emailKey    = "email"
+	bannedKey   = "banned"
+)
+
+// ShowUserOptions: Fields is a fields= expression, empty for UserShowFields and +x for them and x.
+type ShowUserOptions struct {
+	Fields string
+}
+
+// ListUsersOptions: Fields is a fields= expression, empty for UserListFields and +x for them and x.
+type ListUsersOptions struct {
+	Fields string
+	Page   Page
+}
+
 type User struct {
 	ID       string
 	Login    string
 	FullName string
-	Email    string
-	Banned   bool
+	// Empty where the server answers with null.
+	Email  string
+	Banned bool
 }
 
-// Users finds up to limit users whose login or full name begins with query; an empty query finds any.
-func (c *Client) Users(ctx context.Context, query string, limit int) ([]User, error) {
-	if limit < 1 || limit > math.MaxInt32 {
-		return nil, &ArgumentError{Argument: "limit", Value: strconv.Itoa(limit), Reason: fmt.Sprintf("is not between 1 and %d", math.MaxInt32)}
+// Show refuses before the request what the server would read as other than a login (an internal id, a Hub id, me,
+// an empty or dot segment) and a full name, since no login holds a space.
+func (s *UsersService) Show(ctx context.Context, login string, opts *ShowUserOptions) (*Node, error) {
+	return result(s.show(ctx, login, optionsOf(opts)))
+}
+
+// List is a page of the users whose login or full name begins with query; an empty query finds every user, and an
+// email address matches none.
+func (s *UsersService) List(ctx context.Context, query string, opts *ListUsersOptions) (*Node, error) {
+	return result(s.list(ctx, query, optionsOf(opts)))
+}
+
+func (s *UsersService) Me(ctx context.Context) (*User, error) {
+	return result(s.me(ctx))
+}
+
+// Find is up to limit of the users List finds for query, DefaultLimit when limit is zero.
+func (s *UsersService) Find(ctx context.Context, query string, limit int) ([]User, error) {
+	return result(s.find(ctx, query, limit))
+}
+
+func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOptions) (*Node, *Error) {
+	c := s.client
+	login, fault := parseLogin(login)
+	if fault != nil {
+		return nil, fault
 	}
-	a, err := c.read(ctx, func(ctx context.Context) (*http.Response, error) {
-		return c.apiGetUsers(ctx, query, "id,login,fullName,email,banned", int32(limit))
+	requested, fault := c.parseFields(userSchema, opts.Fields, UserShowFields)
+	if fault != nil {
+		return nil, fault
+	}
+	user, fault := c.request(ctx, userSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiGetUser(ctx, login, fields)
 	})
-	if err != nil {
-		return nil, err
+	if fault != nil {
+		return nil, notFoundAs(fault, fmt.Sprintf("the server has no user of the login %s, and %s", quote(login), findByLoginOrName))
 	}
-	objects, err := a.list()
-	if err != nil {
-		return nil, err
+	return objectNode(user, requested, user.objects[0], nil)
+}
+
+func (s *UsersService) list(ctx context.Context, query string, opts ListUsersOptions) (*Node, *Error) {
+	c := s.client
+	if fault := rejectRewritten(queryNoun, query); fault != nil {
+		return nil, fault
 	}
-	users := make([]User, 0, len(objects))
-	for _, object := range objects {
-		id, isID := object[idKey].(string)
-		login, isLogin := object[loginKey].(string)
-		fullName, isName := object["fullName"].(string)
-		banned, isFlag := object["banned"].(bool)
-		email, isEmail := readLocalizedName(object["email"])
-		if !isID || !isLogin || !isName || !isFlag || !isEmail {
-			return nil, a.invalid("a user is not of the shape the specification gives it")
+	page, fault := opts.Page.parse()
+	if fault != nil {
+		return nil, fault
+	}
+	requested, fault := c.parseFields(userSchema, opts.Fields, UserListFields)
+	if fault != nil {
+		return nil, fault
+	}
+	return c.listPage(ctx, usersPlural, "[]"+userSchema, requested, page, func(ctx context.Context, fields string, w window) (*http.Response, error) {
+		return c.apiGetUsers(ctx, query, fields, w)
+	})
+}
+
+func (s *UsersService) me(ctx context.Context) (*User, *Error) {
+	c := s.client
+	a, fault := c.request(ctx, meSchema, userFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiGetCurrentUser(ctx, fields)
+	})
+	if fault != nil {
+		return nil, fault
+	}
+	user, fault := readUser(a, a.objects[0])
+	if fault != nil {
+		return nil, fault
+	}
+	return &user, nil
+}
+
+func (s *UsersService) find(ctx context.Context, query string, limit int) ([]User, *Error) {
+	c := s.client
+	if fault := rejectRewritten(queryNoun, query); fault != nil {
+		return nil, fault
+	}
+	page, fault := Page{Limit: limit}.parse()
+	if fault != nil {
+		return nil, fault
+	}
+	a, fault := c.request(ctx, "[]"+userSchema, userFields(), func(ctx context.Context, fields string) (*http.Response, error) {
+		return c.apiGetUsers(ctx, query, fields, page.window())
+	})
+	if fault != nil {
+		return nil, fault
+	}
+	if fault := moreThanAsked(a, usersPlural, page.Limit, page.Limit); fault != nil {
+		return nil, fault
+	}
+	users := make([]User, 0, len(a.objects))
+	for _, object := range a.objects {
+		user, fault := readUser(a, object)
+		if fault != nil {
+			return nil, fault
 		}
-		users = append(users, User{ID: id, Login: login, FullName: fullName, Email: email, Banned: banned})
+		users = append(users, user)
 	}
 	return users, nil
 }
+
+func userFields() []requestedField {
+	return []requestedField{{name: idKey}, {name: loginKey}, {name: fullNameKey}, {name: emailKey}, {name: bannedKey}}
+}
+
+func readUser(a decodedResponse, object map[string]any) (User, *Error) {
+	id, isID := object[idKey].(string)
+	login, isLogin := object[loginKey].(string)
+	fullName, isName := object[fullNameKey].(string)
+	banned, isFlag := object[bannedKey].(bool)
+	email, isEmail := readOptionalText(object[emailKey])
+	if !isID || !isLogin || !isName || !isFlag || !isEmail {
+		return User{}, a.invalid("a user is not of the shape the specification gives it")
+	}
+	return User{ID: id, Login: login, FullName: fullName, Email: email, Banned: banned}, nil
+}
+
+const findByLoginOrName = "a search of the users by what their login or full name begins with finds the one meant"

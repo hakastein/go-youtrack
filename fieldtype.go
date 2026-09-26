@@ -2,7 +2,6 @@ package youtrack
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 )
 
 // ValueType is the type of a custom field's value as the server names it in fieldType.valueType.
@@ -33,7 +31,7 @@ const (
 	StringType     ValueType = "string"
 )
 
-// FieldType is the type of a custom field: the type of its value and whether it holds several.
+// FieldType is fieldType.valueType and fieldType.isMultiValue of a custom field as the server sends them.
 type FieldType struct {
 	ValueType ValueType
 	Multi     bool
@@ -79,7 +77,7 @@ func (t FieldType) Named() bool {
 	return k.isNamedValue()
 }
 
-// Same says a written value key and a held one name the same value of this type.
+// Same compares without regard to letter case for a Named type and exactly for the others.
 func (t FieldType) Same(written, held string) bool {
 	k, _ := t.kind()
 	return k.sameValue(written, held)
@@ -110,51 +108,67 @@ func ValueKeys() []string {
 	return keys
 }
 
+// Value is one value of a custom field. Text is the value key of the field's type: the name of a bundle
+// value or group, the login of a user, a period as PT1H30M, a day as 2026-09-16, a moment in UTC, a number in
+// its shortest decimal form, or the string or text itself. ID is the internal id of a bundle value, user or
+// group, and LocalizedName the translation the interface shows for a bundle value; both are empty otherwise.
+type Value struct {
+	ID            string
+	Text          string
+	LocalizedName string
+}
+
 // Encoded is a value ready to be written: the JSON under value and the value key it was written as.
 type Encoded struct {
 	Body any
 	Key  string
 }
 
-// Encode turns a value key into what a write sends for a field of this type; a value the type cannot hold is an
-// *ArgumentError with the reason.
 func (t FieldType) Encode(text string) (Encoded, error) {
 	k, known := t.kind()
 	if !known {
-		return Encoded{}, &ArgumentError{Argument: "value", Value: text, Reason: "is written into a field of the type " + unmodelled(t)}
+		return Encoded{}, &Error{Code: CodeUpstreamInvalid, Message: fmt.Sprintf("value %s is written into a field of the type %s", quote(text), unmodelled(t))}
 	}
 	encoded, reason := k.encode(text)
 	if reason != "" {
-		return Encoded{}, &ArgumentError{Argument: "value", Value: text, Reason: reason}
+		return Encoded{}, &Error{Code: CodeBadUsage, Message: fmt.Sprintf("value %s: %s", quote(text), reason)}
 	}
-	return Encoded{Body: encoded.body, Key: encoded.key}, nil
+	return encoded, nil
 }
 
-// ReadValue reads one element of a custom field's value as the server sends it under value: an object for a
-// bundle element, a user, a group, a period or a text, the scalar itself for the other types. present is false
-// when the member the type is named by is null. The error names the shape the element should have had.
+// The server sends an object for a bundle element, a user, a group, a period and a text, and the scalar itself for
+// the other types; present is false when the member the type is named by is null.
 func (t FieldType) ReadValue(item any) (value Value, present bool, err error) {
+	value, present, reason := t.read(item)
+	if reason != "" {
+		return Value{}, false, &Error{Code: CodeUpstreamInvalid, Message: reason}
+	}
+	return value, present, nil
+}
+
+func (t FieldType) read(item any) (value Value, present bool, reason string) {
 	k, known := t.kind()
 	if !known {
-		return Value{}, false, errors.New("the value is of a field of the type " + unmodelled(t))
+		return Value{}, false, "the value is of a field of the type " + unmodelled(t)
 	}
 	held := item
 	if k.member != "" {
-		object, isObject := item.(map[string]any)
-		if !isObject {
-			return Value{}, false, fmt.Errorf("the value holds no %s, which is what a field of its type is named by", k.member)
-		}
+		object, _ := item.(map[string]any)
 		inside, ok := object[k.member]
 		if !ok {
-			return Value{}, false, fmt.Errorf("the value holds no %s, which is what a field of its type is named by", k.member)
+			return Value{}, false, fmt.Sprintf("the value holds no %s, which is what a field of its type is named by", k.member)
 		}
 		if inside == nil {
-			return Value{}, false, nil
+			return Value{}, false, ""
 		}
 		held = inside
 		if k.isNamedValue() {
-			value.ID, _ = object[idKey].(string)
-			value.LocalizedName, _ = object[localizedNameKey].(string)
+			id, isID := readOptionalText(object[idKey])
+			translated, isName := readOptionalText(object[localizedNameKey])
+			if !isID || !isName {
+				return Value{}, false, "the id or the translation of the value is neither text nor null"
+			}
+			value.ID, value.LocalizedName = id, translated
 		}
 	}
 	text, read := k.keyText(held)
@@ -163,10 +177,10 @@ func (t FieldType) ReadValue(item any) (value Value, present bool, err error) {
 		if k.member != "" {
 			what = "the " + k.member + " of the value"
 		}
-		return Value{}, false, errors.New(what + " is not " + k.shape())
+		return Value{}, false, what + " is not " + k.shape()
 	}
 	value.Text = text
-	return value, true, nil
+	return value, true, ""
 }
 
 type form int
@@ -189,13 +203,6 @@ type fieldKind struct {
 	form      form
 	bundle    bool
 }
-
-const (
-	nameKey    = "name"
-	loginKey   = "login"
-	minutesKey = "minutes"
-	textKey    = "text"
-)
 
 func fieldKinds() []fieldKind {
 	return []fieldKind{
@@ -231,15 +238,6 @@ func (t FieldType) kind() (fieldKind, bool) {
 	return fieldKind{}, false
 }
 
-func valueMembers() []field {
-	var members []field
-	for _, key := range ValueKeys() {
-		members = append(members, field{name: key})
-	}
-	return append(members, field{name: idKey}, field{name: localizedNameKey})
-}
-
-// A named value is one the server resolves by name, fixing its letter case on the way.
 func (k fieldKind) isNamedValue() bool {
 	return k.member != "" && k.form == asString
 }
@@ -251,14 +249,9 @@ func (k fieldKind) sameValue(written, received string) bool {
 	return written == received
 }
 
-type encodedValue struct {
-	body any
-	key  string
-}
-
-func (k fieldKind) encode(text string) (encodedValue, string) {
+func (k fieldKind) encode(text string) (Encoded, string) {
 	if text == "" {
-		return encodedValue{}, k.emptyValueReason()
+		return Encoded{}, k.emptyValueReason()
 	}
 	switch k.form {
 	case asDuration:
@@ -277,11 +270,12 @@ func (k fieldKind) encode(text string) (encodedValue, string) {
 	if k.member == "" {
 		return encodeString(text)
 	}
-	return encodedValue{body: map[string]string{k.member: text}, key: text}, ""
+	return Encoded{Body: map[string]string{k.member: text}, Key: text}, ""
 }
 
 func (k fieldKind) emptyValueReason() string {
-	const leftAlone = "; a field is emptied with Clear, and a field the call does not name is left as it stands"
+	const leftAlone = "; a write empties a field outright when it is asked to, and leaves a field the call does not " +
+		"name as it stands"
 	switch {
 	case k.valueType == StringType || k.valueType == TextType:
 		return fmt.Sprintf("YouTrack keeps a %s field it is given nothing for as holding nothing at all", k.valueType) + leftAlone
@@ -291,16 +285,16 @@ func (k fieldKind) emptyValueReason() string {
 	return fmt.Sprintf("no value of a %s field is empty", k.valueType) + leftAlone
 }
 
-func encodePeriod(text string) (encodedValue, string) {
+func encodePeriod(text string) (Encoded, string) {
 	minutes, read := periodMinutes(text)
 	switch {
 	case !read:
-		return encodedValue{}, "a period is written in hours and minutes, as in PT1H30M, PT90M or PT0M: a day of " +
+		return Encoded{}, "a period is written in hours and minutes, as in PT1H30M, PT90M or PT0M: a day of " +
 			"YouTrack is the working day of the instance, and a second is no part of what a period field holds"
 	case minutes > math.MaxInt32:
-		return encodedValue{}, fmt.Sprintf("a period field holds at most %d minutes", math.MaxInt32)
+		return Encoded{}, fmt.Sprintf("a period field holds at most %d minutes", math.MaxInt32)
 	}
-	return encodedValue{body: map[string]int64{minutesKey: minutes}, key: duration(minutes)}, ""
+	return Encoded{Body: map[string]int64{minutesKey: minutes}, Key: duration(minutes)}, ""
 }
 
 func periodMinutes(text string) (int64, bool) {
@@ -352,12 +346,12 @@ func duration(minutes int64) string {
 	return "PT" + written
 }
 
-func encodeDate(text string) (encodedValue, string) {
+func encodeDate(text string) (Encoded, string) {
 	day, err := time.Parse(time.DateOnly, text)
 	if err != nil {
-		return encodedValue{}, "a date field holds a day, written as in 2026-09-16"
+		return Encoded{}, "a date field holds a day, written as in 2026-09-16"
 	}
-	return encodedValue{body: noonUTC(day), key: day.Format(time.DateOnly)}, ""
+	return Encoded{Body: noonUTC(day), Key: day.Format(time.DateOnly)}, ""
 }
 
 // Noon UTC falls on the same calendar day in every zone from UTC-12 to UTC+11:59.
@@ -365,41 +359,41 @@ func noonUTC(day time.Time) int64 {
 	return time.Date(day.Year(), day.Month(), day.Day(), 12, 0, 0, 0, time.UTC).UnixMilli()
 }
 
-func encodeDateTime(text string) (encodedValue, string) {
+func encodeDateTime(text string) (Encoded, string) {
 	moment, err := time.Parse(time.RFC3339, text)
 	switch {
 	case err != nil:
-		return encodedValue{}, "a date and time field holds a moment, written as in 2026-08-31T03:00:00.123+03:00, " +
+		return Encoded{}, "a date and time field holds a moment, written as in 2026-08-31T03:00:00.123+03:00, " +
 			"with the offset from UTC on it"
 	case moment.Nanosecond()%int(time.Millisecond) != 0:
-		return encodedValue{}, "YouTrack keeps a moment to the millisecond, and this one is written finer than that"
+		return Encoded{}, "YouTrack keeps a moment to the millisecond, and this one is written finer than that"
 	}
 	milliseconds := moment.UnixMilli()
-	return encodedValue{body: milliseconds, key: formatMoment(milliseconds)}, ""
+	return Encoded{Body: milliseconds, Key: formatMoment(milliseconds)}, ""
 }
 
 func formatMoment(milliseconds int64) string {
 	return time.UnixMilli(milliseconds).UTC().Format(time.RFC3339Nano)
 }
 
-func encodeInteger(text string) (encodedValue, string) {
+func encodeInteger(text string) (Encoded, string) {
 	count, err := strconv.ParseInt(text, 10, 32)
 	if err != nil {
-		return encodedValue{}, fmt.Sprintf("an integer field holds a whole number between %d and %d", math.MinInt32, math.MaxInt32)
+		return Encoded{}, fmt.Sprintf("an integer field holds a whole number between %d and %d", math.MinInt32, math.MaxInt32)
 	}
-	return encodedValue{body: count, key: strconv.FormatInt(count, 10)}, ""
+	return Encoded{Body: count, Key: strconv.FormatInt(count, 10)}, ""
 }
 
-func encodeFloat(text string) (encodedValue, string) {
+func encodeFloat(text string) (Encoded, string) {
 	number, isNumber := jsonNumber(text)
 	if !isNumber {
-		return encodedValue{}, "a float field holds a number written the way JSON writes one, as in 1.5, -0.25 or 1e3"
+		return Encoded{}, "a float field holds a number written the way JSON writes one, as in 1.5, -0.25 or 1e3"
 	}
 	held, err := number.Float64()
-	if err != nil || math.IsInf(held, 0) || math.IsNaN(held) {
-		return encodedValue{}, "a float field holds a finite number, and this one is past the largest one there is"
+	if err != nil {
+		return Encoded{}, "a float field holds a finite number, and this one is past the largest one there is"
 	}
-	return encodedValue{body: held, key: shortestDecimal(held)}, ""
+	return Encoded{Body: held, Key: shortestDecimal(held)}, ""
 }
 
 func shortestDecimal(number float64) string {
@@ -412,22 +406,15 @@ func jsonNumber(text string) (json.Number, bool) {
 	return number, isJSON && isNumber && number.String() == text
 }
 
-func encodeString(text string) (encodedValue, string) {
-	if !utf8.ValidString(text) {
-		return encodedValue{}, noUTF8
-	}
-	for _, rewritten := range stringFieldRewrites() {
-		if strings.ContainsRune(text, rewritten.rune) {
-			return encodedValue{}, fmt.Sprintf("the value holds U+%04X, which YouTrack stores as %s", rewritten.rune, rewritten.into)
-		}
+func encodeString(text string) (Encoded, string) {
+	if reason := rewrittenReason("the value", text, stringFieldRewrites()...); reason != "" {
+		return Encoded{}, reason
 	}
 	if strings.TrimFunc(text, trimmedByYouTrack) != text {
-		return encodedValue{}, "YouTrack trims the spaces off a string, so it would keep less than what was written"
+		return Encoded{}, "YouTrack trims the spaces off a string, so it would keep less than what was written"
 	}
-	return encodedValue{body: text, key: text}, ""
+	return Encoded{Body: text, Key: text}, ""
 }
-
-const noUTF8 = "the value is no valid UTF-8, and every byte of it that is none would reach YouTrack as �"
 
 type charReplacement struct {
 	rune rune
@@ -446,15 +433,13 @@ func trimmedByYouTrack(r rune) bool {
 	return unicode.IsSpace(r) || r >= '\x1c' && r <= '\x1f'
 }
 
-func encodeText(text string) (encodedValue, string) {
-	if !utf8.ValidString(text) {
-		return encodedValue{}, noUTF8
+func encodeText(text string) (Encoded, string) {
+	if reason := rewrittenReason("the value", text); reason != "" {
+		return Encoded{}, reason
 	}
-	return encodedValue{body: map[string]string{textKey: text}, key: text}, ""
+	return Encoded{Body: map[string]string{textKey: text}, Key: text}, ""
 }
 
-// keyText reads the value key of a held value as text: a name or login as is, a period as PT1H30M, a day as
-// 2026-09-16, a moment in UTC, a number in its shortest decimal form.
 func (k fieldKind) keyText(held any) (string, bool) {
 	switch k.form {
 	case asDuration:
@@ -484,7 +469,10 @@ func (k fieldKind) keyText(held any) (string, bool) {
 	return text, isText
 }
 
-const localizedNameKey = "localizedName"
+func unmodelled(t FieldType) string {
+	return fmt.Sprintf("valueType %s with isMultiValue %t is not one of the twenty custom-field types the module models",
+		quote(string(t.ValueType)), t.Multi)
+}
 
 func (k fieldKind) shape() string {
 	switch k.form {

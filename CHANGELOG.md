@@ -1,5 +1,46 @@
 # Изменения
 
+## v0.3.0
+
+Операции над сущностями — методы сервисов на клиенте.
+
+Ломающие:
+
+- `New` заменён на `NewClient`; операции — методы сервисов клиента:
+  - `Client.Issue(ctx, id, fields)` → `Client.Issues.Get(ctx, id)`: выражения полей у чтения больше нет, `Issue.Tree`
+    удалён — ответ под выражением вызывающего отдаёт `Issues.Show` документом;
+  - `Client.WriteFields` → `Client.Issues.WriteFields`;
+  - `Client.Bundle`, `Client.Metadata`, `Client.ReadMetadata` → `Client.Fields.Bundle`, `Metadata`, `ReadMetadata`;
+  - `Client.Users(ctx, query, limit)` → `Client.Users.Find(ctx, query, limit)`; `limit` 0 — `DefaultLimit`.
+- Десять типов ошибок (`ArgumentError`, `TransportError`, `StatusError`, `ResponseError`, `MismatchError`,
+  `FieldNameError`, `ValueError`, `RequiredFieldError`, `PermissionError`, `ChangedFieldError` и их `Mismatch`,
+  `AmbiguousName`, `InvalidValue`) заменены одной `*Error` с `Code`, `Message`, `Details`, `AfterWrite` и `Err`.
+  Код — из закрытого словаря (`bad_usage`, `unknown_name`, `missing_required`, `not_found`, `denied`, `rejected`,
+  `upstream_failed`, `upstream_invalid`, `write_uncertain`), сентинелы `Err…` сравниваются `errors.Is` по коду,
+  `MayHaveWritten` заменяет `TransportError.Written`, `StatusError.Uncertain` и `ResponseError.Write`, `AfterWrite` —
+  `StatusError.Accepted`.
+- `Send`, `FieldType.Encode` и `FieldType.ReadValue` отвечают `*Error`: тип вне таблицы у обоих —
+  `upstream_invalid`, и `ReadValue` отвергает `id` или `localizedName` значения, которые не строка и не `null`.
+- Тип `Request` и `Metadata.Request` удалены: запрос стоит в `Details` ошибки под `request`.
+- `fake.Server.Env()` удалён.
+- Токен больше не попадает в текст ошибки `NewClient`.
+
+Новое:
+
+- Документ `Node` с видами `NullNode`, `StringNode`, `NumberNode`, `BoolNode`, `TextNode`, `ListNode`, `MapNode`,
+  парами `Pair` и `DataPair`, аксессорами `Kind`, `Value`, `Items`, `Pairs`, `Lookup` и `MarshalJSON`; `CheckKey`.
+- Сервисы `Issues`, `Articles`, `Comments`, `Attachments`, `Links`, `Tags`, `WorkItems`, `Activities`, `Projects`,
+  `Fields`, `Users` с документными операциями `Show`, `List`, `Children`, `Create`, `Update`, `Delete`, `Add`, `Remove`
+  и типизированными `Issues.Get`, `Issues.WriteFields`, `Fields.Metadata`, `Fields.ReadMetadata`, `Fields.Bundle`,
+  `Users.Me`, `Users.Find`.
+- Выражение полей вызывающего с кастом-полями в кавычках и `+x` к набору по умолчанию, проверка имён по `$type`
+  каталогом схем из спецификации (`catalogue.gen.go`, генератор `scripts/catalogue.go`; `make ytapi` сверяет и его),
+  страница списка `Page` с `DefaultLimit`, `WriteOptions`, выбор комментариев `Comments`, предупреждение `Warning`.
+- Вход операций: `IssueInput`, `IssueUpdate`, `ArticleInput`, `ArticleUpdate`, `WorkItemInput`, `WorkItemUpdate`,
+  `AttributeWrite`, `File`, `TagSharing`, `TagOptions`; опции `Show…Options`, `List…Options`; наборы полей по умолчанию
+  `…Fields`; `ActivityCategories`.
+- `fake.ServeUnread` — сервер для теста, обработчик которого читает тело сам, как у запроса, который клиент обрывает.
+
 ## v0.2.0
 
 Ломающие:

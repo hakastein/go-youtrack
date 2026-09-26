@@ -14,7 +14,6 @@ const (
 	cacheFileMode      fs.FileMode = 0o600
 )
 
-// The cache confirms and never refuses: whatever disagrees with the server is a miss, and the metadata is read again.
 type metaCache struct {
 	directory string
 }
@@ -28,12 +27,12 @@ func newMetaCache(root, address, token string) metaCache {
 }
 
 type cachedField struct {
-	ID            string  `json:"id"`
-	Name          string  `json:"name"`
-	LocalizedName *string `json:"localizedName"`
-	ValueType     string  `json:"valueType"`
-	IsMultiValue  bool    `json:"isMultiValue"`
-	CanBeEmpty    bool    `json:"canBeEmpty"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	LocalizedName string `json:"localizedName"`
+	ValueType     string `json:"valueType"`
+	IsMultiValue  bool   `json:"isMultiValue"`
+	CanBeEmpty    bool   `json:"canBeEmpty"`
 }
 
 func (c metaCache) load(target string) ([]ProjectField, bool) {
@@ -51,11 +50,7 @@ func (c metaCache) load(target string) ([]ProjectField, bool) {
 	}
 	fields := make([]ProjectField, 0, len(held))
 	for _, f := range held {
-		localized := ""
-		if f.LocalizedName != nil {
-			localized = *f.LocalizedName
-		}
-		fields = append(fields, ProjectField{ID: f.ID, Name: f.Name, LocalizedName: localized,
+		fields = append(fields, ProjectField{ID: f.ID, Name: f.Name, LocalizedName: f.LocalizedName,
 			Type: FieldType{ValueType: ValueType(f.ValueType), Multi: f.IsMultiValue}, CanBeEmpty: f.CanBeEmpty})
 	}
 	return fields, true
@@ -68,11 +63,8 @@ func (c metaCache) store(target string, fields []ProjectField) {
 	}
 	held := make([]cachedField, 0, len(fields))
 	for _, f := range fields {
-		entry := cachedField{ID: f.ID, Name: f.Name, ValueType: string(f.Type.ValueType), IsMultiValue: f.Type.Multi, CanBeEmpty: f.CanBeEmpty}
-		if f.LocalizedName != "" {
-			entry.LocalizedName = &f.LocalizedName
-		}
-		held = append(held, entry)
+		held = append(held, cachedField{ID: f.ID, Name: f.Name, LocalizedName: f.LocalizedName, ValueType: string(f.Type.ValueType),
+			IsMultiValue: f.Type.Multi, CanBeEmpty: f.CanBeEmpty})
 	}
 	content, _ := json.Marshal(held)
 	_ = c.write(path, content)
