@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hakastein/youtrack"
+	"github.com/hakastein/go-youtrack"
 )
 
 func ExampleNewClient() {

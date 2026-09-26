@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hakastein/youtrack"
-	"github.com/hakastein/youtrack/fake"
+	"github.com/hakastein/go-youtrack"
+	"github.com/hakastein/go-youtrack/fake"
 )
 
 func issueCondition(watched string, forNothing bool, values ...string) string {

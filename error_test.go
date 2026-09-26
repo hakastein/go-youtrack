@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/hakastein/youtrack"
+	"github.com/hakastein/go-youtrack"
 )
 
 func TestAnErrorIsItsCodeAndNoOther(t *testing.T) {

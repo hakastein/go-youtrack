@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/hakastein/youtrack/ytapi"
+	"github.com/hakastein/go-youtrack/ytapi"
 )
 
 //go:generate go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.json

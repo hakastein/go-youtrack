@@ -72,7 +72,7 @@ catalogue_matches() {
 # Внутри модуля сгенерированный клиент виден только из адаптера: там все проверки отправки.
 only_the_adapter_imports_ytapi() {
 	local importers
-	importers=$(grep -rl --include='*.go' '"github.com/hakastein/youtrack/ytapi"' . | grep -v '^./ytapi/' | sort) || true
+	importers=$(grep -rl --include='*.go' '"github.com/hakastein/go-youtrack/ytapi"' . | grep -v '^./ytapi/' | sort) || true
 	[[ $importers == "./$adapter" ]] || { echo "$importers"; return 1; }
 }
 

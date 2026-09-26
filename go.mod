@@ -1,4 +1,4 @@
-module github.com/hakastein/youtrack
+module github.com/hakastein/go-youtrack
 
 go 1.26
 
