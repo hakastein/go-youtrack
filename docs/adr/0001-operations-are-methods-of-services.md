@@ -4,9 +4,11 @@ status: accepted, implemented
 
 # Операции — методы сервисов, ответ — документ или значение Go
 
-- Вызов: `c.<Сервис>.<Действие>(ctx, адрес…, вход, opts)`, `opts == nil` — умолчания. Вход — структура указателем,
-  малый — значением (`TagSharing`, `File`, лимит). `Fields`: пусто — умолчание, `+x` — умолчание и `x`. Обновление —
-  `*T` и `ClearX`.
+- Вызов: `c.<Сервис>.<Действие>(ctx, id сущности…, вход записи, opts)`; `opts == nil` — умолчания.
+- Вход записи — указатель на структуру (`*IssueInput`, `*IssueUpdate`). Значением его берут только `Tags.Create`
+  (`TagSharing`), `Attachments.Create` (`File`) и `Users.Find` (`limit int`).
+- `opts.Fields` — выражение полей ответа: пусто — поля по умолчанию операции, `+x` — они и `x`.
+- В обновлении поле `nil` оставляет часть как есть, `ClearX` опустошает её.
 - `Show`, `List`, `Children`, `Create`, `Update`, `Delete`, `Add`, `Remove` отвечают `*Node`. `Issues.Get`,
   `Issues.WriteFields`, `Fields.Metadata`, `Fields.ReadMetadata`, `Fields.Bundle`, `Users.Me`, `Users.Find` — значением Go.
 - `Node` — модель документа: решения о данных принимаются при построении, печать — только байты.
