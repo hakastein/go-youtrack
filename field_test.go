@@ -263,11 +263,10 @@ func typedAnswer(schema string, f metaField, bundle string) string {
 
 func TestShowFieldLeavesOutANameOnlyAnotherTypeOfFieldHolds(t *testing.T) {
 	t.Parallel()
-	const asked = "canBeEmpty,bundle(values(name),aggregatedUsers(login))"
+	const asked = "canBeEmpty,bundle(values(name,archived),aggregatedUsers(login))"
 	canBeEmpty := youtrack.Pair{Key: "canBeEmpty", Value: youtrack.NewBool(true)}
-	one := func(key, member, value string) *youtrack.Node {
-		return youtrack.NewMap(youtrack.Pair{Key: key, Value: youtrack.NewList(
-			youtrack.NewMap(youtrack.Pair{Key: member, Value: youtrack.NewString(value)}))})
+	named := func(name string, rest ...youtrack.Pair) *youtrack.Node {
+		return youtrack.NewMap(append([]youtrack.Pair{{Key: "name", Value: youtrack.NewString(name)}}, rest...)...)
 	}
 	tests := []struct {
 		name      string
@@ -281,14 +280,21 @@ func TestShowFieldLeavesOutANameOnlyAnotherTypeOfFieldHolds(t *testing.T) {
 			valueType: "enum",
 			schema:    "EnumProjectCustomField",
 			bundle:    enumBundle(bundleValue("3-1", "Open", false)),
-			want:      youtrack.NewMap(canBeEmpty, youtrack.Pair{Key: "bundle", Value: one("values", "name", "Open")}),
+			want: youtrack.NewMap(canBeEmpty, youtrack.Pair{Key: "bundle", Value: youtrack.NewMap(youtrack.Pair{
+				Key: "values", Value: youtrack.NewList(named("Open", youtrack.Pair{Key: "archived", Value: youtrack.NewBool(false)})),
+			})}),
 		},
 		{
-			name:      "a field of users",
+			name:      "a field of users, whose values are the users and the groups of its bundle",
 			valueType: "user",
 			schema:    "UserProjectCustomField",
-			bundle:    `{"$type":"UserBundle","aggregatedUsers":[{"$type":"User","login":"first"}]}`,
-			want:      youtrack.NewMap(canBeEmpty, youtrack.Pair{Key: "bundle", Value: one("aggregatedUsers", "login", "first")}),
+			bundle: `{"$type":"UserBundle","aggregatedUsers":[{"$type":"User","login":"first"}],` +
+				`"values":[{"$type":"User","name":"First"},{"$type":"ProjectTeam","name":"Team"}]}`,
+			want: youtrack.NewMap(canBeEmpty, youtrack.Pair{Key: "bundle", Value: youtrack.NewMap(
+				youtrack.Pair{Key: "values", Value: youtrack.NewList(named("First"), named("Team"))},
+				youtrack.Pair{Key: "aggregatedUsers", Value: youtrack.NewList(youtrack.NewMap(
+					youtrack.Pair{Key: "login", Value: youtrack.NewString("first")}))},
+			)}),
 		},
 		{name: "a field of text", valueType: "string", schema: "SimpleProjectCustomField", want: youtrack.NewMap(canBeEmpty)},
 	}

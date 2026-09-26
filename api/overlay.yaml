@@ -3,6 +3,15 @@ info:
   title: YouTrack REST API for internal/ytapi
   version: 1.0.0
 actions:
+  # Spec omits values: the server answers it with the individuals and the groups of the bundle, each of its own
+  # $type (YouTrack 2026.1.13757).
+  - target: $.components.schemas.UserBundle.allOf[1].properties
+    update:
+      values:
+        type: array
+        readOnly: true
+        items:
+          type: object
   # Both this and inherited $type map to Go field Type.
   - target: $.components.schemas.IssueWorkItem.allOf[1].properties.type
     update:

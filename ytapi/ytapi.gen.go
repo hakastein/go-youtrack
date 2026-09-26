@@ -1284,12 +1284,13 @@ type User struct {
 
 // UserBundle defines model for UserBundle.
 type UserBundle struct {
-	Type            *string      `json:"$type,omitempty"`
-	AggregatedUsers *[]User      `json:"aggregatedUsers,omitempty"`
-	Groups          *[]UserGroup `json:"groups,omitempty"`
-	Id              *string      `json:"id,omitempty"`
-	Individuals     *[]User      `json:"individuals,omitempty"`
-	IsUpdateable    *bool        `json:"isUpdateable,omitempty"`
+	Type            *string                   `json:"$type,omitempty"`
+	AggregatedUsers *[]User                   `json:"aggregatedUsers,omitempty"`
+	Groups          *[]UserGroup              `json:"groups,omitempty"`
+	Id              *string                   `json:"id,omitempty"`
+	Individuals     *[]User                   `json:"individuals,omitempty"`
+	IsUpdateable    *bool                     `json:"isUpdateable,omitempty"`
+	Values          *[]map[string]interface{} `json:"values,omitempty"`
 }
 
 // UserGroup defines model for UserGroup.
