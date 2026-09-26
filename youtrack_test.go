@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hakastein/youtrack"
-	"github.com/hakastein/youtrack/fake"
+	"github.com/hakastein/go-youtrack"
+	"github.com/hakastein/go-youtrack/fake"
 )
 
 // Under a zone of UTC a moment printed in the zone of the process reads as one printed in UTC.

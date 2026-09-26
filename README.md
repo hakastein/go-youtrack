@@ -1,4 +1,4 @@
-# youtrack
+# go-youtrack
 
 Go SDK для YouTrack. Клиент по адресу инстанса и постоянному токену несёт сервисы по сущностям: задачи, статьи,
 комментарии, вложения, связи, теги, записи времени, активности, проекты, кастом-поля и пользователи. Операции
@@ -7,7 +7,7 @@ Go SDK для YouTrack. Клиент по адресу инстанса и по�
 `*Error` с кодом, который называет, что делать дальше.
 
 ```bash
-go get github.com/hakastein/youtrack@v0.3.0
+go get github.com/hakastein/go-youtrack@v0.4.0
 ```
 
 Словарь — [`CONTEXT.md`](CONTEXT.md), решения — [`docs/adr/`](docs/adr/), правила для агента — [`AGENTS.md`](AGENTS.md),

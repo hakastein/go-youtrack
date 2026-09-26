@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/hakastein/youtrack"
-	"github.com/hakastein/youtrack/fake"
+	"github.com/hakastein/go-youtrack"
+	"github.com/hakastein/go-youtrack/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

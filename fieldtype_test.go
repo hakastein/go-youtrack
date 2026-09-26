@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hakastein/youtrack"
+	"github.com/hakastein/go-youtrack"
 )
 
 func TestFieldTypeTellsTheClassTheKeyAndTheBundleOfEachTypeItModels(t *testing.T) {
