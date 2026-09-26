@@ -9,10 +9,6 @@ import (
 	"strings"
 )
 
-// added and removed are lists even where the server sends one value or null.
-const ActivityListFields = "timestamp,author(login),category,field," +
-	"added(id,idReadable,login,name,urls),removed(id,idReadable,login,name,urls)"
-
 const (
 	activitySchema    = "ActivityItem"
 	categorySchema    = "ActivityCategory"
@@ -78,8 +74,8 @@ func categoryIDs(rows []activityCategory) []string {
 	return ids
 }
 
-// ListActivitiesOptions: Fields is a fields= expression, empty for ActivityListFields and +x for them and x.
-// Categories are names from ActivityCategories in any letter case, empty for all of them.
+// ListActivitiesOptions: added and removed are lists even where the server sends one value or null. Categories are
+// names from ActivityCategories in any letter case, empty for all of them.
 type ListActivitiesOptions struct {
 	Fields     string
 	Page       Page
@@ -106,7 +102,7 @@ func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListAct
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(activitySchema, opts.Fields, ActivityListFields)
+	requested, fault := c.parseFields(activitySchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}

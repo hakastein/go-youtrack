@@ -1,7 +1,6 @@
 package youtrack
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -44,9 +43,9 @@ type requestedField struct {
 	extraSchemas []string
 }
 
-func (c *Client) parseFields(root, expression, defaults string, under ...string) ([]requestedField, *Error) {
+func (c *Client) parseFields(root, expression string, under ...string) ([]requestedField, *Error) {
 	named := root == issueSchema && len(under) == 0
-	requested, fault := readExpression(expression, defaults, named)
+	requested, fault := readExpression(expression, named)
 	if fault != nil {
 		return nil, fault
 	}
@@ -57,7 +56,7 @@ func (c *Client) parseFields(root, expression, defaults string, under ...string)
 		requested = []requestedField{{name: name, children: requested}}
 	}
 	for _, reject := range expressionRules(root) {
-		if fault := reject(c.spec, root, cmp.Or(expression, defaults), requested); fault != nil {
+		if fault := reject(c.spec, root, expression, requested); fault != nil {
 			return nil, fault
 		}
 	}
@@ -78,17 +77,12 @@ func expressionRules(root string) []expressionRule {
 	return nil
 }
 
-func readExpression(expression, defaults string, named bool) ([]requestedField, *Error) {
+func readExpression(expression string, named bool) ([]requestedField, *Error) {
 	given := &fieldsReader{text: expression, named: named, fromCaller: true}
-	var tree []requestedField
-	if expression == "" || given.take('+') {
-		var fault *Error
-		tree, fault = (&fieldsReader{text: defaults, named: named}).expression(nil)
-		if expression == "" || fault != nil {
-			return tree, fault
-		}
+	if given.skipSpace(); given.at == len(expression) {
+		return nil, &Error{Code: CodeBadUsage, Message: "the fields expression is empty, and every field to read is named in it"}
 	}
-	requested, fault := given.expression(tree)
+	requested, fault := given.expression(nil)
 	if fault == nil {
 		fault = rejectFileContent(expression, requested)
 	}
@@ -120,10 +114,6 @@ func findField(name string, requested []requestedField, parents []string) (strin
 		}
 	}
 	return "", false
-}
-
-func extendsDefault(expression string) bool {
-	return (&fieldsReader{text: expression}).take('+')
 }
 
 func formatFields(fields []requestedField) string {

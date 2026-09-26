@@ -14,15 +14,12 @@ const (
 	commentKey  = "comment"
 )
 
+// A comment of an article has no deleted.
 const (
-	CommentFields = "id,author(login),created,updated,text"
-	// A comment of an article carries no deleted, so a list of them goes without it.
-	CommentListFields = printedCommentFields + ",deleted"
+	printedCommentFields = "id,author(login),created,text"
+	issueCommentFields   = printedCommentFields + ",deleted"
 )
 
-const printedCommentFields = "id,author(login),created,text"
-
-// ListCommentsOptions: Fields is a fields= expression, empty for the defaults of the owner and +x for them and x.
 type ListCommentsOptions struct {
 	Fields string
 	Page   Page
@@ -57,7 +54,7 @@ func (c Comments) asked() bool {
 }
 
 // List runs oldest first, and owner is the readable id of an issue or an article. An issue lists the comments taken
-// back by their authors too, with text null, so its defaults carry deleted; a comment of an article has none.
+// back by their authors too, with text null and deleted true.
 func (s *CommentsService) List(ctx context.Context, owner string, opts *ListCommentsOptions) (*Node, error) {
 	return result(s.list(ctx, owner, optionsOf(opts)))
 }
@@ -89,7 +86,7 @@ func (s *CommentsService) list(ctx context.Context, owner string, opts ListComme
 		return nil, fault
 	}
 	target := commentTargetOf(at.kind)
-	requested, fault := c.parseFields(target.comment, opts.Fields, target.listFields)
+	requested, fault := c.parseFields(target.comment, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -99,26 +96,26 @@ func (s *CommentsService) list(ctx context.Context, owner string, opts ListComme
 }
 
 type commentTarget struct {
-	schema       string
-	comment      string
-	kind         ownerKind
-	listFields   string
-	keepsDeleted bool
-	list         func(c *Client, ctx context.Context, at owner, fields string, w window) (*http.Response, error)
-	create       func(c *Client, ctx context.Context, at owner, body []byte, fields string) (*http.Response, error)
-	get          func(c *Client, ctx context.Context, at owner, comment childID, fields string) (*http.Response, error)
-	update       func(c *Client, ctx context.Context, at owner, comment childID, body []byte, fields string) (*http.Response, error)
-	remove       func(c *Client, ctx context.Context, at owner, comment childID) (*http.Response, error)
+	schema          string
+	comment         string
+	kind            ownerKind
+	selectionFields string
+	keepsDeleted    bool
+	list            func(c *Client, ctx context.Context, at owner, fields string, w window) (*http.Response, error)
+	create          func(c *Client, ctx context.Context, at owner, body []byte, fields string) (*http.Response, error)
+	get             func(c *Client, ctx context.Context, at owner, comment childID, fields string) (*http.Response, error)
+	update          func(c *Client, ctx context.Context, at owner, comment childID, body []byte, fields string) (*http.Response, error)
+	remove          func(c *Client, ctx context.Context, at owner, comment childID) (*http.Response, error)
 }
 
 func issueCommentTarget() commentTarget {
-	return commentTarget{schema: issueSchema, comment: "IssueComment", kind: issueOwner, listFields: CommentListFields,
+	return commentTarget{schema: issueSchema, comment: "IssueComment", kind: issueOwner, selectionFields: issueCommentFields,
 		keepsDeleted: true, list: (*Client).apiGetIssueComments, create: (*Client).apiCreateIssueComment,
 		get: (*Client).apiGetIssueComment, update: (*Client).apiUpdateIssueComment, remove: (*Client).apiDeleteIssueComment}
 }
 
 func articleCommentTarget() commentTarget {
-	return commentTarget{schema: articleSchema, comment: "ArticleComment", kind: articleOwner, listFields: printedCommentFields,
+	return commentTarget{schema: articleSchema, comment: "ArticleComment", kind: articleOwner, selectionFields: printedCommentFields,
 		list: (*Client).apiGetArticleComments, create: (*Client).apiCreateArticleComment,
 		update: (*Client).apiUpdateArticleComment, remove: (*Client).apiDeleteArticleComment}
 }
@@ -141,7 +138,7 @@ func (t commentTarget) reject(spec *schemas, root, expression string, requested 
 }
 
 func ownFields(expression string) []requestedField {
-	fields, fault := readExpression(expression, "", false)
+	fields, fault := (&fieldsReader{text: expression}).expression(nil)
 	if fault != nil {
 		panic(fault)
 	}
@@ -152,7 +149,7 @@ func (c Comments) merged(target commentTarget, asked []requestedField) []request
 	if !c.asked() {
 		return asked
 	}
-	return withFields(asked, requestedField{name: commentsKey, children: ownFields(target.listFields)})
+	return withFields(asked, requestedField{name: commentsKey, children: ownFields(target.selectionFields)})
 }
 
 func (c Comments) pair(target commentTarget, a decodedResponse, holder map[string]any) ([]Pair, *Error) {

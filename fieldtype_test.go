@@ -215,26 +215,6 @@ func TestFieldTypeComparesNamedValuesWithoutRegardToCase(t *testing.T) {
 	}
 }
 
-func TestFieldTypeNamesTheBundleFieldsOfItsType(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		fieldType youtrack.FieldType
-		fields    string
-	}{
-		{fieldType: fieldType("enum", true), fields: "bundle(values(name,archived))"},
-		{fieldType: fieldType("ownedField", false), fields: "bundle(values(name,archived))"},
-		{fieldType: fieldType("user", false), fields: "bundle(aggregatedUsers(login))"},
-		{fieldType: fieldType("group", false)},
-		{fieldType: fieldType("period", false)},
-	}
-	for _, tc := range tests {
-		t.Run(tc.fieldType.String(), func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tc.fields, tc.fieldType.BundleFields())
-		})
-	}
-}
-
 func TestValueKeysAreTheMembersValuesOfEveryTypeAreNamedBy(t *testing.T) {
 	t.Parallel()
 

@@ -580,7 +580,7 @@ func TestUpdateIssueRefusesAnIssueOfAnotherShape(t *testing.T) {
 			t.Parallel()
 			server := routes(t, map[string]http.HandlerFunc{"GET " + issuePath: fake.JSON(http.StatusOK, tc.read)})
 
-			_, err := issueUpdate(t, server, youtrack.IssueUpdate{Fields: []youtrack.FieldWrite{issueFill("Field", "First")}}, "")
+			_, err := issueUpdate(t, server, youtrack.IssueUpdate{Fields: []youtrack.FieldWrite{issueFill("Field", "First")}}, "idReadable")
 
 			assert.Equal(t, unreadable(issueReadRequest(server), tc.read), errorOf(t, err))
 			assert.Equal(t, []string{issuePath}, server.Paths())

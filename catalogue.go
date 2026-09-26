@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-//go:generate go run scripts/catalogue.go api/openapi.json catalogue.gen.go
+//go:generate go run scripts/catalogue.go api/openapi.json api/overlay.yaml catalogue.gen.go
 
 type schema struct {
 	parent     string

@@ -10,7 +10,7 @@ import (
 )
 
 // WriteOptions: Fields is the fields= expression of what a write answers with, the entity written or, for
-// Links.Add, each linked issue; empty for the defaults of the operation and +x for them and x.
+// Links.Add, each linked issue.
 type WriteOptions struct {
 	Fields string
 }

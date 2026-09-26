@@ -157,13 +157,13 @@ func TestLinkWriteRefusesAPhraseItCannotSend(t *testing.T) {
 		{
 			name: "an addition under an empty phrase",
 			write: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
-				return links.Add(ctx, "DEV-1", "", "DEV-2", nil)
+				return links.Add(ctx, "DEV-1", "", "DEV-2", answeredWith("id"))
 			},
 		},
 		{
 			name: "an addition under a phrase that is no UTF-8",
 			write: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
-				return links.Add(ctx, "DEV-1", "\xff", "DEV-2", nil)
+				return links.Add(ctx, "DEV-1", "\xff", "DEV-2", answeredWith("id"))
 			},
 		},
 		{
@@ -453,7 +453,7 @@ func TestAddLinkRefusesAPhraseNoSlotGoesBy(t *testing.T) {
 			t.Parallel()
 			server := linkServer(t, tc.source, linkTarget, fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
 
-			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", tc.phrase, "DEV-2", nil)
+			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", tc.phrase, "DEV-2", answeredWith("id"))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeUnknownName, Details: []youtrack.Pair{
 				requestTo(http.MethodGet, server, "/api/issues/DEV-1?fields="+linkSourceFields),
@@ -478,7 +478,7 @@ func TestAddLinkRefusesTwoSlotsUnderOnePhraseAndWritesEveryOther(t *testing.T) {
 		t.Parallel()
 		server := linkServer(t, source, linkTarget, fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
 
-		_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "x", "DEV-2", nil)
+		_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "x", "DEV-2", answeredWith("id"))
 
 		assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
 			requestTo(http.MethodGet, server, "/api/issues/DEV-1?fields="+linkSourceFields),
@@ -552,7 +552,7 @@ func TestAddLinkRefusesASlotAddressedAgainstItsOwnEnd(t *testing.T) {
 			t.Parallel()
 			server := linkServer(t, linkSource(tc.slot), linkTarget, fake.JSON(http.StatusOK, tc.slot.writtenToTheTarget()))
 
-			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", tc.phrase, "DEV-2", nil)
+			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", tc.phrase, "DEV-2", answeredWith("id"))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
 				requestTo(http.MethodGet, server, "/api/issues/DEV-1?fields="+linkSourceFields),
@@ -599,7 +599,7 @@ func TestAddLinkRefusesAnIssueReadOfAnotherShape(t *testing.T) {
 			t.Parallel()
 			server := linkServer(t, tc.source, linkTarget, fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
 
-			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", nil)
+			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", answeredWith("id"))
 
 			assert.Equal(t, unreadable(requestTo(http.MethodGet, server, "/api/issues/DEV-1?fields="+linkSourceFields),
 				tc.source), errorOf(t, err))
@@ -613,7 +613,7 @@ func TestAddLinkRefusesATargetUnderTheIDItIsAddressedByRatherThanTheInternalOne(
 	const target = `{"$type":"Issue","id":"DEV-2","idReadable":"DEV-2"}`
 	server := linkServer(t, linkEverySlot(), target, fake.JSON(http.StatusOK, needsSlot.writtenToTheTarget()))
 
-	_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", nil)
+	_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", answeredWith("id"))
 
 	assert.Equal(t, unreadable(requestTo(http.MethodGet, server, "/api/issues/DEV-2?fields="+linkTargetFields), target),
 		errorOf(t, err))
@@ -629,13 +629,13 @@ func TestLinkWriteRefusesAnIssueNamedAsItsOwnTarget(t *testing.T) {
 		{
 			name: "an addition to the same id",
 			write: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
-				return links.Add(ctx, "DEV-1", "ties", "DEV-1", nil)
+				return links.Add(ctx, "DEV-1", "ties", "DEV-1", answeredWith("id"))
 			},
 		},
 		{
 			name: "an addition to the same id in another letter case",
 			write: func(ctx context.Context, links *youtrack.LinksService) (*youtrack.Node, error) {
-				return links.Add(ctx, "DEV-1", "ties", "dev-1", nil)
+				return links.Add(ctx, "DEV-1", "ties", "dev-1", answeredWith("id"))
 			},
 		},
 		{
@@ -665,7 +665,7 @@ func TestAddLinkRefusesATargetThatIsTheIssueUnderAnotherID(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, linkEverySlot()))
 
-	_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "ties", "OLD-1", nil)
+	_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "ties", "OLD-1", answeredWith("id"))
 
 	assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage, Details: []youtrack.Pair{
 		requestTo(http.MethodGet, server, "/api/issues/OLD-1?fields="+linkTargetFields),
@@ -705,7 +705,7 @@ func TestAddLinkRefusesAnIssueTheServerDoesNotHave(t *testing.T) {
 			t.Parallel()
 			server := routes(t, map[string]http.HandlerFunc{"GET /api/issues/DEV-1": tc.source, "GET /api/issues/DEV-2": tc.target})
 
-			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", nil)
+			_, err := client(t, server).Links.Add(t.Context(), "DEV-1", "needs", "DEV-2", answeredWith("id"))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeNotFound, Details: []youtrack.Pair{
 				requestTo(http.MethodGet, server, tc.read),

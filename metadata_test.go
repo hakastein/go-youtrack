@@ -227,7 +227,7 @@ func TestMetadataAnswersFromTheCacheAfterAReadStoredIt(t *testing.T) {
 			return err
 		}},
 		{name: "a show of a field", first: func(ctx context.Context, c *youtrack.Client) error {
-			_, err := c.Fields.Show(ctx, "DEV", "First", nil)
+			_, err := c.Fields.Show(ctx, "DEV", "First", &youtrack.ShowFieldOptions{Fields: "canBeEmpty"})
 			return err
 		}},
 		{name: "a bundle", first: func(ctx context.Context, c *youtrack.Client) error {

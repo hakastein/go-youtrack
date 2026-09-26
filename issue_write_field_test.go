@@ -201,7 +201,7 @@ func TestIssueWriteRefusesAValueItsFieldCannotHold(t *testing.T) {
 			project := issueProject(metaField{id: "1-1", name: "Field", valueType: tc.valueType})
 			server := issueWriting(t, project, "[]", fake.Unexpected(t))
 
-			_, err := issueCreate(t, server, issueFilling(issueFill("Field", tc.given)), "")
+			_, err := issueCreate(t, server, issueFilling(issueFill("Field", tc.given)), "idReadable")
 
 			kept, invalid := issueWriteError(t, err)
 			want := youtrack.Error{Code: youtrack.CodeBadUsage, Details: []youtrack.Pair{
@@ -223,7 +223,7 @@ func TestIssueWriteNamesEveryValueItCannotSendAtOnce(t *testing.T) {
 	)
 	server := issueWriting(t, project, "[]", fake.Unexpected(t))
 
-	_, err := issueCreate(t, server, issueFilling(issueFill("Third", " x"), issueFill("Second", "P1D"), issueFill("First", "2.5")), "")
+	_, err := issueCreate(t, server, issueFilling(issueFill("Third", " x"), issueFill("Second", "P1D"), issueFill("First", "2.5")), "idReadable")
 
 	kept, invalid := issueWriteError(t, err)
 	assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage, Details: []youtrack.Pair{
@@ -457,7 +457,7 @@ func TestIssueWriteRefusesMetadataOfAnotherShape(t *testing.T) {
 			t.Parallel()
 			server := issueWriting(t, tc.project, "[]", fake.Unexpected(t))
 
-			_, err := issueCreate(t, server, issueFilling(issueFill("Field", "First")), "")
+			_, err := issueCreate(t, server, issueFilling(issueFill("Field", "First")), "idReadable")
 
 			assert.Equal(t, unreadable(issueMetadataRequest(server), tc.project), errorOf(t, err))
 			assert.Equal(t, []string{projectPath}, server.Paths())

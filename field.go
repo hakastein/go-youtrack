@@ -6,21 +6,18 @@ import (
 	"net/http"
 )
 
-const FieldListFields = "field(name,localizedName,fieldType(valueType,isMultiValue)),canBeEmpty"
-
 const (
 	projectRead        = "jetbrains.jetpass.project-read"
 	projectFieldSchema = "ProjectCustomField"
 	fieldsPlural       = "fields"
 )
 
-// ListFieldsOptions: Fields is a fields= expression, empty for FieldListFields and +x for them and x.
 type ListFieldsOptions struct {
 	Fields string
 }
 
-// ShowFieldOptions: Fields is a fields= expression, empty for the default of the field's type and +x for it and x.
-// The default is FieldListFields with the bundle of values of a type that has one or the users of a user field.
+// ShowFieldOptions: a name the field's schema lacks and another schema of a project's field declares, as bundle is
+// for a field of type string, is left out of the answer.
 type ShowFieldOptions struct {
 	Fields string
 }
@@ -42,7 +39,7 @@ func (s *FieldsService) list(ctx context.Context, project string, opts ListField
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(projectFieldSchema, opts.Fields, FieldListFields)
+	requested, fault := c.parseFields(projectFieldSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -76,11 +73,12 @@ func (s *FieldsService) show(ctx context.Context, project, name string, opts Sho
 	if fault := checkFieldName(name); fault != nil {
 		return nil, fault
 	}
-	if _, fault := c.parseFields(projectFieldSchema, opts.Fields, FieldListFields); fault != nil {
+	requested, fault := c.parseFields(projectFieldSchema, opts.Fields)
+	if fault != nil {
 		return nil, fault
 	}
-	read, fault := s.readField(ctx, code, name, func(found ProjectField) ([]requestedField, bool, *Error) {
-		return s.fieldsToPrint(opts.Fields, found.Type)
+	read, fault := s.readField(ctx, code, name, func(ProjectField) ([]requestedField, bool, *Error) {
+		return requested, true, nil
 	})
 	if fault != nil {
 		return nil, fault
@@ -187,28 +185,6 @@ func (f ProjectField) verifyUnchanged(a decodedResponse, code string) *Error {
 		Pair{Key: fieldKey, Value: NewString(f.Name)})
 	message := "the custom field the id addresses is no longer the one the name resolved to"
 	return &Error{Code: CodeUpstreamFailed, Message: message, Details: details}
-}
-
-func defaultFields(kind FieldType) (string, bool) {
-	switch {
-	case !kind.Known():
-		return "", false
-	case kind.BundleFields() == "":
-		return FieldListFields, true
-	}
-	return FieldListFields + "," + kind.BundleFields(), true
-}
-
-func (s *FieldsService) fieldsToPrint(expression string, kind FieldType) (requested []requestedField, modelled bool, fault *Error) {
-	c := s.client
-	defaults := ""
-	if expression == "" || extendsDefault(expression) {
-		if defaults, modelled = defaultFields(kind); !modelled {
-			return nil, false, nil
-		}
-	}
-	requested, fault = c.parseFields(projectFieldSchema, expression, defaults)
-	return requested, true, fault
 }
 
 func sortedByOrdinal(decoded decodedResponse) ([]map[string]any, *Error) {

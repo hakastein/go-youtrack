@@ -15,12 +15,12 @@ type fieldNode struct {
 }
 
 type missingField struct {
-	at             *fieldNode
-	name           string
-	objectType     string
-	hasType        bool
-	scalar         bool
-	askedByDefault bool
+	at            *fieldNode
+	name          string
+	objectType    string
+	hasType       bool
+	scalar        bool
+	askedByModule bool
 }
 
 type schemaSet struct {
@@ -119,14 +119,14 @@ func (collector *missingFieldCollector) visit(node *fieldNode, value any) {
 			child, ok := value[field.name]
 			switch {
 			case !ok:
-				collector.absences = append(collector.absences, missingField{at: node, name: field.name, objectType: objectType, hasType: hasType, askedByDefault: fromDefault(field)})
+				collector.absences = append(collector.absences, missingField{at: node, name: field.name, objectType: objectType, hasType: hasType, askedByModule: !field.fromCaller})
 			case field.children != nil && !field.normalized:
 				collector.visit(node.children[i], child)
 			}
 		}
 	default:
 		for _, field := range node.field.children {
-			collector.absences = append(collector.absences, missingField{at: node, name: field.name, scalar: true, askedByDefault: fromDefault(field)})
+			collector.absences = append(collector.absences, missingField{at: node, name: field.name, scalar: true, askedByModule: !field.fromCaller})
 		}
 	}
 }
@@ -173,7 +173,7 @@ func (resolver schemaResolver) classify(absence missingField) Code {
 	case typeBelongsHere && resolver.declares(absence.objectType, absence.name):
 		return CodeUpstreamInvalid
 	case !slices.Contains(here.names, absence.name):
-		if absence.askedByDefault {
+		if absence.askedByModule {
 			return CodeUpstreamInvalid
 		}
 		return CodeUnknownName

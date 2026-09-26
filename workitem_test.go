@@ -108,11 +108,12 @@ func workItemMismatch(t *testing.T, server *fake.Server, field string, expected,
 	}
 }
 
-func TestListWorkItemsAsksAPageOfTheDefaultFields(t *testing.T) {
+func TestListWorkItemsAsksAPageOfTheFieldsAskedFor(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, "[]"))
 
-	node, err := client(t, server).WorkItems.List(t.Context(), "DEV-1", nil)
+	opts := &youtrack.ListWorkItemsOptions{Fields: "id,duration,type(name),attributes,author(login),date,text"}
+	node, err := client(t, server).WorkItems.List(t.Context(), "DEV-1", opts)
 
 	require.NoError(t, err)
 	assert.Equal(t, wholePage("workItems"), node)
@@ -132,25 +133,25 @@ func TestWorkItemsRefuseAnAddressOfAnotherShape(t *testing.T) {
 		{
 			name: "a list of an article",
 			call: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.List(ctx, "DEV-A-1", nil)
+				return items.List(ctx, "DEV-A-1", &youtrack.ListWorkItemsOptions{Fields: "id"})
 			},
 		},
 		{
 			name: "a creation under a project code",
 			call: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Create(ctx, "DEV", &youtrack.WorkItemInput{Duration: time.Hour}, nil)
+				return items.Create(ctx, "DEV", &youtrack.WorkItemInput{Duration: time.Hour}, answeredWith("id"))
 			},
 		},
 		{
 			name: "an update under an internal id",
 			call: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Update(ctx, "7-1", "7-1", &youtrack.WorkItemUpdate{Text: new("x")}, nil)
+				return items.Update(ctx, "7-1", "7-1", &youtrack.WorkItemUpdate{Text: new("x")}, answeredWith("id"))
 			},
 		},
 		{
 			name: "an update of a work item under a readable id",
 			call: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Update(ctx, "DEV-1", "DEV-2", &youtrack.WorkItemUpdate{Text: new("x")}, nil)
+				return items.Update(ctx, "DEV-1", "DEV-2", &youtrack.WorkItemUpdate{Text: new("x")}, answeredWith("id"))
 			},
 		},
 		{
@@ -191,7 +192,7 @@ func TestCreateWorkItemRefusesADurationItCannotSend(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := client(t, fake.ServeNothing(t)).WorkItems.Create(t.Context(), "DEV-1",
-				&youtrack.WorkItemInput{Duration: tc.spent}, nil)
+				&youtrack.WorkItemInput{Duration: tc.spent}, answeredWith("id"))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -218,7 +219,7 @@ func TestCreateWorkItemRefusesADayItCannotSend(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := client(t, fake.ServeNothing(t)).WorkItems.Create(t.Context(), "DEV-1",
-				&youtrack.WorkItemInput{Duration: time.Hour, Date: tc.day}, nil)
+				&youtrack.WorkItemInput{Duration: time.Hour, Date: tc.day}, answeredWith("id"))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -991,7 +992,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			name:     "a type a letter short",
 			settings: workItemProjectSettings(),
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour, Type: "Secnd"}, nil)
+				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour, Type: "Secnd"}, answeredWith("id"))
 			},
 			unknown: []*youtrack.Node{withNearest("type", "Secnd", "Second")},
 		},
@@ -999,7 +1000,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			name:     "a type near none of the project",
 			settings: workItemProjectSettings(),
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour, Type: "zzzzzzzz"}, nil)
+				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour, Type: "zzzzzzzz"}, answeredWith("id"))
 			},
 			unknown: []*youtrack.Node{withNearest("type", "zzzzzzzz", "First", "Second")},
 		},
@@ -1007,7 +1008,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			name:     "a type two types answer to in another letter case",
 			settings: workItemSettings(workItemTypeLowerTwin+","+workItemTypeUpperTwin, ""),
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
-				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Type: new("twin")}, nil)
+				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Type: new("twin")}, answeredWith("id"))
 			},
 			unknown: []*youtrack.Node{withNearest("type", "twin", "TWIN", "Twin")},
 		},
@@ -1016,7 +1017,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			settings: workItemProjectSettings(),
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour,
-					Attributes: []youtrack.AttributeWrite{{Name: "Mood", Value: "Pair"}}}, nil)
+					Attributes: []youtrack.AttributeWrite{{Name: "Mood", Value: "Pair"}}}, answeredWith("id"))
 			},
 			unknown: []*youtrack.Node{withNearest("attribute", "Mood", "Mode")},
 		},
@@ -1025,7 +1026,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 			settings: workItemProjectSettings(),
 			write: func(ctx context.Context, items *youtrack.WorkItemsService) (*youtrack.Node, error) {
 				return items.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour,
-					Attributes: []youtrack.AttributeWrite{{Name: "Mode", Value: "Trio"}}}, nil)
+					Attributes: []youtrack.AttributeWrite{{Name: "Mode", Value: "Trio"}}}, answeredWith("id"))
 			},
 			unknown: []*youtrack.Node{youtrack.NewMap(
 				youtrack.Pair{Key: "attribute", Value: youtrack.NewString("Mode")},
@@ -1039,7 +1040,7 @@ func TestWorkItemWriteRefusesANameTheProjectDoesNotHave(t *testing.T) {
 				return items.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Attributes: []youtrack.AttributeWrite{
 					{Name: "Mode", Value: "Sol"},
 					{Name: "Mood", Clear: true},
-				}}, nil)
+				}}, answeredWith("id"))
 			},
 			unknown: []*youtrack.Node{
 				youtrack.NewMap(
@@ -1122,7 +1123,7 @@ func TestWorkItemWriteRefusesSettingsOfAnotherShape(t *testing.T) {
 			server := workItemWriting(t, tc.read, workItemAnswer{})
 
 			_, err := client(t, server).WorkItems.Create(t.Context(), "DEV-1",
-				&youtrack.WorkItemInput{Duration: time.Hour, Type: "First", Attributes: tc.attributes}, nil)
+				&youtrack.WorkItemInput{Duration: time.Hour, Type: "First", Attributes: tc.attributes}, answeredWith("id"))
 
 			assert.Equal(t, unreadable(lastRequest(t, server), tc.read), errorOf(t, err))
 			assert.Equal(t, []string{"/api/issues/DEV-1"}, server.Paths())

@@ -28,7 +28,7 @@ func ExampleNewClient() {
 func ExampleIssuesService_Show() {
 	c, _ := youtrack.NewClient("https://youtrack.example.org", os.Getenv("YOUTRACK_TOKEN"))
 	doc, err := c.Issues.Show(context.Background(), "DEV-1", &youtrack.ShowIssueOptions{
-		Fields:   `+customFields(State,"Модуль системы")`,
+		Fields:   `idReadable,summary,customFields(State,"Модуль системы")`,
 		Comments: youtrack.LastComments(3),
 	})
 	if err != nil {
@@ -45,8 +45,9 @@ func ExampleIssuesService_Show() {
 func ExampleIssuesService_List() {
 	c, _ := youtrack.NewClient("https://youtrack.example.org", os.Getenv("YOUTRACK_TOKEN"))
 	page, err := c.Issues.List(context.Background(), "project: DEV #Unresolved", &youtrack.ListIssuesOptions{
-		Page: youtrack.Page{Limit: 20},
-		Warn: func(w *youtrack.Warning) { fmt.Println(w.Message) },
+		Fields: "idReadable,summary",
+		Page:   youtrack.Page{Limit: 20},
+		Warn:   func(w *youtrack.Warning) { fmt.Println(w.Message) },
 	})
 	if err != nil {
 		fmt.Println(err)
@@ -97,7 +98,7 @@ func ExampleIssuesService_Update() {
 		Summary:          &summary,
 		ClearDescription: true,
 		Fields:           []youtrack.FieldWrite{{Name: "State", Values: []string{"In Progress"}}},
-	}, nil)
+	}, &youtrack.WriteOptions{Fields: "idReadable,summary"})
 	var failed *youtrack.Error
 	switch {
 	case err == nil:

@@ -57,28 +57,28 @@ func TestCommentsRefuseAnOwnerThatIsNoReadableID(t *testing.T) {
 		{
 			name: "a list by an internal id",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.List(ctx, "3-19", nil)
+				_, err := comments.List(ctx, "3-19", &youtrack.ListCommentsOptions{Fields: "id"})
 				return err
 			},
 		},
 		{
 			name: "a list by two dots",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.List(ctx, "..", nil)
+				_, err := comments.List(ctx, "..", &youtrack.ListCommentsOptions{Fields: "id"})
 				return err
 			},
 		},
 		{
 			name: "a creation",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "3-19", "Text", nil)
+				_, err := comments.Create(ctx, "3-19", "Text", answeredWith("id"))
 				return err
 			},
 		},
 		{
 			name: "a rewrite",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Update(ctx, "3-19", "7-12", "Text", nil)
+				_, err := comments.Update(ctx, "3-19", "7-12", "Text", answeredWith("id"))
 				return err
 			},
 		},
@@ -138,7 +138,7 @@ func TestCommentWritesRefuseACommentIDThatIsNoInternalID(t *testing.T) {
 			t.Parallel()
 			comments := client(t, fake.ServeNothing(t)).Comments
 
-			_, rewritten := comments.Update(t.Context(), "DEV-1", tc.id, "Text", nil)
+			_, rewritten := comments.Update(t.Context(), "DEV-1", tc.id, "Text", answeredWith("id"))
 			_, deleted := comments.Delete(t.Context(), "DEV-1", tc.id)
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, rewritten))
@@ -529,33 +529,6 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 				{Key: "unknown", Value: youtrack.NewList(withNearest("field", tc.unknown, tc.nearest...))},
 			}}
 			assert.Equal(t, want, errorOf(t, err))
-		})
-	}
-}
-
-func TestListCommentsAsksForDeletedOnlyOfAnIssue(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name   string
-		owner  string
-		fields string
-		sent   string
-	}{
-		{name: "an issue", owner: "DEV-7", sent: "id,author(login),created,text,deleted"},
-		{name: "an article", owner: "DEV-A-3", sent: "id,author(login),created,text"},
-		{name: "an article, with an addition", owner: "DEV-A-3", fields: "+updated",
-			sent: "id,author(login),created,text,updated"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			server := commentServer(t, commentAnswers{listed: `[]`})
-
-			_, err := client(t, server).Comments.List(t.Context(), tc.owner,
-				&youtrack.ListCommentsOptions{Fields: tc.fields, Page: youtrack.Page{Limit: 1}})
-
-			require.NoError(t, err)
-			assert.Equal(t, []string{tc.sent}, server.Fields())
 		})
 	}
 }

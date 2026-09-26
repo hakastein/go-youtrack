@@ -7,11 +7,6 @@ import (
 )
 
 const (
-	UserShowFields = "login,fullName,email,banned"
-	UserListFields = "login,fullName,banned"
-)
-
-const (
 	meSchema    = "Me"
 	usersPlural = "users"
 	fullNameKey = "fullName"
@@ -19,12 +14,10 @@ const (
 	bannedKey   = "banned"
 )
 
-// ShowUserOptions: Fields is a fields= expression, empty for UserShowFields and +x for them and x.
 type ShowUserOptions struct {
 	Fields string
 }
 
-// ListUsersOptions: Fields is a fields= expression, empty for UserListFields and +x for them and x.
 type ListUsersOptions struct {
 	Fields string
 	Page   Page
@@ -66,7 +59,7 @@ func (s *UsersService) show(ctx context.Context, login string, opts ShowUserOpti
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(userSchema, opts.Fields, UserShowFields)
+	requested, fault := c.parseFields(userSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -88,7 +81,7 @@ func (s *UsersService) list(ctx context.Context, query string, opts ListUsersOpt
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(userSchema, opts.Fields, UserListFields)
+	requested, fault := c.parseFields(userSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}

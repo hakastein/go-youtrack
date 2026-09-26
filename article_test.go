@@ -264,7 +264,7 @@ func TestCreateArticleRefusesBeforeAnyRequest(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Articles.Create(t.Context(), tc.project, &tc.in, nil)
+			_, err := client(t, fake.ServeNothing(t)).Articles.Create(t.Context(), tc.project, &tc.in, answeredWith("id"))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -297,7 +297,7 @@ func TestUpdateArticleRefusesBeforeAnyRequest(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Articles.Update(t.Context(), tc.id, tc.in, nil)
+			_, err := client(t, fake.ServeNothing(t)).Articles.Update(t.Context(), tc.id, tc.in, answeredWith("id"))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -722,13 +722,13 @@ func TestArticleWritesRefuseAParentOfAnotherProject(t *testing.T) {
 		{
 			name: "a creation",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Create(ctx, "DEV", &youtrack.ArticleInput{Summary: "Title", Parent: "DEMO-A-1"}, nil)
+				return articles.Create(ctx, "DEV", &youtrack.ArticleInput{Summary: "Title", Parent: "DEMO-A-1"}, answeredWith("id"))
 			},
 		},
 		{
 			name: "a move",
 			write: func(ctx context.Context, articles *youtrack.ArticlesService) (*youtrack.Node, error) {
-				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEMO-A-1")}, nil)
+				return articles.Update(ctx, "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEMO-A-1")}, answeredWith("id"))
 			},
 		},
 	}
@@ -774,7 +774,7 @@ func TestUpdateArticleRefusesAnArticleItCannotWriteByTheRead(t *testing.T) {
 			t.Parallel()
 			server := articleServer(t, map[string]string{"DEV-A-7": tc.read}, fake.Unexpected(t))
 
-			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Summary: new("Title")}, nil)
+			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Summary: new("Title")}, answeredWith("id"))
 
 			assert.Equal(t, unreadable(lastRequest(t, server), tc.read), errorOf(t, err))
 		})
@@ -816,7 +816,7 @@ func TestUpdateArticleRefusesAParentThatClosesTheLine(t *testing.T) {
 				tc.parent: tc.line,
 			}, fake.Unexpected(t))
 
-			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: &tc.parent}, nil)
+			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: &tc.parent}, answeredWith("id"))
 
 			want := youtrack.Error{Code: youtrack.CodeBadUsage, Details: []youtrack.Pair{
 				lastRequest(t, server),
@@ -848,7 +848,7 @@ func TestUpdateArticleRefusesALineOfParentsTheServerBrokeOff(t *testing.T) {
 				"POST /api/articles/DEV-A-7":             fake.Unexpected(t),
 			})
 
-			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")}, nil)
+			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")}, answeredWith("id"))
 
 			missing := youtrack.NewMap(
 				youtrack.Pair{Key: "field", Value: youtrack.NewString("parentArticle")},
@@ -897,7 +897,7 @@ func TestUpdateArticleRefusesAnAncestorItCannotRead(t *testing.T) {
 				"DEV-A-9": tc.line,
 			}, fake.Unexpected(t))
 
-			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")}, nil)
+			_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")}, answeredWith("id"))
 
 			assert.Equal(t, unreadable(lastRequest(t, server), tc.line), errorOf(t, err))
 		})
@@ -911,7 +911,7 @@ func TestUpdateArticleRefusesALineThatRepeatsAnArticle(t *testing.T) {
 		"DEV-A-9": articleLine("DEV", articleRootAbove, articleChild, articleBetween, articleChild),
 	}, fake.Unexpected(t))
 
-	_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")}, nil)
+	_, err := client(t, server).Articles.Update(t.Context(), "DEV-A-7", &youtrack.ArticleUpdate{Parent: new("DEV-A-9")}, answeredWith("id"))
 
 	want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
 		lastRequest(t, server),
@@ -969,7 +969,7 @@ func TestArticleCallsRefuseAnIDOfAnIssue(t *testing.T) {
 		{
 			name: "a list of children",
 			call: func(ctx context.Context, articles *youtrack.ArticlesService) error {
-				_, err := articles.Children(ctx, "DEV-7", nil)
+				_, err := articles.Children(ctx, "DEV-7", &youtrack.ListArticlesOptions{Fields: "id"})
 				return err
 			},
 		},
@@ -1127,7 +1127,7 @@ func TestListArticlesRefusesASearchThatIsNoUTF8(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Articles.List(t.Context(), tc.search, nil)
+			_, err := client(t, fake.ServeNothing(t)).Articles.List(t.Context(), tc.search, &youtrack.ListArticlesOptions{Fields: "id"})
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
