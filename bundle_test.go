@@ -11,7 +11,7 @@ import (
 	"github.com/hakastein/go-youtrack/fake"
 )
 
-const bundleFields = youtrack.FieldListFields + ",bundle(values(id,name,archived))"
+const bundleFields = fieldAsked + ",bundle(values(id,name,archived))"
 
 func TestBundleReadsTheValuesOfTheFieldItsNameResolvesTo(t *testing.T) {
 	t.Parallel()
@@ -223,4 +223,33 @@ func TestBundleRefusesAFieldThatLostItsBundleOnlyAfterReadingTheMetadataAgain(t 
 
 	assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 	assert.Equal(t, []string{projectPath, firstFieldPath, firstFieldPath, projectPath, firstFieldPath}, server.Paths())
+}
+
+func TestBundleRefusesAFieldOfATypeItDoesNotModel(t *testing.T) {
+	t.Parallel()
+	server := (&metaInstance{projects: map[string]string{
+		"DEV": projectJSON(metaField{id: "1-1", name: "Field", valueType: "state", multi: true}),
+	}}).serve(t)
+
+	_, err := client(t, server).Fields.Bundle(t.Context(), "DEV", "Field")
+
+	assert.Equal(t, unaddressable(t, server), errorOf(t, err))
+	assert.Equal(t, []string{projectPath}, server.Paths())
+}
+
+func TestBundleReadsTheMetadataAgainForACachedTypeItDoesNotModel(t *testing.T) {
+	t.Parallel()
+	stateOfMany := metaField{id: "1-1", name: "State", valueType: "state", multi: true}
+	stateOfOne := metaField{id: "1-1", name: "State", valueType: "state"}
+	instance := &metaInstance{projects: map[string]string{"DEV": projectJSON(stateOfMany)}}
+	server, root := instance.serve(t), t.TempDir()
+	_, err := cached(t, server, root).Fields.Bundle(t.Context(), "DEV", "State")
+	require.Error(t, err)
+	instance.change(map[string]string{"DEV": projectJSON(stateOfOne)},
+		map[string]http.HandlerFunc{"1-1": answering(stateOfOne.answer(enumBundle()))})
+
+	_, err = cached(t, server, root).Fields.Bundle(t.Context(), "DEV", "State")
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{projectPath, projectPath, firstFieldPath}, server.Paths())
 }

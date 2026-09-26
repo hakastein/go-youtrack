@@ -14,10 +14,8 @@ import (
 	"unicode/utf8"
 )
 
-// The url in it is a signed link: it fetches the file without a token for up to three days.
-const AttachmentListFields = "id,name,size,mimeType,url"
-
-// ListAttachmentsOptions: Fields is a fields= expression, empty for AttachmentListFields and +x for them and x.
+// ListAttachmentsOptions: the url of an attachment is a signed link, which fetches the file without a token for up
+// to three days.
 type ListAttachmentsOptions struct {
 	Fields string
 	Page   Page
@@ -83,7 +81,7 @@ func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAt
 		return nil, fault
 	}
 	target := attachmentTargetOf(at.kind)
-	requested, fault := c.parseFields(target.schema, opts.Fields, AttachmentListFields)
+	requested, fault := c.parseFields(target.schema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -102,7 +100,7 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 		return nil, fault
 	}
 	target := attachmentTargetOf(at.kind)
-	requested, fault := c.parseFields(target.schema, opts.Fields, AttachmentListFields)
+	requested, fault := c.parseFields(target.schema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}

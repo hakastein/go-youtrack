@@ -7,13 +7,6 @@ import (
 	"slices"
 )
 
-// customFields(Name) stands for the value of that field alone, and a bare customFields for every field of the issue.
-const (
-	IssueShowFields = "idReadable,summary,reporter(login),created,updated,resolved,tags(name),customFields," +
-		"links(issues(idReadable,summary)),description"
-	IssueListFields = "idReadable,summary,customFields(State,Type),created"
-)
-
 const (
 	issueSchema    = "Issue"
 	issuesPlural   = "issues"
@@ -24,15 +17,15 @@ const (
 
 const stillCounting = -1
 
-// ShowIssueOptions: Fields is a fields= expression, empty for IssueShowFields and +x for them and x. Comments come
-// under comments oldest first, and the zero value asks for none.
+// ShowIssueOptions: in Fields customFields("Name") stands for the value of that field alone, and a bare customFields
+// for every field of the issue. Comments come under comments oldest first, and the zero value asks for none.
 type ShowIssueOptions struct {
 	Fields   string
 	Comments Comments
 }
 
-// ListIssuesOptions: Fields is a fields= expression, empty for IssueListFields and +x for them and x. Warn is handed
-// the parts of the search YouTrack looks for as free text, before the search is sent; nil asks YouTrack for none.
+// ListIssuesOptions: Warn is handed the parts of the search YouTrack looks for as free text, before the search is
+// sent; nil asks YouTrack for none.
 type ListIssuesOptions struct {
 	Fields string
 	Page   Page
@@ -61,7 +54,7 @@ func (s *IssuesService) show(ctx context.Context, id string, opts ShowIssueOptio
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueShowFields)
+	requested, fault := c.parseFields(issueSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -80,7 +73,7 @@ func (s *IssuesService) list(ctx context.Context, query string, opts ListIssuesO
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueListFields)
+	requested, fault := c.parseFields(issueSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -226,10 +219,7 @@ func hasIssueBlocks(schema string) bool {
 }
 
 func issueBlocks(spec *schemas, at string, asked []requestedField) {
-	matchTranslatedNames := hasDefaultNames(spec, asked)
-	eachCustomFields(spec, at, asked, func(parents []string, field *requestedField) {
-		field.children = customFieldsAsked(matchTranslatedNames && len(parents) == 0)
-	})
+	eachCustomFields(spec, at, asked, func(_ []string, field *requestedField) { field.children = customFieldsAsked(false) })
 	eachIssueLink(spec, at, asked, func(_ []string, field *requestedField) { field.children = linkRequestFields(field.children) })
 	eachAttributes(spec, at, asked, func(_ []string, field *requestedField) { field.children = attributesAsked() })
 }

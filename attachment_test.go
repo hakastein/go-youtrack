@@ -79,14 +79,14 @@ func TestAttachmentsRefuseAnOwnerThatIsNoReadableID(t *testing.T) {
 		{
 			name: "a list",
 			call: func(ctx context.Context, attachments *youtrack.AttachmentsService) error {
-				_, err := attachments.List(ctx, "12-5", nil)
+				_, err := attachments.List(ctx, "12-5", &youtrack.ListAttachmentsOptions{Fields: "id"})
 				return err
 			},
 		},
 		{
 			name: "an upload",
 			call: func(ctx context.Context, attachments *youtrack.AttachmentsService) error {
-				_, err := attachments.Create(ctx, "12-5", attachmentFile("one.txt", "x"), nil)
+				_, err := attachments.Create(ctx, "12-5", attachmentFile("one.txt", "x"), answeredWith("id"))
 				return err
 			},
 		},
@@ -119,7 +119,7 @@ func TestCreateAttachmentRefusesAFileWithoutANameOrBytesToRead(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Attachments.Create(t.Context(), "DEV-1", tc.file, nil)
+			_, err := client(t, fake.ServeNothing(t)).Attachments.Create(t.Context(), "DEV-1", tc.file, answeredWith("id"))
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
@@ -145,7 +145,7 @@ func TestCreateAttachmentRefusesANameTheServerWouldKeepAsAnother(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Attachments.Create(t.Context(), "DEV-1", attachmentFile(tc.file, "x"), nil)
+			_, err := client(t, fake.ServeNothing(t)).Attachments.Create(t.Context(), "DEV-1", attachmentFile(tc.file, "x"), answeredWith("id"))
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}

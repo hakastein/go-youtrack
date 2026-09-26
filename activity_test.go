@@ -100,18 +100,8 @@ func TestListActivitiesRefusesACallItCannotSend(t *testing.T) {
 		want       youtrack.Error
 	}{
 		{name: "a name under the category", fields: "category(id)", want: youtrack.Error{Code: youtrack.CodeBadUsage}},
-		{
-			name:   "a name under the category added to the default",
-			fields: "+category(id)",
-			want:   youtrack.Error{Code: youtrack.CodeBadUsage},
-		},
 		{name: "a name under the field", fields: "field(name)", want: youtrack.Error{Code: youtrack.CodeBadUsage}},
-		{
-			name:   "a name under the field added to the default",
-			fields: "+field(customField(name))",
-			want:   youtrack.Error{Code: youtrack.CodeBadUsage},
-		},
-		{name: "a category of nothing at all", categories: []string{""}, want: youtrack.Error{Code: youtrack.CodeBadUsage}},
+		{name: "a category of nothing at all", fields: "timestamp", categories: []string{""}, want: youtrack.Error{Code: youtrack.CodeBadUsage}},
 		{
 			name:   "a name under the duration of a work item",
 			fields: "target(duration(minutes))",
@@ -125,13 +115,6 @@ func TestListActivitiesRefusesACallItCannotSend(t *testing.T) {
 				youtrack.Pair{Key: "unknown", Value: youtrack.NewList(withNearest("field", "added(logn)", "login"))}),
 		},
 		{
-			name:   "a name no value declares added to the default",
-			fields: "+removed(idReadabel)",
-			want: activityUnknown(
-				youtrack.Pair{Key: "fields", Value: youtrack.NewString("+removed(idReadabel)")},
-				youtrack.Pair{Key: "unknown", Value: youtrack.NewList(withNearest("field", "removed(idReadabel)", "idReadable"))}),
-		},
-		{
 			name:   "a name no value declares at either end",
 			fields: "added(verson),removed(urlz)",
 			want: activityUnknown(
@@ -142,30 +125,35 @@ func TestListActivitiesRefusesACallItCannotSend(t *testing.T) {
 		},
 		{
 			name:       "a category a letter short",
+			fields:     "timestamp",
 			categories: []string{"LinksCategry"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
 				withNearest("category", "LinksCategry", "LinksCategory"))}),
 		},
 		{
 			name:       "a category holding a letter of another alphabet",
+			fields:     "timestamp",
 			categories: []string{"LinksСategory"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
 				withNearest("category", "LinksСategory", "LinksCategory"))}),
 		},
 		{
 			name:       "two categories written as one name",
+			fields:     "timestamp",
 			categories: []string{"LinksCategory,CommentsCategory"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
 				withNearest("category", "LinksCategory,CommentsCategory", every...))}),
 		},
 		{
 			name:       "one misspelling written in two letter cases",
+			fields:     "timestamp",
 			categories: []string{"Bogus", "BOGUS"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
 				withNearest("category", "Bogus", every...))}),
 		},
 		{
 			name:       "two misspellings beside a category that resolves",
+			fields:     "timestamp",
 			categories: []string{"Bogus", "LinksCategory", "Nope"},
 			want: activityUnknown(youtrack.Pair{Key: "unknown", Value: youtrack.NewList(
 				withNearest("category", "Bogus", every...),
@@ -244,7 +232,8 @@ func TestListActivitiesAsksForWhatItReadsBesideWhatItPrints(t *testing.T) {
 		sent   string
 	}{
 		{
-			name: "the default, which reads the field and the values of every category",
+			name:   "every part of an activity, which reads the field and the values of every category",
+			fields: "timestamp,author(login),category,field,added(id,idReadable,login,name,urls),removed(id,idReadable,login,name,urls)",
 			sent: "timestamp,author(login),category(id),field(name,customField(name,fieldType(valueType)))," +
 				"added(id,idReadable,login,name,urls,minutes),removed(id,idReadable,login,name,urls,minutes)",
 		},
@@ -292,10 +281,15 @@ func TestListActivitiesReadsTheLinkTypesOnlyToPrintTheFieldOfALink(t *testing.T)
 		categories []string
 		sent       []string
 	}{
-		{name: "the default, which prints the field of every category", sent: []string{activityLinkTypesPath, activityListPath}},
+		{name: "the field of every category", fields: "field", sent: []string{activityLinkTypesPath, activityListPath}},
 		{name: "activities that print no field", fields: "timestamp,added", sent: []string{activityListPath}},
-		{name: "activities of no link", categories: []string{"CommentsCategory"}, sent: []string{activityListPath}},
-		{name: "activities of links alone", categories: []string{"LinksCategory"}, sent: []string{activityLinkTypesPath, activityListPath}},
+		{name: "activities of no link", fields: "field", categories: []string{"CommentsCategory"}, sent: []string{activityListPath}},
+		{
+			name:       "activities of links alone",
+			fields:     "field",
+			categories: []string{"LinksCategory"},
+			sent:       []string{activityLinkTypesPath, activityListPath},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -314,7 +308,7 @@ func TestListActivitiesSendsNoActivitiesWhereTheLinkTypesFail(t *testing.T) {
 	t.Parallel()
 	server := activityServerOf(t, fake.JSON(http.StatusInternalServerError, `{}`), fake.JSON(http.StatusOK, `[]`))
 
-	_, err := activityList(t, server, "")
+	_, err := activityList(t, server, "field")
 
 	want := youtrack.Error{Code: youtrack.CodeUpstreamFailed, Details: []youtrack.Pair{
 		lastRequest(t, server),
@@ -356,7 +350,7 @@ func TestListActivitiesRefusesLinkTypesItCannotRead(t *testing.T) {
 			t.Parallel()
 			server := activityServerOf(t, fake.JSON(http.StatusOK, tc.linkTypes), fake.JSON(http.StatusOK, `[]`))
 
-			_, err := activityList(t, server, "")
+			_, err := activityList(t, server, "field")
 
 			assert.Equal(t, unreadable(lastRequest(t, server), tc.linkTypes), errorOf(t, err))
 			assert.Equal(t, []string{activityLinkTypesPath}, server.Paths())
@@ -500,12 +494,6 @@ func TestListActivitiesPrintsThePageTheLimitAndTheSkipAskFor(t *testing.T) {
 		want       *youtrack.Node
 		top, skip  string
 	}{
-		{
-			name:       "no options, which is the default page of the default fields",
-			activities: `[]`,
-			want:       wholePage("activities"),
-			top:        "51",
-		},
 		{
 			name:       "no limit, which is the default one",
 			opts:       &youtrack.ListActivitiesOptions{Fields: "timestamp"},

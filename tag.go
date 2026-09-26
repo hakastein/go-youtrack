@@ -13,13 +13,6 @@ import (
 )
 
 const (
-	TagListFields   = "name,owner(login),readSharingSettings(permittedGroups(name),permittedUsers(login))"
-	TagCreateFields = TagListFields +
-		",updateSharingSettings(permittedGroups(name),permittedUsers(login))" +
-		",tagSharingSettings(permittedGroups(name),permittedUsers(login))"
-)
-
-const (
 	tagsPlural = "tags"
 	tagSchema  = "Tag"
 	tagKey     = "tag"
@@ -36,7 +29,6 @@ const (
 	permittedGroupsKey = "permittedGroups"
 )
 
-// ListTagsOptions: Fields is a fields= expression, empty for TagListFields and +x for them and x.
 type ListTagsOptions struct {
 	Fields string
 	Page   Page
@@ -89,7 +81,7 @@ func (s *TagsService) list(ctx context.Context, opts ListTagsOptions) (*Node, *E
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(tagSchema, opts.Fields, TagListFields)
+	requested, fault := c.parseFields(tagSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -104,7 +96,7 @@ func (s *TagsService) create(ctx context.Context, name string, sharing TagSharin
 	if fault := sharing.rejectNoGroupName(); fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(tagSchema, opts.Fields, TagCreateFields)
+	requested, fault := c.parseFields(tagSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}

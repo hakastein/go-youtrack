@@ -1,5 +1,28 @@
 # Изменения
 
+## v0.5.0
+
+Своих полей по умолчанию у операций с `Fields` нет: выражение полей всегда пишет вызывающий.
+
+Ломающие:
+
+- Выражение полей документной операции обязательно: пустое, в том числе при `nil` вместо опций, и начатое с `+` —
+  `bad_usage` до запроса.
+- Удалены наборы полей по умолчанию: `IssueShowFields`, `IssueListFields`, `ArticleShowFields`, `ArticleListFields`,
+  `CommentFields`, `CommentListFields`, `AttachmentListFields`, `LinkListFields`, `TagListFields`, `TagCreateFields`,
+  `WorkItemListFields`, `WorkItemWriteFields`, `ActivityListFields`, `ProjectShowFields`, `ProjectListFields`,
+  `FieldListFields`, `UserShowFields`, `UserListFields`.
+- `Fields.Show` не подбирает поля по типу поля и читает поле типа, которого модуль не знает; `FieldType.BundleFields`
+  удалён. Выражение с `bundle(values(name,archived),aggregatedUsers(login))` читает бандл любого типа: имя, которого
+  у типа поля нет, опускается.
+- Каждое имя под `customFields` сверяется с каталогом кастом-полей инстанса: имя, которого у инстанса нет, —
+  `unknown_name`.
+
+Новое:
+
+- `WithMetadataCache` кэширует и каталог кастом-полей инстанса: имя, которого в кэше нет, перечитывает каталог, а
+  обычный вызов обходится без его запроса.
+
 ## v0.4.0
 
 Ломающие:

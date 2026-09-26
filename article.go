@@ -7,11 +7,6 @@ import (
 	"strings"
 )
 
-const ArticleShowFields = "idReadable,summary,reporter(login),created,updated,tags(name)," +
-	"parentArticle(idReadable,summary),childArticles(idReadable,summary),content"
-
-const ArticleListFields = "idReadable,summary"
-
 const (
 	articleSchema    = "Article"
 	articlesPlural   = "articles"
@@ -20,14 +15,12 @@ const (
 	parentKey        = "parent"
 )
 
-// ShowArticleOptions: Fields is a fields= expression, empty for ArticleShowFields and +x for them and x. Comments
-// come under comments oldest first, and the zero value asks for none.
+// ShowArticleOptions: Comments come under comments oldest first, and the zero value asks for none.
 type ShowArticleOptions struct {
 	Fields   string
 	Comments Comments
 }
 
-// ListArticlesOptions: Fields is a fields= expression, empty for ArticleListFields and +x for them and x.
 type ListArticlesOptions struct {
 	Fields string
 	Page   Page
@@ -72,7 +65,7 @@ func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleO
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
+	requested, fault := c.parseFields(articleSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -103,7 +96,7 @@ func (s *ArticlesService) list(ctx context.Context, query string, opts ListArtic
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleListFields)
+	requested, fault := c.parseFields(articleSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -122,7 +115,7 @@ func (s *ArticlesService) children(ctx context.Context, parent string, opts List
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleListFields)
+	requested, fault := c.parseFields(articleSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -140,7 +133,7 @@ func (s *ArticlesService) create(ctx context.Context, project string, in Article
 	if fault := checkArticleInput(in); fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
+	requested, fault := c.parseFields(articleSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -235,7 +228,7 @@ func (s *ArticlesService) update(ctx context.Context, id string, in ArticleUpdat
 	if fault := checkArticleUpdate(in); fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(articleSchema, opts.Fields, ArticleShowFields)
+	requested, fault := c.parseFields(articleSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}

@@ -6,11 +6,6 @@ import (
 )
 
 const (
-	WorkItemListFields  = "id,duration,type(name),attributes,author(login),date,text"
-	WorkItemWriteFields = "id,duration,type(name),attributes,author(login),date,issue(idReadable,customFields),text"
-)
-
-const (
 	workItemSchema          = "IssueWorkItem"
 	workItemsPlural         = "workItems"
 	durationKey             = "duration"
@@ -22,7 +17,6 @@ const (
 	workItemTypesKey        = "workItemTypes"
 )
 
-// ListWorkItemsOptions: Fields is a fields= expression, empty for WorkItemListFields and +x for them and x.
 type ListWorkItemsOptions struct {
 	Fields string
 	Page   Page
@@ -59,7 +53,7 @@ func (s *WorkItemsService) list(ctx context.Context, issue string, opts ListWork
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemListFields)
+	requested, fault := c.parseFields(workItemSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -80,7 +74,7 @@ func (s *WorkItemsService) create(ctx context.Context, issue string, in WorkItem
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemWriteFields)
+	requested, fault := c.parseFields(workItemSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -134,7 +128,7 @@ func (s *WorkItemsService) update(ctx context.Context, issue, item string, in Wo
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(workItemSchema, opts.Fields, WorkItemWriteFields)
+	requested, fault := c.parseFields(workItemSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}

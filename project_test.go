@@ -10,26 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShowProjectReadsTheDefaultFields(t *testing.T) {
-	t.Parallel()
-	server := fake.Serve(t, fake.JSON(http.StatusOK, `{"$type":"Project","shortName":"DEV","name":"First",`+
-		`"plugins":{"timeTrackingSettings":{"enabled":true,"workItemTypes":[{"name":"Development"}]}}}`))
-
-	node, err := client(t, server).Projects.Show(t.Context(), "DEV", nil)
-
-	require.NoError(t, err)
-	assert.Equal(t, youtrack.NewMap(
-		youtrack.Pair{Key: "shortName", Value: youtrack.NewString("DEV")},
-		youtrack.Pair{Key: "name", Value: youtrack.NewString("First")},
-		youtrack.Pair{Key: "plugins", Value: youtrack.NewMap(youtrack.Pair{Key: "timeTrackingSettings", Value: youtrack.NewMap(
-			youtrack.Pair{Key: "enabled", Value: youtrack.NewBool(true)},
-			youtrack.Pair{Key: "workItemTypes", Value: youtrack.NewList(youtrack.NewMap(
-				youtrack.Pair{Key: "name", Value: youtrack.NewString("Development")}))},
-		)})},
-	), node)
-	assert.Equal(t, []string{youtrack.ProjectShowFields}, server.Fields())
-}
-
 func TestShowProjectSendsEveryFormOfACodeAsWritten(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

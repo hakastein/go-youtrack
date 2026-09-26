@@ -35,17 +35,14 @@ type cachedField struct {
 	CanBeEmpty    bool   `json:"canBeEmpty"`
 }
 
+type cachedCatalogueField struct {
+	Name          string `json:"name"`
+	LocalizedName string `json:"localizedName"`
+}
+
 func (c metaCache) load(target string) ([]ProjectField, bool) {
-	path := c.file(target)
-	if path == "" {
-		return nil, false
-	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false
-	}
-	var held []cachedField
-	if json.Unmarshal(content, &held) != nil || len(held) == 0 {
+	held, hit := readCached[cachedField](c, target)
+	if !hit {
 		return nil, false
 	}
 	fields := make([]ProjectField, 0, len(held))
@@ -57,14 +54,54 @@ func (c metaCache) load(target string) ([]ProjectField, bool) {
 }
 
 func (c metaCache) store(target string, fields []ProjectField) {
-	path := c.file(target)
-	if path == "" {
-		return
-	}
 	held := make([]cachedField, 0, len(fields))
 	for _, f := range fields {
 		held = append(held, cachedField{ID: f.ID, Name: f.Name, LocalizedName: f.LocalizedName, ValueType: string(f.Type.ValueType),
 			IsMultiValue: f.Type.Multi, CanBeEmpty: f.CanBeEmpty})
+	}
+	c.put(target, held)
+}
+
+func (c metaCache) loadFieldCatalogue(target string) ([]fieldInfo, bool) {
+	held, hit := readCached[cachedCatalogueField](c, target)
+	if !hit {
+		return nil, false
+	}
+	catalogue := make([]fieldInfo, 0, len(held))
+	for _, f := range held {
+		catalogue = append(catalogue, fieldInfo{name: f.Name, localizedName: f.LocalizedName})
+	}
+	return catalogue, true
+}
+
+func (c metaCache) storeFieldCatalogue(target string, catalogue []fieldInfo) {
+	held := make([]cachedCatalogueField, 0, len(catalogue))
+	for _, f := range catalogue {
+		held = append(held, cachedCatalogueField{Name: f.name, LocalizedName: f.localizedName})
+	}
+	c.put(target, held)
+}
+
+func readCached[T any](c metaCache, target string) ([]T, bool) {
+	path := c.file(target)
+	if path == "" {
+		return nil, false
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	var held []T
+	if json.Unmarshal(content, &held) != nil || len(held) == 0 {
+		return nil, false
+	}
+	return held, true
+}
+
+func (c metaCache) put(target string, held any) {
+	path := c.file(target)
+	if path == "" {
+		return
 	}
 	content, _ := json.Marshal(held)
 	_ = c.write(path, content)

@@ -5,19 +5,12 @@ import (
 	"net/http"
 )
 
-const (
-	ProjectShowFields = "shortName,name,plugins(timeTrackingSettings(enabled,workItemTypes(name)))"
-	ProjectListFields = "shortName,name"
-)
-
 const projectsPlural = "projects"
 
-// ShowProjectOptions: Fields is a fields= expression, empty for ProjectShowFields and +x for them and x.
 type ShowProjectOptions struct {
 	Fields string
 }
 
-// ListProjectsOptions: Fields is a fields= expression, empty for ProjectListFields and +x for them and x.
 type ListProjectsOptions struct {
 	Fields string
 	Page   Page
@@ -38,7 +31,7 @@ func (s *ProjectsService) show(ctx context.Context, code string, opts ShowProjec
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(projectSchema, opts.Fields, ProjectShowFields)
+	requested, fault := c.parseFields(projectSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -57,7 +50,7 @@ func (s *ProjectsService) list(ctx context.Context, opts ListProjectsOptions) (*
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(projectSchema, opts.Fields, ProjectListFields)
+	requested, fault := c.parseFields(projectSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}

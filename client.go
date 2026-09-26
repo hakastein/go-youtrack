@@ -53,7 +53,8 @@ type UsersService service
 
 type Option func(*Client)
 
-// WithMetadataCache: a directory 0700 per address and token, files 0600, no token inside; an empty dir keeps none.
+// WithMetadataCache keeps the metadata of projects and the custom fields of the instance: a directory 0700 per
+// address and token, files 0600, no token inside; an empty dir keeps none.
 func WithMetadataCache(dir string) Option {
 	return func(c *Client) {
 		c.cache = newMetaCache(dir, c.address.String(), c.token)

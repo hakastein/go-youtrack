@@ -83,19 +83,6 @@ func (t FieldType) Same(written, held string) bool {
 	return k.sameValue(written, held)
 }
 
-// BundleFields is the fields= expression of what the field's project settings hold for the values it accepts:
-// bundle(values(name,archived)) for a type with a bundle, bundle(aggregatedUsers(login)) for a user, empty otherwise.
-func (t FieldType) BundleFields() string {
-	k, _ := t.kind()
-	switch {
-	case k.bundle:
-		return "bundle(values(name,archived))"
-	case k.valueType == UserType:
-		return "bundle(aggregatedUsers(login))"
-	}
-	return ""
-}
-
 // ValueKeys are the members values are named by across the types: name, login, minutes and text. A fields=
 // expression asking for them under value reads the value key of a field of any type.
 func ValueKeys() []string {

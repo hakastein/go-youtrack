@@ -1,8 +1,11 @@
 package youtrack_test
 
 import (
+	"context"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,7 +45,11 @@ func TestShowProjectRefusesAnExpressionItCannotRead(t *testing.T) {
 		name       string
 		expression string
 	}{
+		{name: "no fields", expression: ""},
+		{name: "spaces and tabs alone", expression: " \t"},
 		{name: "a plus alone", expression: "+"},
+		{name: "a name added to others", expression: "+description"},
+		{name: "spaces around a plus at the start", expression: " + description"},
 		{name: "a comma at the end", expression: "a,"},
 		{name: "a comma at the start", expression: ",a"},
 		{name: "two commas", expression: "a,,b"},
@@ -56,7 +63,7 @@ func TestShowProjectRefusesAnExpressionItCannotRead(t *testing.T) {
 		{name: "a name in quotes where no custom field is named", expression: `"name"`},
 		{name: "a word read as a bool", expression: "on"},
 		{name: "a word read as a bool, letter case aside", expression: "leader(login,No)"},
-		{name: "a word read as null, added to the default", expression: "+null"},
+		{name: "a word read as null", expression: "null"},
 		{name: "a leading digit", expression: "1abc"},
 		{name: "the content of a file", expression: "issues(attachments(base64Content))"},
 		{name: "the content of a file at a place that holds no file at all", expression: "base64Content"},
@@ -87,9 +94,6 @@ func TestShowProjectSendsEachFieldOnceInOneForm(t *testing.T) {
 			expression: "team(users(login)),name,team(users(fullName),name)",
 			sent:       "team(users(login,fullName),name),name",
 		},
-		{name: "a new name added to the default", expression: "+description", sent: youtrack.ProjectShowFields + ",description"},
-		{name: "a name of the default added to it", expression: "+name,description", sent: youtrack.ProjectShowFields + ",description"},
-		{name: "spaces around the plus", expression: " + description", sent: youtrack.ProjectShowFields + ",description"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -397,5 +401,133 @@ func TestShowProjectLeavesOutAFieldTheNamedTypeDoesNotDeclare(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.printed, node)
 		})
+	}
+}
+
+type fieldsCall func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error)
+
+func optionsFor[T any](fields *string, with func(string) T) *T {
+	if fields == nil {
+		return nil
+	}
+	options := with(*fields)
+	return &options
+}
+
+func writeOptions(fields *string) *youtrack.WriteOptions {
+	return optionsFor(fields, func(f string) youtrack.WriteOptions { return youtrack.WriteOptions{Fields: f} })
+}
+
+func fieldsCalls() map[string]fieldsCall {
+	summary := "Title"
+	return map[string]fieldsCall{
+		"Issues.Show": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Issues.Show(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ShowIssueOptions { return youtrack.ShowIssueOptions{Fields: f} }))
+		},
+		"Issues.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Issues.List(ctx, "State: Open", optionsFor(fields, func(f string) youtrack.ListIssuesOptions { return youtrack.ListIssuesOptions{Fields: f} }))
+		},
+		"Issues.Create": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Issues.Create(ctx, "DEV", &youtrack.IssueInput{Summary: summary}, writeOptions(fields))
+		},
+		"Issues.Update": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Issues.Update(ctx, "DEV-1", &youtrack.IssueUpdate{Summary: &summary}, writeOptions(fields))
+		},
+		"Articles.Show": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Articles.Show(ctx, "DEV-A-1", optionsFor(fields, func(f string) youtrack.ShowArticleOptions { return youtrack.ShowArticleOptions{Fields: f} }))
+		},
+		"Articles.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Articles.List(ctx, "project: DEV", optionsFor(fields, func(f string) youtrack.ListArticlesOptions { return youtrack.ListArticlesOptions{Fields: f} }))
+		},
+		"Articles.Children": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Articles.Children(ctx, "DEV-A-1", optionsFor(fields, func(f string) youtrack.ListArticlesOptions { return youtrack.ListArticlesOptions{Fields: f} }))
+		},
+		"Articles.Create": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Articles.Create(ctx, "DEV", &youtrack.ArticleInput{Summary: summary}, writeOptions(fields))
+		},
+		"Articles.Update": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Articles.Update(ctx, "DEV-A-1", &youtrack.ArticleUpdate{Summary: &summary}, writeOptions(fields))
+		},
+		"Comments.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Comments.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListCommentsOptions { return youtrack.ListCommentsOptions{Fields: f} }))
+		},
+		"Comments.Create": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Comments.Create(ctx, "DEV-1", "Text", writeOptions(fields))
+		},
+		"Comments.Update": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Comments.Update(ctx, "DEV-1", "4-1", "Text", writeOptions(fields))
+		},
+		"Attachments.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Attachments.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListAttachmentsOptions { return youtrack.ListAttachmentsOptions{Fields: f} }))
+		},
+		"Attachments.Create": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			file := youtrack.File{Name: "first.txt", Content: strings.NewReader("First")}
+			return c.Attachments.Create(ctx, "DEV-1", file, writeOptions(fields))
+		},
+		"Links.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Links.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListLinksOptions { return youtrack.ListLinksOptions{Fields: f} }))
+		},
+		"Links.Add": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Links.Add(ctx, "DEV-1", "relates to", "DEV-2", writeOptions(fields))
+		},
+		"Tags.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Tags.List(ctx, optionsFor(fields, func(f string) youtrack.ListTagsOptions { return youtrack.ListTagsOptions{Fields: f} }))
+		},
+		"Tags.Create": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Tags.Create(ctx, "Early", youtrack.TagSharing{}, writeOptions(fields))
+		},
+		"WorkItems.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.WorkItems.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListWorkItemsOptions { return youtrack.ListWorkItemsOptions{Fields: f} }))
+		},
+		"WorkItems.Create": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.WorkItems.Create(ctx, "DEV-1", &youtrack.WorkItemInput{Duration: time.Hour}, writeOptions(fields))
+		},
+		"WorkItems.Update": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.WorkItems.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Text: &summary}, writeOptions(fields))
+		},
+		"Activities.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Activities.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListActivitiesOptions { return youtrack.ListActivitiesOptions{Fields: f} }))
+		},
+		"Projects.Show": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Projects.Show(ctx, "DEV", optionsFor(fields, func(f string) youtrack.ShowProjectOptions { return youtrack.ShowProjectOptions{Fields: f} }))
+		},
+		"Projects.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Projects.List(ctx, optionsFor(fields, func(f string) youtrack.ListProjectsOptions { return youtrack.ListProjectsOptions{Fields: f} }))
+		},
+		"Fields.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Fields.List(ctx, "DEV", optionsFor(fields, func(f string) youtrack.ListFieldsOptions { return youtrack.ListFieldsOptions{Fields: f} }))
+		},
+		"Fields.Show": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Fields.Show(ctx, "DEV", "State", optionsFor(fields, func(f string) youtrack.ShowFieldOptions { return youtrack.ShowFieldOptions{Fields: f} }))
+		},
+		"Users.Show": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Users.Show(ctx, "first", optionsFor(fields, func(f string) youtrack.ShowUserOptions { return youtrack.ShowUserOptions{Fields: f} }))
+		},
+		"Users.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
+			return c.Users.List(ctx, "fir", optionsFor(fields, func(f string) youtrack.ListUsersOptions { return youtrack.ListUsersOptions{Fields: f} }))
+		},
+	}
+}
+
+func TestEveryDocumentOperationRefusesAnExpressionThatNamesNotEveryField(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		fields *string
+	}{
+		{name: "no options"},
+		{name: "no fields", fields: new("")},
+		{name: "a name added to others", fields: new("+id")},
+	}
+	for operation, call := range fieldsCalls() {
+		for _, tc := range tests {
+			t.Run(operation+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				_, err := call(t.Context(), client(t, fake.ServeNothing(t)), tc.fields)
+
+				assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
+			})
+		}
 	}
 }

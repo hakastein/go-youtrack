@@ -94,7 +94,7 @@ func TestCreateIssueNamesEveryRequiredFieldItLeavesEmpty(t *testing.T) {
 			t.Parallel()
 			server := issueWriting(t, issueConditional(tc.fields...), "[]", fake.Unexpected(t))
 
-			_, err := issueCreate(t, server, issueFilling(tc.filled...), "")
+			_, err := issueCreate(t, server, issueFilling(tc.filled...), "idReadable")
 
 			want := youtrack.Error{Code: youtrack.CodeMissingRequired, Details: []youtrack.Pair{
 				issueMetadataRequest(server), issueProjectDetail(), {Key: "missing", Value: texts(tc.missing...)},
@@ -183,7 +183,7 @@ func TestCreateIssueRefusesAValueAConditionHides(t *testing.T) {
 			t.Parallel()
 			server := issueWriting(t, issueConditional(tc.watched, issueShownField(tc.shownAt)), "[]", fake.Unexpected(t))
 
-			_, err := issueCreate(t, server, issueFilling(append(tc.filled, issueFill("Shown", "First"))...), "")
+			_, err := issueCreate(t, server, issueFilling(append(tc.filled, issueFill("Shown", "First"))...), "idReadable")
 
 			kept, invalid := issueWriteError(t, err)
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage, Details: []youtrack.Pair{
@@ -288,7 +288,7 @@ func TestUpdateIssueRefusesToEmptyAFieldTheProjectRequires(t *testing.T) {
 
 	_, err := issueUpdate(t, server, youtrack.IssueUpdate{Fields: []youtrack.FieldWrite{
 		issueClear("Optional"), issueClear("second"), issueClear("First"),
-	}}, "")
+	}}, "idReadable")
 
 	want := youtrack.Error{Code: youtrack.CodeMissingRequired, Details: []youtrack.Pair{
 		issueReadRequest(server), issueProjectDetail(), {Key: "missing", Value: texts("First", "Second")},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -15,8 +16,8 @@ import (
 )
 
 const (
-	fieldWithValues = youtrack.FieldListFields + ",bundle(values(name,archived))"
-	fieldWithUsers  = youtrack.FieldListFields + ",bundle(aggregatedUsers(login))"
+	fieldAsked      = fieldNaming + ",canBeEmpty"
+	fieldWithValues = fieldAsked + ",bundle(values(name,archived))"
 )
 
 func fieldNamed(name string) youtrack.Pair {
@@ -81,7 +82,7 @@ func TestListFieldsRefusesAProjectWithNoFields(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, `[]`))
 
-	_, err := client(t, server).Fields.List(t.Context(), "DEV", nil)
+	_, err := client(t, server).Fields.List(t.Context(), "DEV", &youtrack.ListFieldsOptions{Fields: "id"})
 
 	assert.Equal(t, denied(t, server), errorOf(t, err))
 }
@@ -129,11 +130,11 @@ func TestListFieldsPrintsTheFieldsByOrdinal(t *testing.T) {
 	}
 }
 
-func TestListFieldsPrintsTheDefaultFieldsAndAsksForTheOrdinalBesides(t *testing.T) {
+func TestListFieldsPrintsTheFieldsAskedForAndAsksForTheOrdinalBesides(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, `[`+enumField("1-1", "First").json()+`]`))
 
-	got, err := client(t, server).Fields.List(t.Context(), "DEV", nil)
+	got, err := client(t, server).Fields.List(t.Context(), "DEV", &youtrack.ListFieldsOptions{Fields: fieldAsked})
 
 	require.NoError(t, err)
 	want := wholePage("fields", youtrack.NewMap(
@@ -145,7 +146,7 @@ func TestListFieldsPrintsTheDefaultFieldsAndAsksForTheOrdinalBesides(t *testing.
 				youtrack.Pair{Key: "isMultiValue", Value: youtrack.NewBool(false)})})},
 		youtrack.Pair{Key: "canBeEmpty", Value: youtrack.NewBool(true)}))
 	assert.Equal(t, want, got)
-	assert.Equal(t, []string{youtrack.FieldListFields + ",ordinal"}, server.Fields())
+	assert.Equal(t, []string{fieldAsked + ",ordinal"}, server.Fields())
 }
 
 func TestListFieldsRefusesAnOrdinalItCannotOrderBy(t *testing.T) {
@@ -171,9 +172,11 @@ func TestShowFieldRefusesACallItCannotSend(t *testing.T) {
 		field   string
 		fields  string
 	}{
-		{name: "a project code with a dash", project: "DEV-1", field: "First"},
-		{name: "a field of no name", project: "DEV", field: ""},
+		{name: "a project code with a dash", project: "DEV-1", field: "First", fields: "canBeEmpty"},
+		{name: "a field of no name", project: "DEV", field: "", fields: "canBeEmpty"},
 		{name: "fields that close nothing", project: "DEV", field: "First", fields: "field("},
+		{name: "no fields", project: "DEV", field: "First"},
+		{name: "fields added to others", project: "DEV", field: "First", fields: "+canBeEmpty"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -233,7 +236,7 @@ func TestShowFieldPrintsTheFieldWithTheValuesItAccepts(t *testing.T) {
 		answers:  map[string]http.HandlerFunc{"1-1": answering(f.answer(values))},
 	}).serve(t)
 
-	got, err := client(t, server).Fields.Show(t.Context(), "DEV", "Field", nil)
+	got, err := client(t, server).Fields.Show(t.Context(), "DEV", "Field", &youtrack.ShowFieldOptions{Fields: fieldWithValues})
 
 	require.NoError(t, err)
 	value := func(name string, archived bool) *youtrack.Node {
@@ -254,68 +257,56 @@ func TestShowFieldPrintsTheFieldWithTheValuesItAccepts(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-func TestShowFieldAsksForTheFieldsOfItsType(t *testing.T) {
+func typedAnswer(schema string, f metaField, bundle string) string {
+	return strings.Replace(f.answer(bundle), `"ProjectCustomField"`, strconv.Quote(schema), 1)
+}
+
+func TestShowFieldLeavesOutANameOnlyAnotherTypeOfFieldHolds(t *testing.T) {
 	t.Parallel()
+	const asked = "canBeEmpty,bundle(values(name),aggregatedUsers(login))"
+	canBeEmpty := youtrack.Pair{Key: "canBeEmpty", Value: youtrack.NewBool(true)}
+	one := func(key, member, value string) *youtrack.Node {
+		return youtrack.NewMap(youtrack.Pair{Key: key, Value: youtrack.NewList(
+			youtrack.NewMap(youtrack.Pair{Key: member, Value: youtrack.NewString(value)}))})
+	}
 	tests := []struct {
 		name      string
 		valueType string
-		multi     bool
-		fields    string
-		sent      string
+		schema    string
+		bundle    string
+		want      *youtrack.Node
 	}{
-		{name: "enum of one value", valueType: "enum", sent: fieldWithValues},
-		{name: "enum of many values", valueType: "enum", multi: true, sent: fieldWithValues},
-		{name: "state of one value", valueType: "state", sent: fieldWithValues},
-		{name: "version of one value", valueType: "version", sent: fieldWithValues},
-		{name: "version of many values", valueType: "version", multi: true, sent: fieldWithValues},
-		{name: "build of one value", valueType: "build", sent: fieldWithValues},
-		{name: "build of many values", valueType: "build", multi: true, sent: fieldWithValues},
-		{name: "ownedField of one value", valueType: "ownedField", sent: fieldWithValues},
-		{name: "ownedField of many values", valueType: "ownedField", multi: true, sent: fieldWithValues},
-		{name: "user of one value", valueType: "user", sent: fieldWithUsers},
-		{name: "user of many values", valueType: "user", multi: true, sent: fieldWithUsers},
-		{name: "group of one value", valueType: "group", sent: youtrack.FieldListFields},
-		{name: "group of many values", valueType: "group", multi: true, sent: youtrack.FieldListFields},
-		{name: "period of one value", valueType: "period", sent: youtrack.FieldListFields},
-		{name: "text of one value", valueType: "text", sent: youtrack.FieldListFields},
-		{name: "date of one value", valueType: "date", sent: youtrack.FieldListFields},
-		{name: "date and time of one value", valueType: "date and time", sent: youtrack.FieldListFields},
-		{name: "integer of one value", valueType: "integer", sent: youtrack.FieldListFields},
-		{name: "float of one value", valueType: "float", sent: youtrack.FieldListFields},
-		{name: "string of one value", valueType: "string", sent: youtrack.FieldListFields},
-		{name: "enum of one value with fields +ordinal", valueType: "enum", fields: "+ordinal", sent: fieldWithValues + ",ordinal"},
-		{name: "user of one value with fields +ordinal", valueType: "user", fields: "+ordinal", sent: fieldWithUsers + ",ordinal"},
-		{name: "string of one value with fields +ordinal", valueType: "string", fields: "+ordinal", sent: youtrack.FieldListFields + ",ordinal"},
-		{name: "enum of one value with fields field(name)", valueType: "enum", fields: "field(name)", sent: fieldNaming},
-		{name: "state of many values with fields field(name)", valueType: "state", multi: true, fields: "field(name)", sent: fieldNaming},
+		{
+			name:      "a field with a bundle of values",
+			valueType: "enum",
+			schema:    "EnumProjectCustomField",
+			bundle:    enumBundle(bundleValue("3-1", "Open", false)),
+			want:      youtrack.NewMap(canBeEmpty, youtrack.Pair{Key: "bundle", Value: one("values", "name", "Open")}),
+		},
+		{
+			name:      "a field of users",
+			valueType: "user",
+			schema:    "UserProjectCustomField",
+			bundle:    `{"$type":"UserBundle","aggregatedUsers":[{"$type":"User","login":"first"}]}`,
+			want:      youtrack.NewMap(canBeEmpty, youtrack.Pair{Key: "bundle", Value: one("aggregatedUsers", "login", "first")}),
+		},
+		{name: "a field of text", valueType: "string", schema: "SimpleProjectCustomField", want: youtrack.NewMap(canBeEmpty)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			f := metaField{id: "1-1", name: "Field", valueType: tc.valueType, multi: tc.multi}
+			f := metaField{id: "1-1", name: "Field", valueType: tc.valueType}
 			server := (&metaInstance{
 				projects: map[string]string{"DEV": projectJSON(f)},
-				answers:  map[string]http.HandlerFunc{"1-1": answering(`{"$type":"ProjectCustomField","field":` + f.naming() + `,"canBeEmpty":true,"ordinal":0,"bundle":null}`)},
+				answers:  map[string]http.HandlerFunc{"1-1": answering(typedAnswer(tc.schema, f, tc.bundle))},
 			}).serve(t)
 
-			_, err := client(t, server).Fields.Show(t.Context(), "DEV", "Field", &youtrack.ShowFieldOptions{Fields: tc.fields})
+			got, err := client(t, server).Fields.Show(t.Context(), "DEV", "Field", &youtrack.ShowFieldOptions{Fields: asked})
 
 			require.NoError(t, err)
-			assert.Equal(t, tc.sent, server.Last(t).URL.Query().Get("fields"))
+			assert.Equal(t, tc.want, got)
 		})
 	}
-}
-
-func TestShowFieldRefusesATypeItDoesNotModelWithFieldsAddedToItsDefault(t *testing.T) {
-	t.Parallel()
-	server := (&metaInstance{projects: map[string]string{
-		"DEV": projectJSON(metaField{id: "1-1", name: "Field", valueType: "state", multi: true}),
-	}}).serve(t)
-
-	_, err := client(t, server).Fields.Show(t.Context(), "DEV", "Field", &youtrack.ShowFieldOptions{Fields: "+ordinal"})
-
-	assert.Equal(t, unaddressable(t, server), errorOf(t, err))
-	assert.Equal(t, []string{projectPath}, server.Paths())
 }
 
 // Show and Bundle find a field of the project by one rule and read it again over a stale cache by one rule, so
@@ -328,7 +319,7 @@ type fieldReader struct {
 func fieldReaders() []fieldReader {
 	return []fieldReader{
 		{name: "show", read: func(ctx context.Context, c *youtrack.Client, project, field string) (any, error) {
-			return c.Fields.Show(ctx, project, field, nil)
+			return c.Fields.Show(ctx, project, field, &youtrack.ShowFieldOptions{Fields: "canBeEmpty"})
 		}},
 		{name: "bundle", read: func(ctx context.Context, c *youtrack.Client, project, field string) (any, error) {
 			return c.Fields.Bundle(ctx, project, field)
@@ -411,26 +402,31 @@ func TestShowAndBundleRefuseANameNoSingleFieldAnswersTo(t *testing.T) {
 
 func TestShowAndBundleRefuseAFieldOfTheMetadataTheyCannotAddress(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		metadata string
-	}{
-		{name: "an id no path can hold", metadata: projectJSON(enumField("..", "Field"))},
-		{name: "a type the module does not model", metadata: projectJSON(metaField{id: "1-1", name: "Field", valueType: "state", multi: true})},
-	}
 	for _, reader := range fieldReaders() {
-		for _, tc := range tests {
-			t.Run(reader.name+"/"+tc.name, func(t *testing.T) {
-				t.Parallel()
-				server := (&metaInstance{projects: map[string]string{"DEV": tc.metadata}}).serve(t)
+		t.Run(reader.name, func(t *testing.T) {
+			t.Parallel()
+			server := (&metaInstance{projects: map[string]string{"DEV": projectJSON(enumField("..", "Field"))}}).serve(t)
 
-				_, err := reader.read(t.Context(), client(t, server), "DEV", "Field")
+			_, err := reader.read(t.Context(), client(t, server), "DEV", "Field")
 
-				assert.Equal(t, unaddressable(t, server), errorOf(t, err))
-				assert.Equal(t, []string{projectPath}, server.Paths())
-			})
-		}
+			assert.Equal(t, unaddressable(t, server), errorOf(t, err))
+			assert.Equal(t, []string{projectPath}, server.Paths())
+		})
 	}
+}
+
+func TestShowFieldReadsAFieldOfATypeItDoesNotModel(t *testing.T) {
+	t.Parallel()
+	f := metaField{id: "1-1", name: "Field", valueType: "state", multi: true}
+	server := (&metaInstance{
+		projects: map[string]string{"DEV": projectJSON(f)},
+		answers:  map[string]http.HandlerFunc{"1-1": answering(f.answer(""))},
+	}).serve(t)
+
+	got, err := client(t, server).Fields.Show(t.Context(), "DEV", "Field", &youtrack.ShowFieldOptions{Fields: "canBeEmpty"})
+
+	require.NoError(t, err)
+	assert.Equal(t, youtrack.NewMap(youtrack.Pair{Key: "canBeEmpty", Value: youtrack.NewBool(true)}), got)
 }
 
 func TestShowAndBundleRefuseAFieldTheyCannotCompare(t *testing.T) {
@@ -632,28 +628,6 @@ func TestShowAndBundleRefuseANameOnlyAfterReadingTheMetadataAgain(t *testing.T) 
 				assert.Equal(t, tc.paths, server.Paths())
 			})
 		}
-	}
-}
-
-func TestShowAndBundleReadTheMetadataAgainForACachedTypeTheyDoNotModel(t *testing.T) {
-	t.Parallel()
-	for _, reader := range fieldReaders() {
-		t.Run(reader.name, func(t *testing.T) {
-			t.Parallel()
-			stateOfMany := metaField{id: "1-1", name: "State", valueType: "state", multi: true}
-			stateOfOne := metaField{id: "1-1", name: "State", valueType: "state"}
-			instance := &metaInstance{projects: map[string]string{"DEV": projectJSON(stateOfMany)}}
-			server, root := instance.serve(t), t.TempDir()
-			_, err := reader.read(t.Context(), cached(t, server, root), "DEV", "State")
-			require.Error(t, err)
-			instance.change(map[string]string{"DEV": projectJSON(stateOfOne)},
-				map[string]http.HandlerFunc{"1-1": answering(stateOfOne.answer(enumBundle()))})
-
-			_, err = reader.read(t.Context(), cached(t, server, root), "DEV", "State")
-
-			require.NoError(t, err)
-			assert.Equal(t, []string{projectPath, projectPath, firstFieldPath}, server.Paths())
-		})
 	}
 }
 

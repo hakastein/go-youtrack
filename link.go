@@ -27,10 +27,7 @@ const (
 	both                    = "BOTH"
 )
 
-const LinkListFields = "idReadable,summary"
-
-// ListLinksOptions: Fields is a fields= expression of each linked issue, empty for LinkListFields and +x for them
-// and x.
+// ListLinksOptions: Fields is a fields= expression of each linked issue.
 type ListLinksOptions struct {
 	Fields string
 }
@@ -62,7 +59,7 @@ func (s *LinksService) list(ctx context.Context, id string, opts ListLinksOption
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(issueSchema, opts.Fields, LinkListFields, linksKey, issuesKey)
+	requested, fault := c.parseFields(issueSchema, opts.Fields, linksKey, issuesKey)
 	if fault != nil {
 		return nil, fault
 	}
@@ -82,7 +79,7 @@ func (s *LinksService) add(ctx context.Context, id, phrase, target string, opts 
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(issueSchema, opts.Fields, LinkListFields, linksKey, issuesKey)
+	requested, fault := c.parseFields(issueSchema, opts.Fields, linksKey, issuesKey)
 	if fault != nil {
 		return nil, fault
 	}

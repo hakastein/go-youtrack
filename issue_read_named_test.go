@@ -175,6 +175,90 @@ func TestShowIssueRefusesACustomFieldNameTheCatalogueDoesNotResolve(t *testing.T
 	}
 }
 
+func issueCataloguesInTurn(t *testing.T, issue string, catalogues ...string) *fake.Server {
+	t.Helper()
+	answers := make([]http.HandlerFunc, 0, len(catalogues))
+	for _, catalogue := range catalogues {
+		answers = append(answers, fake.JSON(http.StatusOK, catalogue))
+	}
+	return routes(t, map[string]http.HandlerFunc{
+		"GET " + issueCataloguePath: fake.InTurn(answers...),
+		"GET " + issuePath:          fake.JSON(http.StatusOK, issue),
+	})
+}
+
+func TestShowIssueReadsTheCatalogueEachTimeWithoutACache(t *testing.T) {
+	t.Parallel()
+	server := issueCataloguing(t, issueCatalogue(issueCatalogued("Named", "null")), fake.JSON(http.StatusOK, issueWithFields()))
+
+	_, err := issueShown(t, server, "customFields(Named)", youtrack.Comments{})
+	require.NoError(t, err)
+	_, err = issueShown(t, server, "customFields(Named)", youtrack.Comments{})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{issueCataloguePath, issuePath, issueCataloguePath, issuePath}, server.Paths())
+}
+
+func TestShowIssueResolvesANameByTheCachedCatalogue(t *testing.T) {
+	t.Parallel()
+	catalogue := issueCatalogue(issueCatalogued("Named", `"Translated"`))
+	server, root := issueCataloguesInTurn(t, issueWithFields(issueEnum("Named", "Value")), catalogue), t.TempDir()
+	_, err := cached(t, server, root).Issues.Show(t.Context(), "DEV-1", &youtrack.ShowIssueOptions{Fields: "customFields(Named)"})
+	require.NoError(t, err)
+
+	node, err := cached(t, server, root).Issues.Show(t.Context(), "DEV-1", &youtrack.ShowIssueOptions{Fields: "customFields(translated)"})
+
+	require.NoError(t, err)
+	assert.Equal(t, issueFieldsBlock(issueNamed("Named", "Value")), node)
+	assert.Equal(t, []string{issueCataloguePath, issuePath, issuePath}, server.Paths())
+	assert.Equal(t, []string{"Named"}, server.Last(t).URL.Query()["customFields"])
+}
+
+func TestShowIssueReadsTheCatalogueAgainForANameTheCacheDoesNotResolve(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		cached string
+		asked  string
+	}{
+		{name: "a field created after the cache was written", cached: issueCatalogue(issueCatalogued("Other", "null")), asked: "Named"},
+		{
+			name:   "a name of two fields in the cache",
+			cached: issueCatalogue(issueCatalogued("named", "null"), issueCatalogued("Named", "null"), issueCatalogued("Other", "null")),
+			asked:  "Named",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fresh := issueCatalogue(issueCatalogued("Named", "null"), issueCatalogued("Other", "null"))
+			server, root := issueCataloguesInTurn(t, issueWithFields(issueEnum("Named", "Value")), tc.cached, fresh), t.TempDir()
+			_, err := cached(t, server, root).Issues.Show(t.Context(), "DEV-1", &youtrack.ShowIssueOptions{Fields: "customFields(Other)"})
+			require.NoError(t, err)
+
+			node, err := cached(t, server, root).Issues.Show(t.Context(), "DEV-1", &youtrack.ShowIssueOptions{Fields: "customFields(" + tc.asked + ")"})
+
+			require.NoError(t, err)
+			assert.Equal(t, issueFieldsBlock(issueNamed("Named", "Value")), node)
+			assert.Equal(t, []string{issueCataloguePath, issuePath, issueCataloguePath, issuePath}, server.Paths())
+		})
+	}
+}
+
+func TestShowIssueRefusesANameOnlyByTheCatalogueTheServerHasJustSent(t *testing.T) {
+	t.Parallel()
+	catalogue := issueCatalogue(issueCatalogued("Named", "null"))
+	server, root := issueCataloguesInTurn(t, issueWithFields(), catalogue), t.TempDir()
+	_, err := cached(t, server, root).Issues.Show(t.Context(), "DEV-1", &youtrack.ShowIssueOptions{Fields: "customFields(Named)"})
+	require.NoError(t, err)
+
+	_, err = cached(t, server, root).Issues.Show(t.Context(), "DEV-1", &youtrack.ShowIssueOptions{Fields: "customFields(Nmed)"})
+
+	want := issueUnresolved(server, "customFields(Nmed)", "unknown", withNearest("field", "customFields(Nmed)", "Named"))
+	assert.Equal(t, want, errorOf(t, err))
+	assert.Equal(t, []string{issueCataloguePath, issuePath, issueCataloguePath}, server.Paths())
+}
+
 func TestShowIssueNamesTheUnknownAndTheAmbiguousNamesOfOneExpressionTogether(t *testing.T) {
 	t.Parallel()
 	catalogue := issueCatalogue(issueCatalogued("twin", "null"), issueCatalogued("Twin", "null"), issueCatalogued("Named", "null"))
@@ -192,7 +276,7 @@ func TestShowIssueNamesTheUnknownAndTheAmbiguousNamesOfOneExpressionTogether(t *
 	assert.Equal(t, []string{issueCataloguePath}, server.Paths())
 }
 
-func TestShowIssueReadsTheCatalogueOnlyForANameTheCallerWrote(t *testing.T) {
+func TestShowIssueReadsNoCatalogueForTheBlockAskedWhole(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -290,17 +374,6 @@ func TestShowIssuePrintsTheCustomFieldsAsNamed(t *testing.T) {
 	}
 }
 
-func TestListIssuesChecksAgainstTheCatalogueOnlyTheNamesTheCallerWrote(t *testing.T) {
-	t.Parallel()
-	server := issueCataloguing(t, issueCatalogue(issueCatalogued("Named", "null")), fake.JSON(http.StatusOK, `[]`))
-
-	_, _, err := issueSearch(t, server, "field: value", "+customFields(Named)", 50)
-
-	require.NoError(t, err)
-	assert.Equal(t, []string{fake.AssistPath, issueCataloguePath, issuesPath}, server.Paths())
-	assert.Equal(t, []string{"State", "Type", "Named"}, server.Last(t).URL.Query()["customFields"])
-}
-
 func TestListIssuesRefusesACustomFieldNameBeforeTheSearch(t *testing.T) {
 	t.Parallel()
 	server := issueCataloguing(t, issueCatalogue(issueCatalogued("Named", "null")), fake.JSON(http.StatusOK, `[]`))
@@ -319,8 +392,8 @@ func TestListIssuesSendsNoNamesWhereTheBlockIsAskedWhole(t *testing.T) {
 		name       string
 		expression string
 	}{
-		{name: "the block of the issue", expression: "+customFields"},
-		{name: "the block of an issue it links to", expression: "+links(issues(customFields))"},
+		{name: "the block of the issue", expression: "customFields"},
+		{name: "the block of an issue it links to", expression: "links(issues(customFields))"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -332,49 +405,6 @@ func TestListIssuesSendsNoNamesWhereTheBlockIsAskedWhole(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, []string{fake.AssistPath, issuesPath}, server.Paths())
 			assert.Nil(t, server.Last(t).URL.Query()["customFields"])
-		})
-	}
-}
-
-func TestListIssuesPrintsAFieldOfTheDefaultByEitherNameOfIt(t *testing.T) {
-	t.Parallel()
-	typeOfIssue := issueEnum("Type", "Task")
-	open := `{"$type":"StateBundleElement","name":"Open"}`
-	tests := []struct {
-		name     string
-		received []string
-		printed  []youtrack.Pair
-	}{
-		{
-			name:     "the name in another letter case",
-			received: []string{issueHeld{name: "state", valueType: "state", value: open, ordinal: "1"}.json(), typeOfIssue},
-			printed:  []youtrack.Pair{issueNamed("state", "Open"), issueNamed("Type", "Task")},
-		},
-		{
-			name: "a field whose localized name is the name",
-			received: []string{
-				issueHeld{name: "Status", translation: `"State"`, valueType: "state", value: open, ordinal: "1"}.json(),
-				typeOfIssue,
-			},
-			printed: []youtrack.Pair{issueNamed("Status", "Open"), issueNamed("Type", "Task")},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			record := `{"$type":"Issue","idReadable":"DEV-1","summary":"First","created":0,"customFields":[` +
-				strings.Join(tc.received, ",") + `]}`
-			server := fake.Serve(t, fake.Searching(t, fake.JSON(http.StatusOK, `[`+record+`]`)))
-
-			node, err := client(t, server).Issues.List(t.Context(), "field: value", nil)
-
-			require.NoError(t, err)
-			assert.Equal(t, wholePage("issues", youtrack.NewMap(
-				youtrack.Pair{Key: "idReadable", Value: youtrack.NewString("DEV-1")},
-				youtrack.Pair{Key: "summary", Value: youtrack.NewString("First")},
-				youtrack.Pair{Key: "customFields", Value: youtrack.NewMap(tc.printed...)},
-				youtrack.Pair{Key: "created", Value: youtrack.NewString("1970-01-01T00:00:00Z")},
-			)), node)
 		})
 	}
 }

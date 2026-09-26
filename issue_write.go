@@ -57,7 +57,7 @@ func (s *IssuesService) create(ctx context.Context, project string, in IssueInpu
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueShowFields)
+	requested, fault := c.parseFields(issueSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}
@@ -74,7 +74,7 @@ func (s *IssuesService) update(ctx context.Context, id string, in IssueUpdate, o
 	if fault != nil {
 		return nil, fault
 	}
-	requested, fault := c.parseFields(issueSchema, opts.Fields, IssueShowFields)
+	requested, fault := c.parseFields(issueSchema, opts.Fields)
 	if fault != nil {
 		return nil, fault
 	}

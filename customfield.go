@@ -362,53 +362,37 @@ func readFieldNames(field map[string]any) (fieldInfo, bool) {
 	return fieldInfo{name: name, localizedName: translated}, isText && isName
 }
 
+func customFieldCatalogueTarget() string {
+	return "/api/admin/customFieldSettings/customFields?fields=" + formatFields(catalogueFields())
+}
+
+// The cached catalogue lags behind fields created since it was written, so only a catalogue the server has just
+// sent refuses a name.
 func (c *Client) resolveCustomFields(ctx context.Context, requested []requestedField) *Error {
 	named := namedCustomFields(c.spec, requested)
-	if named == nil || !slices.ContainsFunc(named.children, fromCaller) {
+	if named == nil {
 		return nil
+	}
+	if cached, hit := c.cache.loadFieldCatalogue(customFieldCatalogueTarget()); hit {
+		names := resolvingNames(cached)
+		if resolved := names.resolveAll(named.children); names.resolved() {
+			named.children = resolved
+			return nil
+		}
 	}
 	a, catalogue, fault := c.customFieldCatalogue(ctx)
 	if fault != nil {
 		return fault
 	}
-	resolved, fault := resolveNames(a, requested, named.children, catalogue)
-	if fault != nil {
+	c.cache.storeFieldCatalogue(customFieldCatalogueTarget(), catalogue)
+	names := resolvingNames(catalogue)
+	resolved := names.resolveAll(named.children)
+	against := Pair{Key: fieldsKey, Value: NewString(formatFields(requested))}
+	if fault := names.fault(a.sent(), against, "the instance"); fault != nil {
 		return fault
 	}
 	named.children = resolved
 	return nil
-}
-
-func fromCaller(name requestedField) bool {
-	return name.fromCaller
-}
-
-func fromDefault(name requestedField) bool {
-	return !name.fromCaller
-}
-
-func hasDefaultNames(spec *schemas, requested []requestedField) bool {
-	named := namedCustomFields(spec, requested)
-	return named != nil && slices.ContainsFunc(named.children, fromDefault)
-}
-
-func resolveNames(a decodedResponse, requested, asked []requestedField, catalogue []fieldInfo) ([]requestedField, *Error) {
-	var resolved []requestedField
-	names := resolvingNames(catalogue)
-	for _, name := range asked {
-		if !fromCaller(name) {
-			resolved = merge(resolved, name)
-			continue
-		}
-		if at, found := names.place(name.name, fieldPath([]string{customFieldsKey}, formatName(name))); found {
-			resolved = merge(resolved, requestedField{name: catalogue[at].name, fromCaller: true})
-		}
-	}
-	against := Pair{Key: fieldsKey, Value: NewString(formatFields(requested))}
-	if fault := names.fault(a.sent(), against, "the instance"); fault != nil {
-		return nil, fault
-	}
-	return resolved, nil
 }
 
 type nameResolver struct {
@@ -420,6 +404,20 @@ type nameResolver struct {
 
 func resolvingNames(catalogue []fieldInfo) *nameResolver {
 	return &nameResolver{catalogue: catalogue, reported: map[string]bool{}}
+}
+
+func (r *nameResolver) resolveAll(asked []requestedField) []requestedField {
+	var resolved []requestedField
+	for _, name := range asked {
+		if at, found := r.place(name.name, fieldPath([]string{customFieldsKey}, formatName(name))); found {
+			resolved = merge(resolved, requestedField{name: r.catalogue[at].name, fromCaller: true})
+		}
+	}
+	return resolved
+}
+
+func (r *nameResolver) resolved() bool {
+	return len(r.unknown) == 0 && len(r.ambiguous) == 0
 }
 
 func (r *nameResolver) place(name, written string) (int, bool) {

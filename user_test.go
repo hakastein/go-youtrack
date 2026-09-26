@@ -16,12 +16,12 @@ import (
 
 const userFieldsSent = "id,login,fullName,email,banned"
 
-func TestShowUserReadsTheDefaultFields(t *testing.T) {
+func TestShowUserReadsTheFieldsAskedFor(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK,
 		`{"$type":"User","login":"first","fullName":"First Last","email":"first@example.org","banned":false}`))
 
-	node, err := client(t, server).Users.Show(t.Context(), "first", nil)
+	node, err := client(t, server).Users.Show(t.Context(), "first", &youtrack.ShowUserOptions{Fields: "login,fullName,email,banned"})
 
 	require.NoError(t, err)
 	assert.Equal(t, youtrack.NewMap(
@@ -115,11 +115,11 @@ func TestShowUserKeepsWhatTheServerSaidOfALoginItLacks(t *testing.T) {
 	assert.Equal(t, want, errorOf(t, err))
 }
 
-func TestListUsersReadsTheDefaultFields(t *testing.T) {
+func TestListUsersReadsTheFieldsAskedFor(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, `[{"$type":"User","login":"first","fullName":"First Last","banned":true}]`))
 
-	node, err := client(t, server).Users.List(t.Context(), "fir", nil)
+	node, err := client(t, server).Users.List(t.Context(), "fir", &youtrack.ListUsersOptions{Fields: "login,fullName,banned"})
 
 	require.NoError(t, err)
 	assert.Equal(t, wholePage("users", youtrack.NewMap(
@@ -179,7 +179,7 @@ func TestUsersRefuseASearchThatIsNoUTF8(t *testing.T) {
 }
 
 func usersListed(ctx context.Context, users *youtrack.UsersService, query string) error {
-	_, err := users.List(ctx, query, nil)
+	_, err := users.List(ctx, query, &youtrack.ListUsersOptions{Fields: "login"})
 	return err
 }
 

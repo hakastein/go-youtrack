@@ -16,7 +16,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const tagCatalogueTarget = "/api/tags?fields=id,name,owner(login)&$top=-1"
+const (
+	tagCatalogueTarget = "/api/tags?fields=id,name,owner(login)&$top=-1"
+	tagListed          = "name,owner(login),readSharingSettings(permittedGroups(name),permittedUsers(login))"
+)
 
 type tagCall func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error)
 
@@ -69,13 +72,13 @@ func tagCreationEchoed(w http.ResponseWriter, r *http.Request) {
 	fake.JSON(http.StatusOK, `{"$type":"Tag",`+strings.TrimPrefix(string(body), "{"))(w, r)
 }
 
-func TestListTagsPrintsAPageOfTheDefaultFields(t *testing.T) {
+func TestListTagsPrintsAPageOfTheFieldsAskedFor(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, `[{"$type":"Tag","owner":{"$type":"User","login":"first"},`+
 		`"readSharingSettings":{"$type":"WatchFolderSharingSettings","permittedUsers":[{"$type":"User","login":"third"}],`+
 		`"permittedGroups":[{"$type":"UserGroup","name":"First"}]},"name":"Early"}]`))
 
-	node, err := client(t, server).Tags.List(t.Context(), nil)
+	node, err := client(t, server).Tags.List(t.Context(), &youtrack.ListTagsOptions{Fields: tagListed})
 
 	require.NoError(t, err)
 	assert.Equal(t, wholePage("tags", youtrack.NewMap(
@@ -87,7 +90,7 @@ func TestListTagsPrintsAPageOfTheDefaultFields(t *testing.T) {
 			youtrack.Pair{Key: "permittedUsers", Value: youtrack.NewList(youtrack.NewMap(
 				youtrack.Pair{Key: "login", Value: youtrack.NewString("third")}))})})), node)
 	assert.Equal(t, []string{"/api/tags"}, server.Paths())
-	assert.Equal(t, []url.Values{{"fields": {youtrack.TagListFields}, "$top": {"50"}}}, server.Queries())
+	assert.Equal(t, []url.Values{{"fields": {tagListed}, "$top": {"50"}}}, server.Queries())
 }
 
 func TestTagRefusesACallBeforeAnyRequest(t *testing.T) {
@@ -99,13 +102,13 @@ func TestTagRefusesACallBeforeAnyRequest(t *testing.T) {
 		{
 			name: "a creation with an empty name",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Create(ctx, "", youtrack.TagSharing{}, nil)
+				return tags.Create(ctx, "", youtrack.TagSharing{}, answeredWith("id"))
 			},
 		},
 		{
 			name: "a creation with a name of no UTF-8",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Create(ctx, "\xff", youtrack.TagSharing{}, nil)
+				return tags.Create(ctx, "\xff", youtrack.TagSharing{}, answeredWith("id"))
 			},
 		},
 		{
@@ -147,25 +150,25 @@ func TestTagRefusesACallBeforeAnyRequest(t *testing.T) {
 		{
 			name: "a creation shared with a group of no name to see it",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Create(ctx, "Early", youtrack.TagSharing{VisibleFor: []string{""}}, nil)
+				return tags.Create(ctx, "Early", youtrack.TagSharing{VisibleFor: []string{""}}, answeredWith("id"))
 			},
 		},
 		{
 			name: "a creation shared with a group of no name to update it",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Create(ctx, "Early", youtrack.TagSharing{UpdatableBy: []string{""}}, nil)
+				return tags.Create(ctx, "Early", youtrack.TagSharing{UpdatableBy: []string{""}}, answeredWith("id"))
 			},
 		},
 		{
 			name: "a creation shared with a group of no name to tag with it",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Create(ctx, "Early", youtrack.TagSharing{TaggableBy: []string{""}}, nil)
+				return tags.Create(ctx, "Early", youtrack.TagSharing{TaggableBy: []string{""}}, answeredWith("id"))
 			},
 		},
 		{
 			name: "a creation shared with a group and a group of no name after it",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Create(ctx, "Early", youtrack.TagSharing{VisibleFor: []string{"First", ""}}, nil)
+				return tags.Create(ctx, "Early", youtrack.TagSharing{VisibleFor: []string{"First", ""}}, answeredWith("id"))
 			},
 		},
 	}
@@ -194,7 +197,7 @@ func TestCreateTagRefusesANameTheServerWouldCut(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Tags.Create(t.Context(), tc.written, youtrack.TagSharing{}, nil)
+			_, err := client(t, fake.ServeNothing(t)).Tags.Create(t.Context(), tc.written, youtrack.TagSharing{}, answeredWith("id"))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -444,7 +447,7 @@ func TestCreateTagRefusesGroupNamesItCannotResolve(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, tagGroups()))
 
-			_, err := client(t, server).Tags.Create(t.Context(), "Early", tc.sharing, nil)
+			_, err := client(t, server).Tags.Create(t.Context(), "Early", tc.sharing, answeredWith("id"))
 
 			want := youtrack.Error{
 				Code:    youtrack.CodeUnknownName,
@@ -504,7 +507,7 @@ func TestCreateTagRefusesGroupsItCannotShareTheTagWith(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, tc.groups))
 
-			_, err := client(t, server).Tags.Create(t.Context(), "Early", tc.sharing, nil)
+			_, err := client(t, server).Tags.Create(t.Context(), "Early", tc.sharing, answeredWith("id"))
 
 			assert.Equal(t, unreadable(tagGroupsRequest(server), tc.groups), errorOf(t, err))
 			assert.Equal(t, []string{"/api/groups"}, server.Paths())
