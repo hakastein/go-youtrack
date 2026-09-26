@@ -369,7 +369,7 @@ func TestCreateAttachmentRefusesAnAnswerThatIsNotTheFileThatWentOut(t *testing.T
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, tc.body))
 
-			_, err := client(t, server).Attachments.Create(t.Context(), tc.owner, attachmentFile("one.txt", "content"),
+			_, err := client(t, server).Attachments.Create(t.Context(), tc.owner, attachmentFile("one.txt", "abcdef"),
 				answeredWith("id"))
 
 			want := youtrack.Error{
