@@ -465,9 +465,41 @@ func printedTagFields() []requestedField {
 	}
 }
 
+type hungTag struct {
+	id   string
+	name string
+}
+
+func (c *Client) resolveTagsToHang(ctx context.Context, sought []TagRef) ([]hungTag, *Error) {
+	if len(sought) == 0 {
+		return nil, nil
+	}
+	shown, fault := c.listTags(ctx)
+	if fault != nil {
+		return nil, fault
+	}
+	found, fault := shown.resolve(sought)
+	if fault != nil {
+		return nil, fault
+	}
+	tags := make([]hungTag, 0, len(found))
+	for _, tag := range found {
+		id, fault := tag.pathSafeID()
+		if fault != nil {
+			return nil, fault
+		}
+		if slices.ContainsFunc(tags, func(hung hungTag) bool { return hung.id == id.id }) {
+			continue
+		}
+		tags = append(tags, hungTag{id: id.id, name: tag.shown.name})
+	}
+	return tags, nil
+}
+
 type resolvedTag struct {
 	response decodedResponse
 	object   map[string]any
+	shown    tagCandidate
 	name     string
 }
 
@@ -529,7 +561,8 @@ func (g tagCatalogue) resolve(sought []TagRef) ([]resolvedTag, *Error) {
 	found := make([]resolvedTag, 0, len(sought))
 	for _, ref := range sought {
 		if at, matched := of.match(ref); matched {
-			found = append(found, resolvedTag{response: g.response, object: g.response.objects[at], name: ref.Name})
+			found = append(found, resolvedTag{response: g.response, object: g.response.objects[at], shown: g.tags[at],
+				name: ref.Name})
 		}
 	}
 	unresolved := unresolvedDetails(of.unknown, of.ambiguous)

@@ -881,38 +881,6 @@ func fieldByID(fields []projectField, id string) (projectField, bool) {
 	return projectField{}, false
 }
 
-type hungTag struct {
-	id   string
-	name string
-}
-
-func (c *Client) resolveTagsToHang(ctx context.Context, sought []TagRef) ([]hungTag, *Error) {
-	if len(sought) == 0 {
-		return nil, nil
-	}
-	shown, fault := c.listTags(ctx)
-	if fault != nil {
-		return nil, fault
-	}
-	found, fault := shown.resolve(sought)
-	if fault != nil {
-		return nil, fault
-	}
-	tags := make([]hungTag, 0, len(found))
-	for _, tag := range found {
-		id, fault := tag.pathSafeID()
-		if fault != nil {
-			return nil, fault
-		}
-		if slices.ContainsFunc(tags, func(hung hungTag) bool { return hung.id == id.id }) {
-			continue
-		}
-		name, _ := tag.object[nameKey].(string)
-		tags = append(tags, hungTag{id: id.id, name: name})
-	}
-	return tags, nil
-}
-
 func (w issueWrite) tagBodies() []idBody {
 	tags := make([]idBody, 0, len(w.tags))
 	for _, tag := range w.tags {
@@ -926,7 +894,14 @@ func (w issueWrite) verifyTags(value any, wrong []mismatch) []mismatch {
 	if len(w.tags) == 0 {
 		return wrong
 	}
+	expected := make([]string, 0, len(w.tags))
+	for _, tag := range w.tags {
+		expected = append(expected, tag.name)
+	}
 	items, isList := value.([]any)
+	if !isList {
+		return append(wrong, mismatch{field: tagsKey, expected: textList(expected), actual: rawValueNode(value)})
+	}
 	held := make(map[string]bool, len(items))
 	names := make([]string, 0, len(items))
 	for _, item := range items {
@@ -935,18 +910,8 @@ func (w issueWrite) verifyTags(value any, wrong []mismatch) []mismatch {
 		held[id] = true
 		names = append(names, name)
 	}
-	expected := make([]string, 0, len(w.tags))
-	hung := true
-	for _, tag := range w.tags {
-		expected = append(expected, tag.name)
-		hung = hung && held[tag.id]
-	}
-	if isList && hung {
+	if !slices.ContainsFunc(w.tags, func(tag hungTag) bool { return !held[tag.id] }) {
 		return wrong
 	}
-	actual := rawValueNode(value)
-	if isList {
-		actual = textList(names)
-	}
-	return append(wrong, mismatch{field: tagsKey, expected: textList(expected), actual: actual})
+	return append(wrong, mismatch{field: tagsKey, expected: textList(expected), actual: textList(names)})
 }

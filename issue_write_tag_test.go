@@ -69,7 +69,9 @@ func TestCreateIssueReadsEveryTagOnceAndAsksForTheTagsItChecks(t *testing.T) {
 	_, err := issueCreate(t, server, issueTags(youtrack.TagRef{Name: "Early"}, youtrack.TagRef{Name: "10-1"}), "idReadable")
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{projectPath + "?fields=" + issueMetadataFields, tagCatalogueTarget, issueTagged}, server.Targets(t))
+	assert.Equal(t, []string{projectPath, "/api/tags", issuesPath}, server.Paths())
+	assert.Equal(t, tagCatalogueTarget, server.Targets(t)[1])
+	assert.Equal(t, "idReadable,summary,tags(id,name)", server.Last(t).URL.Query().Get("fields"))
 }
 
 func TestCreateIssueRefusesTagNamesItCannotResolve(t *testing.T) {
@@ -143,9 +145,10 @@ func TestCreateIssueTakesTagsTheServerHungBesidesTheOnesWritten(t *testing.T) {
 	server := issueTagging(t, tagsShown(), issueTaggedWith(t, tagCatalogue(
 		tagOf("10-5", "10-1", "first"), tagOf("10-1", "Early", "first"))))
 
-	_, err := issueCreate(t, server, issueTags(youtrack.TagRef{Name: "Early"}), "idReadable")
+	node, err := issueCreate(t, server, issueTags(youtrack.TagRef{Name: "Early"}), "idReadable")
 
 	require.NoError(t, err)
+	assert.Equal(t, issueWrittenID(), node)
 }
 
 func TestCreateIssueRefusesAnAnswerWithoutATagItHung(t *testing.T) {
