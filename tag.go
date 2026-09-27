@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	tagsPlural = "tags"
+	tagsKey    = "tags"
 	tagSchema  = "Tag"
 	tagKey     = "tag"
 	ownerKey   = "owner"
@@ -46,6 +46,13 @@ type TagSharing struct {
 // TagOptions: the name of a tag resolves among the tags the token is shown in any letter case, an exact spelling
 // settling a tie; OwnedBy, the login of the user the tag belongs to, narrows it, and empty leaves every owner.
 type TagOptions struct {
+	OwnedBy string
+}
+
+// TagRef: the name resolves among the tags the token is shown in any letter case, an exact spelling settling a tie;
+// an empty OwnedBy leaves every owner.
+type TagRef struct {
+	Name    string
 	OwnedBy string
 }
 
@@ -85,7 +92,7 @@ func (s *TagsService) list(ctx context.Context, opts ListTagsOptions) (*Node, *E
 	if fault != nil {
 		return nil, fault
 	}
-	return c.listPage(ctx, tagsPlural, "[]"+tagSchema, requested, page, c.apiGetTags)
+	return c.listPage(ctx, tagsKey, "[]"+tagSchema, requested, page, c.apiGetTags)
 }
 
 func (s *TagsService) create(ctx context.Context, name string, sharing TagSharing, opts WriteOptions) (*Node, *Error) {
@@ -276,16 +283,11 @@ func (s *TagsService) delete(ctx context.Context, name string, opts TagOptions) 
 	return objectNode(found.response, printedTagFields(), found.object, nil)
 }
 
-type tagRef struct {
-	name  string
-	owner string
-}
-
-func parseTagRef(name string, opts TagOptions) (tagRef, *Error) {
+func parseTagRef(name string, opts TagOptions) (TagRef, *Error) {
 	if fault := rejectNoTagName(name); fault != nil {
-		return tagRef{}, fault
+		return TagRef{}, fault
 	}
-	return tagRef{name: name, owner: opts.OwnedBy}, nil
+	return TagRef{Name: name, OwnedBy: opts.OwnedBy}, nil
 }
 
 func rejectNoTagName(name string) *Error {
@@ -331,7 +333,7 @@ func tagTargetOf(kind ownerKind) tagTarget {
 	}, add: (*Client).apiAddIssueTag, remove: (*Client).apiRemoveIssueTag}
 }
 
-func (s *TagsService) tagging(ctx context.Context, id Owner, name string, opts TagOptions, write func(*Client, context.Context, owner, tagRef) (*Node, *Error)) (*Node, *Error) {
+func (s *TagsService) tagging(ctx context.Context, id Owner, name string, opts TagOptions, write func(*Client, context.Context, owner, TagRef) (*Node, *Error)) (*Node, *Error) {
 	c := s.client
 	at, fault := ownerOf(id)
 	if fault != nil {
@@ -344,7 +346,7 @@ func (s *TagsService) tagging(ctx context.Context, id Owner, name string, opts T
 	return write(c, ctx, at, sought)
 }
 
-func (c *Client) addTag(ctx context.Context, at owner, sought tagRef) (*Node, *Error) {
+func (c *Client) addTag(ctx context.Context, at owner, sought TagRef) (*Node, *Error) {
 	hung, fault := c.resolveTagging(ctx, at, sought)
 	if fault != nil {
 		return nil, fault
@@ -359,7 +361,7 @@ func (c *Client) addTag(ctx context.Context, at owner, sought tagRef) (*Node, *E
 	return node, nil
 }
 
-func (c *Client) removeTag(ctx context.Context, at owner, sought tagRef) (*Node, *Error) {
+func (c *Client) removeTag(ctx context.Context, at owner, sought TagRef) (*Node, *Error) {
 	off, fault := c.resolveTagging(ctx, at, sought)
 	if fault != nil {
 		return nil, fault
@@ -378,7 +380,7 @@ func (c *Client) removeTag(ctx context.Context, at owner, sought tagRef) (*Node,
 	return off.document(removedKey, tag), nil
 }
 
-func (c *Client) resolveTagging(ctx context.Context, at owner, sought tagRef) (tagOp, *Error) {
+func (c *Client) resolveTagging(ctx context.Context, at owner, sought TagRef) (tagOp, *Error) {
 	target := tagTargetOf(at.kind)
 	on, fault := c.readTagOwner(ctx, target, at)
 	if fault != nil {
@@ -474,23 +476,35 @@ type tagCandidate struct {
 	owner string
 }
 
-func (c *Client) resolveTag(ctx context.Context, sought tagRef) (resolvedTag, *Error) {
-	requested := resolvedTagFields()
-	a, fault := c.request(ctx, "[]"+tagSchema, requested, func(ctx context.Context, fields string) (*http.Response, error) {
+func (c *Client) resolveTag(ctx context.Context, sought TagRef) (resolvedTag, *Error) {
+	shown, fault := c.listTags(ctx)
+	if fault != nil {
+		return resolvedTag{}, fault
+	}
+	found, fault := shown.resolve([]TagRef{sought})
+	if fault != nil {
+		return resolvedTag{}, fault
+	}
+	return found[0], nil
+}
+
+type tagCatalogue struct {
+	response decodedResponse
+	tags     []tagCandidate
+}
+
+func (c *Client) listTags(ctx context.Context) (tagCatalogue, *Error) {
+	a, fault := c.request(ctx, "[]"+tagSchema, resolvedTagFields(), func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiGetTags(ctx, fields, allRecords)
 	})
 	if fault != nil {
-		return resolvedTag{}, fault
+		return tagCatalogue{}, fault
 	}
 	shown, fault := parseTagCandidates(a)
 	if fault != nil {
-		return resolvedTag{}, fault
+		return tagCatalogue{}, fault
 	}
-	at, fault := matchTag(a, sought, shown)
-	if fault != nil {
-		return resolvedTag{}, fault
-	}
-	return resolvedTag{response: a, object: a.objects[at], name: sought.name}, nil
+	return tagCatalogue{response: a, tags: shown}, nil
 }
 
 func parseTagCandidates(a decodedResponse) ([]tagCandidate, *Error) {
@@ -510,32 +524,61 @@ func parseTagCandidates(a decodedResponse) ([]tagCandidate, *Error) {
 	return shown, nil
 }
 
-func matchTag(a decodedResponse, sought tagRef, shown []tagCandidate) (int, *Error) {
+func (g tagCatalogue) resolve(sought []TagRef) ([]resolvedTag, *Error) {
+	of := &tagResolver{shown: g.tags}
+	found := make([]resolvedTag, 0, len(sought))
+	for _, ref := range sought {
+		if at, matched := of.match(ref); matched {
+			found = append(found, resolvedTag{response: g.response, object: g.response.objects[at], name: ref.Name})
+		}
+	}
+	unresolved := unresolvedDetails(of.unknown, of.ambiguous)
+	if unresolved != nil {
+		return nil, g.response.fault(CodeUnknownName, unresolvedTags(len(of.unknown), len(of.ambiguous)), unresolved...)
+	}
+	return found, nil
+}
+
+type tagResolver struct {
+	shown     []tagCandidate
+	unknown   []*Node
+	ambiguous []*Node
+}
+
+func (r *tagResolver) match(sought TagRef) (int, bool) {
 	var named []int
-	for at, tag := range shown {
-		if strings.EqualFold(sought.name, tag.name) {
+	for at, tag := range r.shown {
+		if strings.EqualFold(sought.Name, tag.name) {
 			named = append(named, at)
 		}
 	}
 	candidates := named
-	if sought.owner != "" {
+	if sought.OwnedBy != "" {
 		candidates = nil
 		for _, at := range named {
-			if strings.EqualFold(sought.owner, shown[at].owner) {
+			if strings.EqualFold(sought.OwnedBy, r.shown[at].owner) {
 				candidates = append(candidates, at)
 			}
 		}
 	}
 	switch {
 	case len(candidates) == 0 && len(named) > 0:
-		return 0, noTagOfThatOwner(a, sought, shown, named)
+		r.unknown = append(r.unknown, NewMap(
+			Pair{Key: tagKey, Value: NewString(sought.Name)},
+			Pair{Key: ownedByKey, Value: NewString(sought.OwnedBy)},
+			Pair{Key: candidatesKey, Value: tagsListed(r.shown, named)}))
+		return 0, false
 	case len(candidates) == 0:
-		return 0, noTagNamed(a, sought.name, shown)
+		r.unknown = append(r.unknown, nearestEntry(tagKey, sought.Name, nearestNames(sought.Name, sortedNames(r.shown))))
+		return 0, false
 	}
-	if at, found := soleMatch(candidates, sought.name, func(at int) string { return shown[at].name }); found {
-		return at, nil
+	if at, found := soleMatch(candidates, sought.Name, func(at int) string { return r.shown[at].name }); found {
+		return at, true
 	}
-	return 0, severalTagsNamed(a, sought.name, shown, candidates)
+	r.ambiguous = append(r.ambiguous, NewMap(
+		Pair{Key: tagKey, Value: NewString(sought.Name)},
+		Pair{Key: candidatesKey, Value: tagsListed(r.shown, candidates)}))
+	return 0, false
 }
 
 type named interface {
@@ -554,27 +597,19 @@ func sortedNames[E named](shown []E) []string {
 	return names
 }
 
-func noTagNamed(a decodedResponse, name string, shown []tagCandidate) *Error {
-	entry := nearestEntry(tagKey, name, nearestNames(name, sortedNames(shown)))
-	message := "the name under unknown is no tag this token is shown"
-	return a.fault(CodeUnknownName, message, Pair{Key: unknownKey, Value: NewList(entry)})
-}
-
-func severalTagsNamed(a decodedResponse, name string, shown []tagCandidate, candidates []int) *Error {
-	entry := NewMap(
-		Pair{Key: tagKey, Value: NewString(name)},
-		Pair{Key: candidatesKey, Value: tagsListed(shown, candidates)})
-	message := "the name under ambiguous is the name of more than one tag this token is shown"
-	return a.fault(CodeUnknownName, message, Pair{Key: ambiguousKey, Value: NewList(entry)})
-}
-
-func noTagOfThatOwner(a decodedResponse, sought tagRef, shown []tagCandidate, named []int) *Error {
-	entry := NewMap(
-		Pair{Key: tagKey, Value: NewString(sought.name)},
-		Pair{Key: ownedByKey, Value: NewString(sought.owner)},
-		Pair{Key: candidatesKey, Value: tagsListed(shown, named)})
-	message := "no tag this token is shown under the name under unknown belongs to the login beside it"
-	return a.fault(CodeUnknownName, message, Pair{Key: unknownKey, Value: NewList(entry)})
+func unresolvedTags(unknown, ambiguous int) string {
+	const (
+		noTag = "the names under unknown are no tags this token is shown, or none of them belongs to the login " +
+			"beside the name"
+		severalTag = "each name under ambiguous is the name of more than one tag this token is shown"
+	)
+	switch {
+	case ambiguous == 0:
+		return noTag
+	case unknown == 0:
+		return severalTag
+	}
+	return noTag + ", and " + severalTag
 }
 
 func tagsListed(shown []tagCandidate, at []int) *Node {
