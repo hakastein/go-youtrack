@@ -99,6 +99,27 @@ func TestCommentsRefuseAnOwnerThatIsNoReadableID(t *testing.T) {
 	}
 }
 
+func TestListCommentsHoldsTheCustomFieldsOfTheirIssueToTheKeysOfTheModule(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		expression string
+	}{
+		{name: "a name outside ASCII", expression: "issue(customFields(Категория))"},
+		{name: "a word read as a bool", expression: "issue(customFields(Yes))"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			comments := client(t, fake.ServeNothing(t)).Comments
+
+			_, err := comments.List(t.Context(), "DEV-1", &youtrack.ListCommentsOptions{Fields: tc.expression})
+
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
+		})
+	}
+}
+
 func TestCommentWritesRefuseATextTheyWillNotSend(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

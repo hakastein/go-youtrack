@@ -188,6 +188,20 @@ func TestShowIssueRefusesACustomFieldNameTheCatalogueDoesNotResolve(t *testing.T
 			key:        "ambiguous",
 			entries:    []*youtrack.Node{issueCandidates("customFields(Twin)", "Twin", "twin")},
 		},
+		{
+			name:       "a name outside ASCII near the name of a field",
+			catalogue:  issueCatalogue(issueCatalogued("Категория", "null"), issueCatalogued("Other", "null")),
+			expression: "customFields(Категоря)",
+			key:        "unknown",
+			entries:    []*youtrack.Node{withNearest("field", "customFields(Категоря)", "Категория")},
+		},
+		{
+			name:       "a name outside ASCII of two fields",
+			catalogue:  issueCatalogue(issueCatalogued("категория", "null"), issueCatalogued("Категория", "null")),
+			expression: "customFields(КАТЕГОРИЯ)",
+			key:        "ambiguous",
+			entries:    []*youtrack.Node{issueCandidates("customFields(КАТЕГОРИЯ)", "Категория", "категория")},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
