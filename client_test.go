@@ -25,6 +25,7 @@ func TestNewClientRefusesAnAddressOrATokenItCannotSend(t *testing.T) {
 		{name: "an address of no host", address: "https:///youtrack", token: fake.Token},
 		{name: "an address with a query", address: "https://yt.example.org/?a=b", token: fake.Token},
 		{name: "an address with a fragment", address: "https://yt.example.org/#top", token: fake.Token},
+		{name: "an address with an empty fragment", address: "https://yt.example.org/#", token: fake.Token},
 		{name: "an address that is no URL", address: "https://yt.example.org/%zz", token: fake.Token},
 		{name: "an empty token", address: "https://yt.example.org", token: ""},
 		{name: "a token with a line break", address: "https://yt.example.org", token: "perm\ntoken"},
@@ -47,6 +48,29 @@ func TestNewClientKeepsTheTokenOutOfItsRefusal(t *testing.T) {
 
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "perm-secret")
+}
+
+func TestNewClientKeepsThePasswordOfTheAddressOutOfItsRefusal(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		address string
+	}{
+		{name: "an address of another scheme", address: "ftp://user:pass-secret@yt.example.org"},
+		{name: "an address with a query", address: "https://user:pass-secret@yt.example.org/?a=b"},
+		{name: "an address that is no URL", address: "https://user:pass-secret@yt.example.org/%zz"},
+		{name: "an address whose host is no URL", address: "https://user:pass-secret@yt example.org"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := youtrack.NewClient(tc.address, fake.Token)
+
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "pass-secret")
+		})
+	}
 }
 
 func showDEV(ctx context.Context, c *youtrack.Client) error {

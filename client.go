@@ -1,8 +1,10 @@
 package youtrack
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 type Client struct {
@@ -94,17 +96,46 @@ func parseAddress(address string) (*url.URL, *Error) {
 	var reason string
 	switch {
 	case err != nil:
-		reason = "is no URL: " + err.Error()
+		reason = "is no URL: " + parseReason(err)
 	case parsed.Scheme != "http" && parsed.Scheme != "https":
 		reason = "is not an http or https URL"
 	case parsed.Host == "":
 		reason = "names no host"
-	case parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "":
+	case strings.ContainsAny(address, "?#"):
 		reason = "carries a query or a fragment, and the address of an instance is a host and a path"
 	default:
 		return parsed, nil
 	}
-	return nil, &Error{Code: CodeBadUsage, Message: "address " + quote(address) + " " + reason}
+	return nil, &Error{Code: CodeBadUsage, Message: "address " + quote(redactedAddress(address)) + " " + reason}
+}
+
+// The error of url.Parse quotes the whole address, password and all, so only its cause is told.
+func parseReason(err error) string {
+	var parse *url.Error
+	if errors.As(err, &parse) {
+		return parse.Err.Error()
+	}
+	return err.Error()
+}
+
+const redactedPassword = "xxxxx"
+
+// An address url.Parse refuses has no url.URL to redact, so the password is cut out of the text.
+func redactedAddress(address string) string {
+	slashes := strings.Index(address, "//")
+	if slashes < 0 {
+		return address
+	}
+	authorityStart := slashes + len("//")
+	authority := address[authorityStart:]
+	if end := strings.IndexAny(authority, "/?#"); end >= 0 {
+		authority = authority[:end]
+	}
+	userinfoEnd, passwordColon := strings.LastIndex(authority, "@"), strings.Index(authority, ":")
+	if userinfoEnd < 0 || passwordColon < 0 || passwordColon > userinfoEnd {
+		return address
+	}
+	return address[:authorityStart+passwordColon+1] + redactedPassword + address[authorityStart+userinfoEnd:]
 }
 
 func checkToken(token string) *Error {
