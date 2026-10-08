@@ -23,6 +23,9 @@ if err != nil {
 issue, err := c.Issues.Get(ctx, "DEV-13271")
 ```
 
+Адрес — `http(s)`-URL с хостом и, если нужно, путём, без пользователя, пароля, query и фрагмента; токен — непустой и
+без управляющих символов, кроме TAB. `ParseAddress` и `CheckToken` проверяют их по тем же правилам до `NewClient`.
+
 | Сервис | Документ `*Node` | Значения Go |
 |---|---|---|
 | `Issues` | `Show`, `List`, `Create`, `Update`, `Delete` | `Get`, `WriteFields` |
