@@ -338,6 +338,7 @@ func TestListWorkItemsRefusesAnExpressionItCannotSend(t *testing.T) {
 		{name: "a part of a link slot of the issue", expression: "issue(links(direction))"},
 		{name: "a part of the parent slot of the issue", expression: "issue(parent(id))"},
 		{name: "a custom field of the issue named", expression: "issue(customFields(State))"},
+		{name: "a custom field of the issue named outside ASCII", expression: "issue(customFields(Категория))"},
 		{name: "the comments of the issue", expression: "issue(comments(text))"},
 	}
 	for _, tc := range tests {
