@@ -13,6 +13,79 @@ import (
 	"github.com/hakastein/go-youtrack/fake"
 )
 
+func TestParseAddressTakesAnHTTPURLOfAHostAndAPath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		address string
+	}{
+		{name: "https of a host", address: "https://yt.example.org"},
+		{name: "http of a host, a port and a path", address: "http://yt.example.org:8080/youtrack/"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			parsed, err := youtrack.ParseAddress(tc.address)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.address, parsed.String())
+		})
+	}
+}
+
+func TestParseAddressRefusesAnythingElseWithoutRepeatingIt(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		address string
+	}{
+		{name: "no scheme", address: "yt.example.org"},
+		{name: "another scheme", address: "ftp://yt.example.org"},
+		{name: "no host", address: "https:///youtrack"},
+		{name: "a user", address: "https://user-secret@yt.example.org"},
+		{name: "a user and a password", address: "https://user:pass-secret@yt.example.org"},
+		{name: "a query", address: "https://yt.example.org/?a=secret"},
+		{name: "an empty query", address: "https://yt.example.org/?"},
+		{name: "a fragment", address: "https://yt.example.org/#secret"},
+		{name: "an empty fragment", address: "https://yt.example.org/#"},
+		{name: "no URL", address: "https://yt.example.org/secret%zz"},
+		{name: "a host that is no URL", address: "https://yt secret.org"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := youtrack.ParseAddress(tc.address)
+
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
+			assert.NotContains(t, err.Error(), "secret")
+		})
+	}
+}
+
+func TestCheckTokenRefusesATokenNoHeaderCarriesWithoutRepeatingIt(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		token string
+	}{
+		{name: "an empty token", token: ""},
+		{name: "a line break", token: "perm-secret\n"},
+		{name: "a delete", token: "perm-secret\x7f"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := youtrack.CheckToken(tc.token)
+
+			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
+			assert.NotContains(t, err.Error(), "secret")
+		})
+	}
+}
+
 func TestNewClientRefusesAnAddressOrATokenItCannotSend(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -20,14 +93,7 @@ func TestNewClientRefusesAnAddressOrATokenItCannotSend(t *testing.T) {
 		address string
 		token   string
 	}{
-		{name: "an address of no scheme", address: "yt.example.org", token: fake.Token},
-		{name: "an address of another scheme", address: "ftp://yt.example.org", token: fake.Token},
-		{name: "an address of no host", address: "https:///youtrack", token: fake.Token},
-		{name: "an address with a query", address: "https://yt.example.org/?a=b", token: fake.Token},
-		{name: "an address with a fragment", address: "https://yt.example.org/#top", token: fake.Token},
-		{name: "an address with an empty fragment", address: "https://yt.example.org/#", token: fake.Token},
-		{name: "an address that is no URL", address: "https://yt.example.org/%zz", token: fake.Token},
-		{name: "an empty token", address: "https://yt.example.org", token: ""},
+		{name: "an address with a password", address: "https://user:pass@yt.example.org", token: fake.Token},
 		{name: "a token with a line break", address: "https://yt.example.org", token: "perm\ntoken"},
 	}
 	for _, tc := range tests {
@@ -37,38 +103,6 @@ func TestNewClientRefusesAnAddressOrATokenItCannotSend(t *testing.T) {
 			_, err := youtrack.NewClient(tc.address, tc.token)
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
-		})
-	}
-}
-
-func TestNewClientKeepsTheTokenOutOfItsRefusal(t *testing.T) {
-	t.Parallel()
-
-	_, err := youtrack.NewClient("https://yt.example.org", "perm-secret\n")
-
-	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "perm-secret")
-}
-
-func TestNewClientKeepsThePasswordOfTheAddressOutOfItsRefusal(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name    string
-		address string
-	}{
-		{name: "an address of another scheme", address: "ftp://user:pass-secret@yt.example.org"},
-		{name: "an address with a query", address: "https://user:pass-secret@yt.example.org/?a=b"},
-		{name: "an address that is no URL", address: "https://user:pass-secret@yt.example.org/%zz"},
-		{name: "an address whose host is no URL", address: "https://user:pass-secret@yt example.org"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := youtrack.NewClient(tc.address, fake.Token)
-
-			require.Error(t, err)
-			assert.NotContains(t, err.Error(), "pass-secret")
 		})
 	}
 }

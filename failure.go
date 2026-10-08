@@ -130,7 +130,7 @@ func responseDetails(response *http.Response) []Pair {
 }
 
 func sentRequest(response *http.Response) Pair {
-	return requestDetail(response.Request.Method, response.Request.URL.Redacted())
+	return requestDetail(response.Request.Method, response.Request.URL.String())
 }
 
 func (a decodedResponse) sent() Pair {

@@ -1,7 +1,6 @@
 package youtrack
 
 import (
-	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -63,14 +62,15 @@ func WithMetadataCache(dir string) Option {
 	}
 }
 
-// NewClient is a client of the instance at address, an absolute http or https URL, with a permanent token.
+// NewClient is a client of the instance at address, which ParseAddress takes, with a permanent token, which
+// CheckToken takes.
 func NewClient(address, token string, opts ...Option) (*Client, error) {
-	parsed, fault := parseAddress(address)
-	if fault != nil {
-		return nil, fault
+	parsed, err := ParseAddress(address)
+	if err != nil {
+		return nil, err
 	}
-	if fault := checkToken(token); fault != nil {
-		return nil, fault
+	if err := CheckToken(token); err != nil {
+		return nil, err
 	}
 	c := &Client{address: parsed, token: token, httpClient: newSendOnceHTTPClient(), spec: loadSchemas()}
 	for _, opt := range opts {
@@ -91,54 +91,19 @@ func NewClient(address, token string, opts ...Option) (*Client, error) {
 	return c, nil
 }
 
-func parseAddress(address string) (*url.URL, *Error) {
+// ParseAddress takes an absolute http or https URL with a host and an optional path, and nothing else: no user, no
+// password, no query, no fragment. The refusal does not repeat the address, so nothing written in it is printed.
+func ParseAddress(address string) (*url.URL, error) {
 	parsed, err := url.Parse(address)
-	var reason string
-	switch {
-	case err != nil:
-		reason = "is no URL: " + parseReason(err)
-	case parsed.Scheme != "http" && parsed.Scheme != "https":
-		reason = "is not an http or https URL"
-	case parsed.Host == "":
-		reason = "names no host"
-	case strings.ContainsAny(address, "?#"):
-		reason = "carries a query or a fragment, and the address of an instance is a host and a path"
-	default:
-		return parsed, nil
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || strings.ContainsAny(address, "?#") {
+		return nil, &Error{Code: CodeBadUsage, Message: "the address is not a link like https://example.com"}
 	}
-	return nil, &Error{Code: CodeBadUsage, Message: "address " + quote(redactedAddress(address)) + " " + reason}
+	return parsed, nil
 }
 
-// The error of url.Parse quotes the whole address, password and all, so only its cause is told.
-func parseReason(err error) string {
-	var parse *url.Error
-	if errors.As(err, &parse) {
-		return parse.Err.Error()
-	}
-	return err.Error()
-}
-
-const redactedPassword = "xxxxx"
-
-// An address url.Parse refuses has no url.URL to redact, so the password is cut out of the text.
-func redactedAddress(address string) string {
-	slashes := strings.Index(address, "//")
-	if slashes < 0 {
-		return address
-	}
-	authorityStart := slashes + len("//")
-	authority := address[authorityStart:]
-	if end := strings.IndexAny(authority, "/?#"); end >= 0 {
-		authority = authority[:end]
-	}
-	userinfoEnd, passwordColon := strings.LastIndex(authority, "@"), strings.Index(authority, ":")
-	if userinfoEnd < 0 || passwordColon < 0 || passwordColon > userinfoEnd {
-		return address
-	}
-	return address[:authorityStart+passwordColon+1] + redactedPassword + address[authorityStart+userinfoEnd:]
-}
-
-func checkToken(token string) *Error {
+// CheckToken takes a token a request header can carry: not empty, no control character but TAB.
+func CheckToken(token string) error {
 	if token == "" {
 		return &Error{Code: CodeBadUsage, Message: "the token is empty"}
 	}
