@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -49,6 +50,9 @@ func (c *Client) parseFields(root, expression string, under ...string) ([]reques
 	if fault != nil {
 		return nil, fault
 	}
+	if fault := rejectUnprintableNames(c.spec, root, expression, requested, named); fault != nil {
+		return nil, fault
+	}
 	if named {
 		expandBareCustomFields(c.spec, requested)
 	}
@@ -87,6 +91,36 @@ func readExpression(expression string, named bool) ([]requestedField, *Error) {
 		fault = rejectFileContent(expression, requested)
 	}
 	return requested, fault
+}
+
+// A custom field under customFields of the issue is a key from the data, so only the names of the module keep to
+// the grammar of CheckKey.
+func rejectUnprintableNames(spec *schemas, root, expression string, requested []requestedField, named bool) *Error {
+	var own *requestedField
+	if named {
+		own = ownCustomFields(spec, root, requested)
+	}
+	var reject func(fields []requestedField, parents []string) *Error
+	reject = func(fields []requestedField, parents []string) *Error {
+		for i := range fields {
+			field := &fields[i]
+			if field.quoted {
+				continue
+			}
+			if err := CheckKey(field.name); err != nil {
+				message := fmt.Sprintf("fields %s: %s cannot be printed: %v", quote(expression), fieldPath(parents, field.name), err)
+				return &Error{Code: CodeBadUsage, Message: message}
+			}
+			if field == own {
+				continue
+			}
+			if fault := reject(field.children, append(slices.Clip(parents), field.name)); fault != nil {
+				return fault
+			}
+		}
+		return nil
+	}
+	return reject(requested, nil)
 }
 
 const fileContentKey = "base64Content"
@@ -271,18 +305,17 @@ func (r *fieldsReader) itemName() (requestedField, *Error) {
 		return r.quotedName()
 	}
 	start := r.at
-	for r.at < len(r.text) && isNameByte(r.text[r.at]) {
-		r.at++
+	for r.at < len(r.text) {
+		c, size := utf8.DecodeRuneInString(r.text[r.at:])
+		if !isNameRune(c) {
+			break
+		}
+		r.at += size
 	}
 	if r.at == start {
 		return requestedField{}, r.unexpected()
 	}
-	field := requestedField{name: r.text[start:r.at], fromCaller: r.fromCaller}
-	if err := CheckKey(field.name); err != nil {
-		message := fmt.Sprintf("fields %s: the name at column %d cannot be printed: %v", quote(r.text), r.column(start), err)
-		return requestedField{}, &Error{Code: CodeBadUsage, Message: message}
-	}
-	return field, nil
+	return requestedField{name: r.text[start:r.at], fromCaller: r.fromCaller}, nil
 }
 
 func (r *fieldsReader) quotedName() (requestedField, *Error) {
@@ -337,6 +370,13 @@ func (r *fieldsReader) unexpected() *Error {
 
 func (r *fieldsReader) column(at int) int {
 	return utf8.RuneCountInString(r.text[:at]) + 1
+}
+
+func isNameRune(c rune) bool {
+	if c < utf8.RuneSelf {
+		return isNameByte(byte(c))
+	}
+	return unicode.IsLetter(c) || unicode.IsMark(c) || unicode.IsDigit(c)
 }
 
 func isNameByte(c byte) bool {

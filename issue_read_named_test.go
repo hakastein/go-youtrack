@@ -91,6 +91,33 @@ func TestShowIssueResolvesACustomFieldNameAgainstTheCatalogue(t *testing.T) {
 	}
 }
 
+func TestShowIssueTakesACustomFieldNameWithoutQuotesBeyondTheKeysOfTheModule(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		expression string
+		field      string
+	}{
+		{name: "letters outside ASCII", expression: "customFields(Категория)", field: "Категория"},
+		{name: "letters outside ASCII with a digit and an underscore", expression: "customFields(Этап_2)", field: "Этап_2"},
+		{name: "a leading digit", expression: "customFields(1C)", field: "1C"},
+		{name: "a word read as a bool", expression: "customFields(Yes)", field: "Yes"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			catalogue := issueCatalogue(issueCatalogued(tc.field, "null"))
+			server := issueCataloguing(t, catalogue, fake.JSON(http.StatusOK, issueWithFields(issueEnum(tc.field, "Value"))))
+
+			node, err := issueShown(t, server, tc.expression, youtrack.Comments{})
+
+			require.NoError(t, err)
+			assert.Equal(t, issueFieldsBlock(issueNamed(tc.field, "Value")), node)
+			assert.Equal(t, []string{tc.field}, server.Last(t).URL.Query()["customFields"])
+		})
+	}
+}
+
 func TestShowIssueResolvesANameToTheFieldItNamesBeforeTheOneItTranslates(t *testing.T) {
 	t.Parallel()
 	catalogue := issueCatalogue(issueCatalogued("Translated", "null"), issueCatalogued("Named", `"Translated"`))
