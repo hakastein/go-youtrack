@@ -189,7 +189,7 @@ func TestListActivitiesRefusesAnIssueOrAPageItCannotSend(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			opts := &youtrack.ListActivitiesOptions{Fields: "timestamp", Page: tc.page}
-			_, err := client(t, fake.ServeNothing(t)).Activities.List(t.Context(), tc.issue, opts)
+			_, err := client(t, fake.ServeNothing(t)).Activities.List(t.Context(), youtrack.IssueID(tc.issue), opts)
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})

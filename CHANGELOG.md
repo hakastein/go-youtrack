@@ -1,5 +1,20 @@
 # Изменения
 
+## v0.7.0
+
+Ломающие:
+
+- Читаемый id — тип: `IssueID` у `Issues.Show`, `Issues.Get`, `Issues.Update`, `Issues.WriteFields`,
+  `Issues.Delete`, `Links`, `WorkItems` и `Activities.List`; `ArticleID` у `Articles.Show`, `Articles.Children`,
+  `Articles.Update`, `Articles.Delete` и в `ArticleInput.Parent`, `ArticleUpdate.Parent`; `Owner` у `Comments`,
+  `Attachments`, `Tags.Add` и `Tags.Remove`. Литерал `"DEV-1"` подходит туда, где ждут `IssueID` или `ArticleID`, а
+  владельца называет только типизированное значение.
+- `IssueID` с id статьи, `ArticleID` с id задачи и `nil` вместо владельца — `bad_usage` до запроса.
+
+Новое:
+
+- `OwnerOf` читает вид владельца по форме id: `DEV-1` — `IssueID`, `DEV-A-1` — `ArticleID`.
+
 ## v0.6.0
 
 Ломающие:

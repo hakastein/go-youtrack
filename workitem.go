@@ -23,24 +23,24 @@ type ListWorkItemsOptions struct {
 }
 
 // List runs oldest first.
-func (s *WorkItemsService) List(ctx context.Context, issue string, opts *ListWorkItemsOptions) (*Node, error) {
-	return result(s.list(ctx, issue, optionsOf(opts)))
+func (s *WorkItemsService) List(ctx context.Context, issue IssueID, opts *ListWorkItemsOptions) (*Node, error) {
+	return result(s.list(ctx, string(issue), optionsOf(opts)))
 }
 
 // Create logs time as the owner of the token. A type of work or an attribute is resolved among the time tracking
 // settings of the project, read before the write.
-func (s *WorkItemsService) Create(ctx context.Context, issue string, in *WorkItemInput, opts *WriteOptions) (*Node, error) {
-	return result(s.create(ctx, issue, optionsOf(in), optionsOf(opts)))
+func (s *WorkItemsService) Create(ctx context.Context, issue IssueID, in *WorkItemInput, opts *WriteOptions) (*Node, error) {
+	return result(s.create(ctx, string(issue), optionsOf(in), optionsOf(opts)))
 }
 
 // Update takes id as the internal id of the work item, such as 7-1.
-func (s *WorkItemsService) Update(ctx context.Context, issue, id string, in *WorkItemUpdate, opts *WriteOptions) (*Node, error) {
-	return result(s.update(ctx, issue, id, optionsOf(in), optionsOf(opts)))
+func (s *WorkItemsService) Update(ctx context.Context, issue IssueID, id string, in *WorkItemUpdate, opts *WriteOptions) (*Node, error) {
+	return result(s.update(ctx, string(issue), id, optionsOf(in), optionsOf(opts)))
 }
 
 // Delete answers with the work item as read just before the deletion, which goes to the issue the read named.
-func (s *WorkItemsService) Delete(ctx context.Context, issue, id string) (*Node, error) {
-	return result(s.delete(ctx, issue, id))
+func (s *WorkItemsService) Delete(ctx context.Context, issue IssueID, id string) (*Node, error) {
+	return result(s.delete(ctx, string(issue), id))
 }
 
 func (s *WorkItemsService) list(ctx context.Context, issue string, opts ListWorkItemsOptions) (*Node, *Error) {

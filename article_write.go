@@ -10,7 +10,7 @@ import (
 type ArticleInput struct {
 	Summary string
 	Content string
-	Parent  string
+	Parent  ArticleID
 }
 
 // ArticleUpdate: a nil part stays as the article holds it. ClearContent empties the content and ClearParent moves
@@ -18,7 +18,7 @@ type ArticleInput struct {
 type ArticleUpdate struct {
 	Summary      *string
 	Content      *string
-	Parent       *string
+	Parent       *ArticleID
 	ClearContent bool
 	ClearParent  bool
 }
@@ -45,7 +45,7 @@ func checkArticleInput(in ArticleInput) *Error {
 	if in.Parent == "" {
 		return nil
 	}
-	_, fault := parseArticleID(in.Parent)
+	_, fault := parseArticleID(string(in.Parent))
 	return fault
 }
 
@@ -81,7 +81,7 @@ func checkArticleUpdate(in ArticleUpdate) *Error {
 		return &Error{Code: CodeBadUsage, Message: parentBothWays}
 	}
 	if in.Parent != nil {
-		if _, fault := parseArticleID(*in.Parent); fault != nil {
+		if _, fault := parseArticleID(string(*in.Parent)); fault != nil {
 			return fault
 		}
 	}

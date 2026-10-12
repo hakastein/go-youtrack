@@ -447,20 +447,20 @@ func fieldsCalls() map[string]fieldsCall {
 			return c.Articles.Update(ctx, "DEV-A-1", &youtrack.ArticleUpdate{Summary: &summary}, writeOptions(fields))
 		},
 		"Comments.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
-			return c.Comments.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListCommentsOptions { return youtrack.ListCommentsOptions{Fields: f} }))
+			return c.Comments.List(ctx, youtrack.IssueID("DEV-1"), optionsFor(fields, func(f string) youtrack.ListCommentsOptions { return youtrack.ListCommentsOptions{Fields: f} }))
 		},
 		"Comments.Create": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
-			return c.Comments.Create(ctx, "DEV-1", "Text", writeOptions(fields))
+			return c.Comments.Create(ctx, youtrack.IssueID("DEV-1"), "Text", writeOptions(fields))
 		},
 		"Comments.Update": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
-			return c.Comments.Update(ctx, "DEV-1", "4-1", "Text", writeOptions(fields))
+			return c.Comments.Update(ctx, youtrack.IssueID("DEV-1"), "4-1", "Text", writeOptions(fields))
 		},
 		"Attachments.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
-			return c.Attachments.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListAttachmentsOptions { return youtrack.ListAttachmentsOptions{Fields: f} }))
+			return c.Attachments.List(ctx, youtrack.IssueID("DEV-1"), optionsFor(fields, func(f string) youtrack.ListAttachmentsOptions { return youtrack.ListAttachmentsOptions{Fields: f} }))
 		},
 		"Attachments.Create": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
 			file := youtrack.File{Name: "first.txt", Content: strings.NewReader("First")}
-			return c.Attachments.Create(ctx, "DEV-1", file, writeOptions(fields))
+			return c.Attachments.Create(ctx, youtrack.IssueID("DEV-1"), file, writeOptions(fields))
 		},
 		"Links.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
 			return c.Links.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListLinksOptions { return youtrack.ListLinksOptions{Fields: f} }))

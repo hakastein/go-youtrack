@@ -35,19 +35,19 @@ const (
 )
 
 // The page holds the files of the comments of owner too.
-func (s *AttachmentsService) List(ctx context.Context, owner string, opts *ListAttachmentsOptions) (*Node, error) {
+func (s *AttachmentsService) List(ctx context.Context, owner Owner, opts *ListAttachmentsOptions) (*Node, error) {
 	return result(s.list(ctx, owner, optionsOf(opts)))
 }
 
 // Create leaves Content for the caller to close; once it returns, only a Read under way when ctx was done may still
 // touch it. A name YouTrack would keep as another is refused before the request.
-func (s *AttachmentsService) Create(ctx context.Context, owner string, file File, opts *WriteOptions) (*Node, error) {
+func (s *AttachmentsService) Create(ctx context.Context, owner Owner, file File, opts *WriteOptions) (*Node, error) {
 	return result(s.create(ctx, owner, file, optionsOf(opts)))
 }
 
 // Delete answers with the attachment as read just before the deletion: id is its internal id, as 12-1, and the
 // deletion goes to the owner the read named.
-func (s *AttachmentsService) Delete(ctx context.Context, owner, id string) (*Node, error) {
+func (s *AttachmentsService) Delete(ctx context.Context, owner Owner, id string) (*Node, error) {
 	return result(s.delete(ctx, owner, id))
 }
 
@@ -70,9 +70,9 @@ func attachmentTargetOf(kind ownerKind) attachmentTarget {
 		remove: (*Client).apiDeleteIssueAttachment}
 }
 
-func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAttachmentsOptions) (*Node, *Error) {
+func (s *AttachmentsService) list(ctx context.Context, owner Owner, opts ListAttachmentsOptions) (*Node, *Error) {
 	c := s.client
-	at, fault := parseOwner(owner)
+	at, fault := ownerOf(owner)
 	if fault != nil {
 		return nil, fault
 	}
@@ -90,9 +90,9 @@ func (s *AttachmentsService) list(ctx context.Context, owner string, opts ListAt
 	})
 }
 
-func (s *AttachmentsService) create(ctx context.Context, owner string, file File, opts WriteOptions) (*Node, *Error) {
+func (s *AttachmentsService) create(ctx context.Context, owner Owner, file File, opts WriteOptions) (*Node, *Error) {
 	c := s.client
-	at, fault := parseOwner(owner)
+	at, fault := ownerOf(owner)
 	if fault != nil {
 		return nil, fault
 	}
@@ -116,9 +116,9 @@ func (s *AttachmentsService) create(ctx context.Context, owner string, file File
 	}, confirmed, writeResultNode(requested))
 }
 
-func (s *AttachmentsService) delete(ctx context.Context, owner, id string) (*Node, *Error) {
+func (s *AttachmentsService) delete(ctx context.Context, owner Owner, id string) (*Node, *Error) {
 	c := s.client
-	at, fault := parseOwner(owner)
+	at, fault := ownerOf(owner)
 	if fault != nil {
 		return nil, fault
 	}

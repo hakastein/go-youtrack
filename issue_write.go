@@ -39,12 +39,12 @@ func (s *IssuesService) Create(ctx context.Context, project string, in *IssueInp
 
 // Update sends a field under the class the issue holds it in, as StateMachineIssueCustomField for a state under a
 // workflow.
-func (s *IssuesService) Update(ctx context.Context, id string, in *IssueUpdate, opts *WriteOptions) (*Node, error) {
-	return result(s.update(ctx, id, optionsOf(in), optionsOf(opts)))
+func (s *IssuesService) Update(ctx context.Context, id IssueID, in *IssueUpdate, opts *WriteOptions) (*Node, error) {
+	return result(s.update(ctx, string(id), optionsOf(in), optionsOf(opts)))
 }
 
-func (s *IssuesService) WriteFields(ctx context.Context, id string, writes []FieldWrite) (*Issue, error) {
-	return result(s.writeFields(ctx, id, writes))
+func (s *IssuesService) WriteFields(ctx context.Context, id IssueID, writes []FieldWrite) (*Issue, error) {
+	return result(s.writeFields(ctx, string(id), writes))
 }
 
 func (s *IssuesService) create(ctx context.Context, project string, in IssueInput, opts WriteOptions) (*Node, *Error) {

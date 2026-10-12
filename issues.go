@@ -34,8 +34,8 @@ type ListIssuesOptions struct {
 
 // Show resolves a custom field named under customFields by its name, then by its translation, among the custom
 // fields of the instance.
-func (s *IssuesService) Show(ctx context.Context, id string, opts *ShowIssueOptions) (*Node, error) {
-	return result(s.show(ctx, id, optionsOf(opts)))
+func (s *IssuesService) Show(ctx context.Context, id IssueID, opts *ShowIssueOptions) (*Node, error) {
+	return result(s.show(ctx, string(id), optionsOf(opts)))
 }
 
 // List sends query to YouTrack as written. total is null when YouTrack has not counted the search after two asks.
@@ -44,8 +44,8 @@ func (s *IssuesService) List(ctx context.Context, query string, opts *ListIssues
 }
 
 // Delete answers with the readable id the server gave just before the deletion, which goes to that id.
-func (s *IssuesService) Delete(ctx context.Context, id string) (*Node, error) {
-	return result(s.delete(ctx, id))
+func (s *IssuesService) Delete(ctx context.Context, id IssueID) (*Node, error) {
+	return result(s.delete(ctx, string(id)))
 }
 
 func (s *IssuesService) show(ctx context.Context, id string, opts ShowIssueOptions) (*Node, *Error) {
