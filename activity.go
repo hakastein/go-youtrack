@@ -19,7 +19,53 @@ const (
 	timestampKey      = "timestamp"
 )
 
-const customFieldCategory = "CustomFieldCategory"
+// ActivityCategory is a category of the history of an issue or of an article; only IssueActivityCategory and
+// ArticleActivityCategory are one.
+type ActivityCategory interface {
+	activityCategory() (ownerKind, string)
+}
+
+// IssueActivityCategory is a category of the history of an issue.
+type IssueActivityCategory string
+
+// ArticleActivityCategory is a category of the history of an article.
+type ArticleActivityCategory string
+
+func (c IssueActivityCategory) activityCategory() (ownerKind, string) { return issueOwner, string(c) }
+
+func (c ArticleActivityCategory) activityCategory() (ownerKind, string) {
+	return articleOwner, string(c)
+}
+
+const (
+	AttachmentsCategory   IssueActivityCategory = "AttachmentsCategory"
+	CommentTextCategory   IssueActivityCategory = "CommentTextCategory"
+	CommentsCategory      IssueActivityCategory = "CommentsCategory"
+	CustomFieldCategory   IssueActivityCategory = "CustomFieldCategory"
+	DescriptionCategory   IssueActivityCategory = "DescriptionCategory"
+	IssueCreatedCategory  IssueActivityCategory = "IssueCreatedCategory"
+	IssueResolvedCategory IssueActivityCategory = "IssueResolvedCategory"
+	LinksCategory         IssueActivityCategory = "LinksCategory"
+	SummaryCategory       IssueActivityCategory = "SummaryCategory"
+	TagsCategory          IssueActivityCategory = "TagsCategory"
+	VcsChangeCategory     IssueActivityCategory = "VcsChangeCategory"
+	WorkItemCategory      IssueActivityCategory = "WorkItemCategory"
+)
+
+const (
+	ArticleCreatedCategory     ArticleActivityCategory = "ArticleCreatedCategory"
+	ArticleDeletedCategory     ArticleActivityCategory = "ArticleDeletedCategory"
+	ArticleRestoredCategory    ArticleActivityCategory = "ArticleRestoredCategory"
+	ArticleSummaryCategory     ArticleActivityCategory = "ArticleSummaryCategory"
+	ArticleDescriptionCategory ArticleActivityCategory = "ArticleDescriptionCategory"
+	ArticleProjectCategory     ArticleActivityCategory = "ArticleProjectCategory"
+	ArticleAttachmentsCategory ArticleActivityCategory = "ArticleAttachmentsCategory"
+	ArticleVisibilityCategory  ArticleActivityCategory = "ArticleVisibilityCategory"
+	ArticleTagsCategory        ArticleActivityCategory = "ArticleTagsCategory"
+	ArticleCommentsCategory    ArticleActivityCategory = "ArticleCommentsCategory"
+)
+
+const customFieldCategory = string(CustomFieldCategory)
 
 const truncationProbe = 1
 
@@ -45,25 +91,53 @@ type valueForm struct {
 	bareKind        FieldType
 }
 
-func activityTable() []activityCategory {
+func issueActivityTable() []activityCategory {
 	return []activityCategory{
-		{id: "AttachmentsCategory"},
-		{id: "CommentTextCategory"},
-		{id: "CommentsCategory"},
+		{id: string(AttachmentsCategory)},
+		{id: string(CommentTextCategory)},
+		{id: string(CommentsCategory)},
 		{id: customFieldCategory, field: fieldCustom},
-		{id: "DescriptionCategory"},
-		{id: "IssueCreatedCategory"},
-		{id: "IssueResolvedCategory"},
-		{id: "LinksCategory", field: fieldLinkPhrase},
-		{id: "SummaryCategory"},
-		{id: "TagsCategory"},
-		{id: "VcsChangeCategory"},
-		{id: "WorkItemCategory"},
+		{id: string(DescriptionCategory)},
+		{id: string(IssueCreatedCategory)},
+		{id: string(IssueResolvedCategory)},
+		{id: string(LinksCategory), field: fieldLinkPhrase},
+		{id: string(SummaryCategory)},
+		{id: string(TagsCategory)},
+		{id: string(VcsChangeCategory)},
+		{id: string(WorkItemCategory)},
 	}
 }
 
-func ActivityCategories() []string {
-	return categoryIDs(activityTable())
+// The history of an article names no field of its own: field is null under each of these categories.
+func articleActivityTable() []activityCategory {
+	rows := make([]activityCategory, 0, len(ArticleActivityCategories()))
+	for _, category := range ArticleActivityCategories() {
+		rows = append(rows, activityCategory{id: string(category)})
+	}
+	return rows
+}
+
+func activityTable(kind ownerKind) []activityCategory {
+	if kind == articleOwner {
+		return articleActivityTable()
+	}
+	return issueActivityTable()
+}
+
+func IssueActivityCategories() []IssueActivityCategory {
+	return []IssueActivityCategory{
+		AttachmentsCategory, CommentTextCategory, CommentsCategory, CustomFieldCategory, DescriptionCategory,
+		IssueCreatedCategory, IssueResolvedCategory, LinksCategory, SummaryCategory, TagsCategory, VcsChangeCategory,
+		WorkItemCategory,
+	}
+}
+
+func ArticleActivityCategories() []ArticleActivityCategory {
+	return []ArticleActivityCategory{
+		ArticleCreatedCategory, ArticleDeletedCategory, ArticleRestoredCategory, ArticleSummaryCategory,
+		ArticleDescriptionCategory, ArticleProjectCategory, ArticleAttachmentsCategory, ArticleVisibilityCategory,
+		ArticleTagsCategory, ArticleCommentsCategory,
+	}
 }
 
 func categoryIDs(rows []activityCategory) []string {
@@ -75,22 +149,22 @@ func categoryIDs(rows []activityCategory) []string {
 }
 
 // ListActivitiesOptions: added and removed are lists even where the server sends one value or null. Categories are
-// names from ActivityCategories in any letter case, empty for all of them.
+// of the kind of the owner, in any letter case, empty for all of them.
 type ListActivitiesOptions struct {
 	Fields     string
 	Page       Page
-	Categories []string
+	Categories []ActivityCategory
 }
 
 // List runs newest first; the total is null unless the page ends where the history does, and a limit is at most
 // MaxInt32-1.
-func (s *ActivitiesService) List(ctx context.Context, issue IssueID, opts *ListActivitiesOptions) (*Node, error) {
-	return result(s.list(ctx, string(issue), optionsOf(opts)))
+func (s *ActivitiesService) List(ctx context.Context, owner Owner, opts *ListActivitiesOptions) (*Node, error) {
+	return result(s.list(ctx, owner, optionsOf(opts)))
 }
 
-func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListActivitiesOptions) (*Node, *Error) {
+func (s *ActivitiesService) list(ctx context.Context, owner Owner, opts ListActivitiesOptions) (*Node, *Error) {
 	c := s.client
-	id, fault := parseIssueID(issue)
+	at, fault := ownerOf(owner)
 	if fault != nil {
 		return nil, fault
 	}
@@ -98,7 +172,7 @@ func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListAct
 	if fault != nil {
 		return nil, fault
 	}
-	categories, fault := resolveCategories(opts.Categories)
+	categories, fault := resolveCategories(at.kind, opts.Categories)
 	if fault != nil {
 		return nil, fault
 	}
@@ -106,21 +180,29 @@ func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListAct
 	if fault != nil {
 		return nil, fault
 	}
-	return c.listActivities(ctx, id, requested, categories, page)
+	return c.listActivities(ctx, at, requested, categories, page)
 }
 
-func resolveCategories(asked []string) ([]activityCategory, *Error) {
-	table := activityTable()
+// A category of the other kind is unresolved like a misspelling: the history of the owner holds none of it.
+func resolveCategories(kind ownerKind, asked []ActivityCategory) ([]activityCategory, *Error) {
+	table := activityTable(kind)
 	if len(asked) == 0 {
 		return table, nil
 	}
 	chosen := make([]bool, len(table))
 	var unresolved []string
-	for _, name := range asked {
+	for _, category := range asked {
+		if category == nil {
+			return nil, &Error{Code: CodeBadUsage, Message: "a category is none at all"}
+		}
+		of, name := category.activityCategory()
 		if name == "" {
 			return nil, &Error{Code: CodeBadUsage, Message: "the name of a category is empty"}
 		}
 		at := slices.IndexFunc(table, func(row activityCategory) bool { return strings.EqualFold(row.id, name) })
+		if of != kind {
+			at = -1
+		}
 		switch {
 		case at >= 0:
 			chosen[at] = true
@@ -133,7 +215,7 @@ func resolveCategories(asked []string) ([]activityCategory, *Error) {
 		for _, name := range unresolved {
 			unknown = append(unknown, nearestEntry(categoryKey, name, nearestNames(name, categoryIDs(table))))
 		}
-		message := "the names under unknown are none of the activity categories a history is listed in"
+		message := fmt.Sprintf("the names under unknown are none of the categories the history of an %s is listed in", kind)
 		details := []Pair{{Key: unknownKey, Value: NewList(unknown...)}}
 		return nil, &Error{Code: CodeUnknownName, Message: message, Details: details}
 	}
@@ -220,7 +302,7 @@ func activityCount(page Page, received int) count {
 	return counted(page.Skip + received)
 }
 
-func (c *Client) listActivities(ctx context.Context, id string, requested []requestedField, categories []activityCategory, page Page) (*Node, *Error) {
+func (c *Client) listActivities(ctx context.Context, at owner, requested []requestedField, categories []activityCategory, page Page) (*Node, *Error) {
 	own := []requestedField{
 		{name: timestampKey},
 		{name: categoryKey, children: []requestedField{{name: idKey}}},
@@ -247,7 +329,11 @@ func (c *Client) listActivities(ctx context.Context, id string, requested []requ
 	probing := page.window()
 	probing.top += truncationProbe
 	decoded, fault := c.request(ctx, "[]"+activitySchema, sent, func(ctx context.Context, fields string) (*http.Response, error) {
-		return c.apiGetIssueActivities(ctx, id, strings.Join(categoryIDs(categories), ","), fields, probing)
+		sent := strings.Join(categoryIDs(categories), ",")
+		if at.kind == articleOwner {
+			return c.apiGetArticleActivities(ctx, at.id, sent, fields, probing)
+		}
+		return c.apiGetIssueActivities(ctx, at.id, sent, fields, probing)
 	})
 	if fault != nil {
 		return nil, fault

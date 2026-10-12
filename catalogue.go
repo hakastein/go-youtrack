@@ -62,6 +62,11 @@ func (spec *schemas) declaration(name, property string) (typeRef, bool) {
 	return typeRef{}, false
 }
 
+func (spec *schemas) known(name string) bool {
+	_, declared := spec.byName[name]
+	return declared
+}
+
 func (spec *schemas) isSubtypeOf(name, ancestor string) bool {
 	for {
 		if name == ancestor {

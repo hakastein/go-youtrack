@@ -484,7 +484,7 @@ func fieldsCalls() map[string]fieldsCall {
 			return c.WorkItems.Update(ctx, "DEV-1", "7-1", &youtrack.WorkItemUpdate{Text: &summary}, writeOptions(fields))
 		},
 		"Activities.List": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
-			return c.Activities.List(ctx, "DEV-1", optionsFor(fields, func(f string) youtrack.ListActivitiesOptions { return youtrack.ListActivitiesOptions{Fields: f} }))
+			return c.Activities.List(ctx, youtrack.IssueID("DEV-1"), optionsFor(fields, func(f string) youtrack.ListActivitiesOptions { return youtrack.ListActivitiesOptions{Fields: f} }))
 		},
 		"Projects.Show": func(ctx context.Context, c *youtrack.Client, fields *string) (*youtrack.Node, error) {
 			return c.Projects.Show(ctx, "DEV", optionsFor(fields, func(f string) youtrack.ShowProjectOptions { return youtrack.ShowProjectOptions{Fields: f} }))
