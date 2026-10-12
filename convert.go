@@ -65,7 +65,9 @@ func (n converter) object(schema string, requested []requestedField, object map[
 }
 
 func (n converter) pairs(schema string, requested []requestedField, object map[string]any) ([]Pair, *Error) {
-	if named, typed := object["$type"].(string); typed {
+	// A $type the specification does not declare is read by the schema the property declares: the history of an
+	// article arrives as Article…ActivityItem, which the specification leaves out.
+	if named, typed := object["$type"].(string); typed && n.response.spec.known(named) {
 		schema = named
 	}
 	pairs := make([]Pair, 0, len(requested))

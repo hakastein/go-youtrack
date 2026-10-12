@@ -104,6 +104,18 @@ func (c *Client) apiGetIssueActivities(ctx context.Context, id, categories, fiel
 	return c.API().GetIssueActivities(ctx, id, &params)
 }
 
+func (c *Client) apiGetArticleActivities(ctx context.Context, id, categories, fields string, w window) (*http.Response, error) {
+	newestFirst := true
+	params := ytapi.GetArticleActivitiesParams{
+		Categories: categories,
+		Reverse:    &newestFirst,
+		Fields:     &fields,
+		Top:        &w.top,
+		Skip:       w.skipped(),
+	}
+	return c.API().GetArticleActivities(ctx, id, &params)
+}
+
 func (c *Client) apiGetIssueLinkTypes(ctx context.Context, fields string, top int32) (*http.Response, error) {
 	return c.API().GetIssueLinkTypes(ctx, &ytapi.GetIssueLinkTypesParams{Fields: &fields, Top: &top})
 }

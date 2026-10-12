@@ -78,8 +78,12 @@ func activityArray(records ...string) string {
 
 func activityList(t *testing.T, server *fake.Server, fields string, categories ...string) (*youtrack.Node, error) {
 	t.Helper()
-	opts := &youtrack.ListActivitiesOptions{Fields: fields, Categories: categories}
-	return client(t, server).Activities.List(t.Context(), "DEV-1", opts)
+	asked := make([]youtrack.ActivityCategory, 0, len(categories))
+	for _, name := range categories {
+		asked = append(asked, youtrack.IssueActivityCategory(name))
+	}
+	opts := &youtrack.ListActivitiesOptions{Fields: fields, Categories: asked}
+	return client(t, server).Activities.List(t.Context(), youtrack.IssueID("DEV-1"), opts)
 }
 
 func activityAt(moment string) *youtrack.Node {
@@ -545,7 +549,7 @@ func TestListActivitiesPrintsThePageTheLimitAndTheSkipAskFor(t *testing.T) {
 			t.Parallel()
 			server := activityServer(t, tc.activities)
 
-			got, err := client(t, server).Activities.List(t.Context(), "DEV-1", tc.opts)
+			got, err := client(t, server).Activities.List(t.Context(), youtrack.IssueID("DEV-1"), tc.opts)
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
@@ -574,7 +578,7 @@ func TestListActivitiesChecksTheActivityPastTheLimitWithTheRest(t *testing.T) {
 			server := activityServer(t, activities)
 			opts := &youtrack.ListActivitiesOptions{Fields: "timestamp", Page: youtrack.Page{Limit: 1}}
 
-			_, err := client(t, server).Activities.List(t.Context(), "DEV-1", opts)
+			_, err := client(t, server).Activities.List(t.Context(), youtrack.IssueID("DEV-1"), opts)
 
 			assert.Equal(t, unreadable(lastRequest(t, server), activities), errorOf(t, err))
 		})
@@ -587,7 +591,7 @@ func TestListActivitiesRefusesMoreActivitiesThanTheLimitAndTheOnePastIt(t *testi
 		activityCreated(activityLatest), activityCreated(activityLate), activityCreated(activityEarly)))
 	opts := &youtrack.ListActivitiesOptions{Fields: "timestamp", Page: youtrack.Page{Limit: 1}}
 
-	_, err := client(t, server).Activities.List(t.Context(), "DEV-1", opts)
+	_, err := client(t, server).Activities.List(t.Context(), youtrack.IssueID("DEV-1"), opts)
 
 	want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, Details: []youtrack.Pair{
 		lastRequest(t, server),
