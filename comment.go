@@ -55,29 +55,29 @@ func (c Comments) asked() bool {
 
 // List runs oldest first, and owner is the readable id of an issue or an article. An issue lists the comments taken
 // back by their authors too, with text null and deleted true.
-func (s *CommentsService) List(ctx context.Context, owner string, opts *ListCommentsOptions) (*Node, error) {
+func (s *CommentsService) List(ctx context.Context, owner Owner, opts *ListCommentsOptions) (*Node, error) {
 	return result(s.list(ctx, owner, optionsOf(opts)))
 }
 
 // Create refuses an empty text before the request: YouTrack refuses one on an issue and keeps it on an article.
-func (s *CommentsService) Create(ctx context.Context, owner, text string, opts *WriteOptions) (*Node, error) {
+func (s *CommentsService) Create(ctx context.Context, owner Owner, text string, opts *WriteOptions) (*Node, error) {
 	return result(s.create(ctx, owner, text, optionsOf(opts)))
 }
 
 // A comment of an issue is read before the write, and one its author deleted is refused: YouTrack would take the
 // write silently.
-func (s *CommentsService) Update(ctx context.Context, owner, id, text string, opts *WriteOptions) (*Node, error) {
+func (s *CommentsService) Update(ctx context.Context, owner Owner, id, text string, opts *WriteOptions) (*Node, error) {
 	return result(s.update(ctx, owner, id, text, optionsOf(opts)))
 }
 
 // The answer holds the id alone: the comment is not read before the deletion.
-func (s *CommentsService) Delete(ctx context.Context, owner, id string) (*Node, error) {
+func (s *CommentsService) Delete(ctx context.Context, owner Owner, id string) (*Node, error) {
 	return result(s.delete(ctx, owner, id))
 }
 
-func (s *CommentsService) list(ctx context.Context, owner string, opts ListCommentsOptions) (*Node, *Error) {
+func (s *CommentsService) list(ctx context.Context, owner Owner, opts ListCommentsOptions) (*Node, *Error) {
 	c := s.client
-	at, fault := parseOwner(owner)
+	at, fault := ownerOf(owner)
 	if fault != nil {
 		return nil, fault
 	}

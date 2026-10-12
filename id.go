@@ -92,9 +92,54 @@ func (k ownerKind) key() string {
 
 const ownerNoun = "the issue or the article"
 
+// IssueID is the readable id of an issue: a project code, a dash and a number, as in DEV-1. The form is checked by
+// the call that takes it.
+type IssueID string
+
+// ArticleID is the readable id of an article: a project code, a dash, A, a dash and a number, as in DEV-A-1. The
+// form is checked by the call that takes it.
+type ArticleID string
+
+// Owner is the readable id of an issue or an article; only IssueID and ArticleID are one.
+type Owner interface {
+	owner() (ownerKind, string)
+}
+
+func (id IssueID) owner() (ownerKind, string) { return issueOwner, string(id) }
+
+func (id ArticleID) owner() (ownerKind, string) { return articleOwner, string(id) }
+
+// OwnerOf reads the readable id of an issue or an article: DEV-1 is an IssueID, DEV-A-1 an ArticleID.
+func OwnerOf(arg string) (Owner, error) {
+	found, fault := parseOwner(arg)
+	if fault != nil {
+		return nil, fault
+	}
+	if found.kind == articleOwner {
+		return ArticleID(found.id), nil
+	}
+	return IssueID(found.id), nil
+}
+
 type owner struct {
 	kind ownerKind
 	id   string
+}
+
+func ownerOf(named Owner) (owner, *Error) {
+	if named == nil {
+		return owner{}, &Error{Code: CodeBadUsage, Message: "no issue or article is named"}
+	}
+	kind, arg := named.owner()
+	parse := parseIssueID
+	if kind == articleOwner {
+		parse = parseArticleID
+	}
+	id, fault := parse(arg)
+	if fault != nil {
+		return owner{}, fault
+	}
+	return owner{kind: kind, id: id}, nil
 }
 
 func parseOwner(arg string) (owner, *Error) {

@@ -293,7 +293,7 @@ func TestGetRefusesAnIDOfAnyOtherForm(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := client(t, fake.ServeNothing(t)).Issues.Get(t.Context(), tc.id)
+			_, err := client(t, fake.ServeNothing(t)).Issues.Get(t.Context(), youtrack.IssueID(tc.id))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -327,7 +327,7 @@ func TestWriteFieldsRefusesACallItCannotSend(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := client(t, fake.ServeNothing(t)).Issues.WriteFields(t.Context(), tc.id, tc.writes)
+			_, err := client(t, fake.ServeNothing(t)).Issues.WriteFields(t.Context(), youtrack.IssueID(tc.id), tc.writes)
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})

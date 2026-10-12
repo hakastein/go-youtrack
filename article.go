@@ -27,8 +27,8 @@ type ListArticlesOptions struct {
 }
 
 // Show refuses comments named anywhere in Fields: an article brings its comments by Comments alone.
-func (s *ArticlesService) Show(ctx context.Context, id string, opts *ShowArticleOptions) (*Node, error) {
-	return result(s.show(ctx, id, optionsOf(opts)))
+func (s *ArticlesService) Show(ctx context.Context, id ArticleID, opts *ShowArticleOptions) (*Node, error) {
+	return result(s.show(ctx, string(id), optionsOf(opts)))
 }
 
 // List sends query to YouTrack as written, in the search language of articles; YouTrack finds every article for a
@@ -37,8 +37,8 @@ func (s *ArticlesService) List(ctx context.Context, query string, opts *ListArti
 	return result(s.list(ctx, query, optionsOf(opts)))
 }
 
-func (s *ArticlesService) Children(ctx context.Context, parent string, opts *ListArticlesOptions) (*Node, error) {
-	return result(s.children(ctx, parent, optionsOf(opts)))
+func (s *ArticlesService) Children(ctx context.Context, parent ArticleID, opts *ListArticlesOptions) (*Node, error) {
+	return result(s.children(ctx, string(parent), optionsOf(opts)))
 }
 
 // Create reads the parent first and refuses one of another project: YouTrack would file the article in the project
@@ -49,14 +49,14 @@ func (s *ArticlesService) Create(ctx context.Context, project string, in *Articl
 
 // Update reads the article first and writes it by the readable id the read gave. A new parent is read up to the
 // root of the project and refused when it is of another project, the article itself or an article under it.
-func (s *ArticlesService) Update(ctx context.Context, id string, in *ArticleUpdate, opts *WriteOptions) (*Node, error) {
-	return result(s.update(ctx, id, optionsOf(in), optionsOf(opts)))
+func (s *ArticlesService) Update(ctx context.Context, id ArticleID, in *ArticleUpdate, opts *WriteOptions) (*Node, error) {
+	return result(s.update(ctx, string(id), optionsOf(in), optionsOf(opts)))
 }
 
 // Delete deletes the article with every article under it and answers with the readable id the server gave just
 // before the deletion, which goes to that id.
-func (s *ArticlesService) Delete(ctx context.Context, id string) (*Node, error) {
-	return result(s.delete(ctx, id))
+func (s *ArticlesService) Delete(ctx context.Context, id ArticleID) (*Node, error) {
+	return result(s.delete(ctx, string(id)))
 }
 
 func (s *ArticlesService) show(ctx context.Context, id string, opts ShowArticleOptions) (*Node, *Error) {
@@ -159,7 +159,7 @@ func (c *Client) resolveCreateParent(ctx context.Context, code string, in Articl
 	if in.Parent == "" {
 		return filed, nil
 	}
-	found, fault := c.readArticleToWrite(ctx, in.Parent, parentOfAWrite)
+	found, fault := c.readArticleToWrite(ctx, string(in.Parent), parentOfAWrite)
 	if fault != nil {
 		return articleCreate{}, fault
 	}
@@ -256,7 +256,7 @@ func (c *Client) resolveUpdateParent(ctx context.Context, article articleRef, in
 	if in.Parent == nil {
 		return written, nil
 	}
-	parent, line, fault := c.readAncestors(ctx, *in.Parent)
+	parent, line, fault := c.readAncestors(ctx, string(*in.Parent))
 	if fault != nil {
 		return articleUpdate{}, fault
 	}

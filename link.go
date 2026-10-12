@@ -34,19 +34,19 @@ type ListLinksOptions struct {
 
 // List has no page: the links come with the issue, and truncated says the instance sent fewer linked issues than
 // its links hold.
-func (s *LinksService) List(ctx context.Context, id string, opts *ListLinksOptions) (*Node, error) {
-	return result(s.list(ctx, id, optionsOf(opts)))
+func (s *LinksService) List(ctx context.Context, id IssueID, opts *ListLinksOptions) (*Node, error) {
+	return result(s.list(ctx, string(id), optionsOf(opts)))
 }
 
 // Add matches the phrase in any letter case and in the translation of the instance; its exact spelling decides
 // between two links that answer to it.
-func (s *LinksService) Add(ctx context.Context, id, phrase, target string, opts *WriteOptions) (*Node, error) {
-	return result(s.add(ctx, id, phrase, target, optionsOf(opts)))
+func (s *LinksService) Add(ctx context.Context, id IssueID, phrase string, target IssueID, opts *WriteOptions) (*Node, error) {
+	return result(s.add(ctx, string(id), phrase, string(target), optionsOf(opts)))
 }
 
 // Remove names a link from either end: DEV-1 "depends on" DEV-2 and DEV-2 "is required for" DEV-1 are one link.
-func (s *LinksService) Remove(ctx context.Context, id, phrase, target string) (*Node, error) {
-	return result(s.remove(ctx, id, phrase, target))
+func (s *LinksService) Remove(ctx context.Context, id IssueID, phrase string, target IssueID) (*Node, error) {
+	return result(s.remove(ctx, string(id), phrase, string(target)))
 }
 
 func issueLinkFields() []string {

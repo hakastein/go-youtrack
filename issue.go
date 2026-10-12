@@ -58,8 +58,8 @@ type Field struct {
 	Values        []Value
 }
 
-func (s *IssuesService) Get(ctx context.Context, id string) (*Issue, error) {
-	return result(s.get(ctx, id))
+func (s *IssuesService) Get(ctx context.Context, id IssueID) (*Issue, error) {
+	return result(s.get(ctx, string(id)))
 }
 
 // Field resolves the name by the name of a field, then by its translation, without regard to letter case.

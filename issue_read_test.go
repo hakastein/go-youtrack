@@ -92,7 +92,7 @@ func TestShowIssueRefusesAnIDOfAnyOtherForm(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := client(t, fake.ServeNothing(t)).Issues.Show(t.Context(), tc.id, &youtrack.ShowIssueOptions{Fields: "id"})
+			_, err := client(t, fake.ServeNothing(t)).Issues.Show(t.Context(), youtrack.IssueID(tc.id), &youtrack.ShowIssueOptions{Fields: "id"})
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -116,7 +116,7 @@ func TestShowIssueSendsEveryFormOfAnIssueAsWritten(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, `{"$type":"Issue","id":"2-1"}`))
 
-			_, err := client(t, server).Issues.Show(t.Context(), tc.id, &youtrack.ShowIssueOptions{Fields: "id"})
+			_, err := client(t, server).Issues.Show(t.Context(), youtrack.IssueID(tc.id), &youtrack.ShowIssueOptions{Fields: "id"})
 
 			require.NoError(t, err)
 			assert.Equal(t, "/api/issues/"+tc.id, server.Request(t, 0).URL.Path)

@@ -6,9 +6,9 @@ import (
 	"net/http"
 )
 
-func (s *CommentsService) create(ctx context.Context, owner, text string, opts WriteOptions) (*Node, *Error) {
+func (s *CommentsService) create(ctx context.Context, owner Owner, text string, opts WriteOptions) (*Node, *Error) {
 	c := s.client
-	at, fault := parseOwner(owner)
+	at, fault := ownerOf(owner)
 	if fault != nil {
 		return nil, fault
 	}
@@ -27,9 +27,9 @@ func (s *CommentsService) create(ctx context.Context, owner, text string, opts W
 	}, written.verify, writeResultNode(requested))
 }
 
-func (s *CommentsService) update(ctx context.Context, owner, id, text string, opts WriteOptions) (*Node, *Error) {
+func (s *CommentsService) update(ctx context.Context, owner Owner, id, text string, opts WriteOptions) (*Node, *Error) {
 	c := s.client
-	at, fault := parseOwner(owner)
+	at, fault := ownerOf(owner)
 	if fault != nil {
 		return nil, fault
 	}
@@ -79,9 +79,9 @@ const deletedCommentMessage = "the comment was taken back by whoever wrote it, a
 	"a comment without a word: the text would be changed where nothing shows it and the answer would carry " +
 	"none. A comment taken back can be deleted for good and changed by nothing at all"
 
-func (s *CommentsService) delete(ctx context.Context, owner, id string) (*Node, *Error) {
+func (s *CommentsService) delete(ctx context.Context, owner Owner, id string) (*Node, *Error) {
 	c := s.client
-	at, fault := parseOwner(owner)
+	at, fault := ownerOf(owner)
 	if fault != nil {
 		return nil, fault
 	}

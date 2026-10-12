@@ -66,12 +66,12 @@ func (s *TagsService) Delete(ctx context.Context, name string, opts *TagOptions)
 }
 
 // Add hangs the tag on owner, the readable id of an issue or of an article.
-func (s *TagsService) Add(ctx context.Context, owner, name string, opts *TagOptions) (*Node, error) {
+func (s *TagsService) Add(ctx context.Context, owner Owner, name string, opts *TagOptions) (*Node, error) {
 	return result(s.tagging(ctx, owner, name, optionsOf(opts), (*Client).addTag))
 }
 
 // Remove takes the tag off owner, the readable id of an issue or of an article; the tag itself stays.
-func (s *TagsService) Remove(ctx context.Context, owner, name string, opts *TagOptions) (*Node, error) {
+func (s *TagsService) Remove(ctx context.Context, owner Owner, name string, opts *TagOptions) (*Node, error) {
 	return result(s.tagging(ctx, owner, name, optionsOf(opts), (*Client).removeTag))
 }
 
@@ -331,9 +331,9 @@ func tagTargetOf(kind ownerKind) tagTarget {
 	}, add: (*Client).apiAddIssueTag, remove: (*Client).apiRemoveIssueTag}
 }
 
-func (s *TagsService) tagging(ctx context.Context, id, name string, opts TagOptions, write func(*Client, context.Context, owner, tagRef) (*Node, *Error)) (*Node, *Error) {
+func (s *TagsService) tagging(ctx context.Context, id Owner, name string, opts TagOptions, write func(*Client, context.Context, owner, tagRef) (*Node, *Error)) (*Node, *Error) {
 	c := s.client
-	at, fault := parseOwner(id)
+	at, fault := ownerOf(id)
 	if fault != nil {
 		return nil, fault
 	}

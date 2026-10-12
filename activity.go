@@ -84,8 +84,8 @@ type ListActivitiesOptions struct {
 
 // List runs newest first; the total is null unless the page ends where the history does, and a limit is at most
 // MaxInt32-1.
-func (s *ActivitiesService) List(ctx context.Context, issue string, opts *ListActivitiesOptions) (*Node, error) {
-	return result(s.list(ctx, issue, optionsOf(opts)))
+func (s *ActivitiesService) List(ctx context.Context, issue IssueID, opts *ListActivitiesOptions) (*Node, error) {
+	return result(s.list(ctx, string(issue), optionsOf(opts)))
 }
 
 func (s *ActivitiesService) list(ctx context.Context, issue string, opts ListActivitiesOptions) (*Node, *Error) {

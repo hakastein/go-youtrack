@@ -126,25 +126,25 @@ func TestTagRefusesACallBeforeAnyRequest(t *testing.T) {
 		{
 			name: "a tagging with an empty name",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Add(ctx, "DEV-7", "", nil)
+				return tags.Add(ctx, youtrack.IssueID("DEV-7"), "", nil)
 			},
 		},
 		{
 			name: "a removal with an empty name",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Remove(ctx, "DEV-7", "", nil)
+				return tags.Remove(ctx, youtrack.IssueID("DEV-7"), "", nil)
 			},
 		},
 		{
 			name: "a tagging of an internal id",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Add(ctx, "7-12", "Early", nil)
+				return tags.Add(ctx, youtrack.IssueID("7-12"), "Early", nil)
 			},
 		},
 		{
 			name: "a removal from a project code",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Remove(ctx, "DEV", "Early", nil)
+				return tags.Remove(ctx, youtrack.IssueID("DEV"), "Early", nil)
 			},
 		},
 		{
@@ -760,12 +760,12 @@ func TestDeleteTagRefusesTagsItCannotAddressTheDeletionBy(t *testing.T) {
 
 func TestAddAndRemoveTagRefuseAnOwnerTheReadNamedByAnIDOfAnotherShape(t *testing.T) {
 	t.Parallel()
-	add := func(id string) tagCall {
+	add := func(id youtrack.Owner) tagCall {
 		return func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
 			return tags.Add(ctx, id, "Early", nil)
 		}
 	}
-	remove := func(id string) tagCall {
+	remove := func(id youtrack.Owner) tagCall {
 		return func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
 			return tags.Remove(ctx, id, "Early", nil)
 		}
@@ -778,43 +778,43 @@ func TestAddAndRemoveTagRefuseAnOwnerTheReadNamedByAnIDOfAnotherShape(t *testing
 	}{
 		{
 			name:  "a tagging of an issue answered with two dots",
-			call:  add("DEV-7"),
+			call:  add(youtrack.IssueID("DEV-7")),
 			owner: tagOwner("Issue", ".."),
 			read:  "/api/issues/DEV-7",
 		},
 		{
 			name:  "a tagging of an issue answered with the id of an article",
-			call:  add("DEV-7"),
+			call:  add(youtrack.IssueID("DEV-7")),
 			owner: tagOwner("Issue", "DEV-A-7"),
 			read:  "/api/issues/DEV-7",
 		},
 		{
 			name:  "a tagging of an article answered with the id of an issue",
-			call:  add("DEV-A-7"),
+			call:  add(youtrack.ArticleID("DEV-A-7")),
 			owner: tagOwner("Article", "DEV-7"),
 			read:  "/api/articles/DEV-A-7",
 		},
 		{
 			name:  "a tagging of an issue answered with no readable id",
-			call:  add("DEV-7"),
+			call:  add(youtrack.IssueID("DEV-7")),
 			owner: `{"$type":"Issue","idReadable":null}`,
 			read:  "/api/issues/DEV-7",
 		},
 		{
 			name:  "a removal from an issue answered with two dots",
-			call:  remove("DEV-7"),
+			call:  remove(youtrack.IssueID("DEV-7")),
 			owner: tagOwner("Issue", ".."),
 			read:  "/api/issues/DEV-7",
 		},
 		{
 			name:  "a removal from an issue answered with the id of an article",
-			call:  remove("DEV-7"),
+			call:  remove(youtrack.IssueID("DEV-7")),
 			owner: tagOwner("Issue", "DEV-A-7"),
 			read:  "/api/issues/DEV-7",
 		},
 		{
 			name:  "a removal from an article answered with the id of an issue",
-			call:  remove("DEV-A-7"),
+			call:  remove(youtrack.ArticleID("DEV-A-7")),
 			owner: tagOwner("Article", "DEV-7"),
 			read:  "/api/articles/DEV-A-7",
 		},
@@ -842,14 +842,14 @@ func TestAddAndRemoveTagNarrowTheNameByTheOwnerOfTheTag(t *testing.T) {
 		{
 			name: "a tagging",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Add(ctx, "DEV-7", "Mixed", &youtrack.TagOptions{OwnedBy: "second"})
+				return tags.Add(ctx, youtrack.IssueID("DEV-7"), "Mixed", &youtrack.TagOptions{OwnedBy: "second"})
 			},
 			paths: []string{"/api/issues/DEV-7", "/api/tags", "/api/issues/DEV-7/tags"},
 		},
 		{
 			name: "a removal",
 			call: func(ctx context.Context, tags *youtrack.TagsService) (*youtrack.Node, error) {
-				return tags.Remove(ctx, "DEV-7", "Mixed", &youtrack.TagOptions{OwnedBy: "second"})
+				return tags.Remove(ctx, youtrack.IssueID("DEV-7"), "Mixed", &youtrack.TagOptions{OwnedBy: "second"})
 			},
 			paths: []string{"/api/issues/DEV-7", "/api/tags", "/api/issues/DEV-7/tags/10-3"},
 		},
@@ -912,7 +912,7 @@ func TestAddTagWritesUnderTheIDsTheReadsFound(t *testing.T) {
 				"POST /api/articles/{id}/tags": fake.JSON(http.StatusOK, tagOf("10-1", "Early", "first")),
 			})
 
-			_, err := client(t, server).Tags.Add(t.Context(), tc.written, "early", nil)
+			_, err := client(t, server).Tags.Add(t.Context(), owned(t, tc.written), "early", nil)
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.targets, server.Targets(t))
@@ -929,7 +929,7 @@ func TestAddTagPrintsTheTagTheWriteAnsweredWith(t *testing.T) {
 		"POST /api/issues/{id}/tags": fake.JSON(http.StatusOK, tagOf("10-1", "Late", "second")),
 	})
 
-	node, err := client(t, server).Tags.Add(t.Context(), "dev-7", "early", nil)
+	node, err := client(t, server).Tags.Add(t.Context(), youtrack.IssueID("dev-7"), "early", nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, youtrack.NewMap(
@@ -973,7 +973,7 @@ func TestAddTagRefusesATagOtherThanTheOneResolved(t *testing.T) {
 				"POST /api/articles/{id}/tags": fake.JSON(http.StatusOK, other),
 			})
 
-			_, err := client(t, server).Tags.Add(t.Context(), tc.written, "early", nil)
+			_, err := client(t, server).Tags.Add(t.Context(), owned(t, tc.written), "early", nil)
 
 			want := youtrack.Error{Code: youtrack.CodeUpstreamInvalid, AfterWrite: true, Details: []youtrack.Pair{
 				requestTo(http.MethodPost, server, tc.write+"?fields=id,name,owner(login)"),
@@ -1028,7 +1028,7 @@ func TestRemoveTagTakesTheTagOffUnderTheIDsTheReadsFound(t *testing.T) {
 				"DELETE /api/articles/{id}/tags/{tag}": fake.JSON(http.StatusOK, ""),
 			})
 
-			node, err := client(t, server).Tags.Remove(t.Context(), tc.written, "early", nil)
+			node, err := client(t, server).Tags.Remove(t.Context(), owned(t, tc.written), "early", nil)
 
 			require.NoError(t, err)
 			assert.Equal(t, youtrack.NewMap(
@@ -1049,7 +1049,7 @@ func TestRemoveTagRefusesATagTheOwnerDoesNotCarry(t *testing.T) {
 			`{"error":"Not Found","error_description":"Entity with id 10-1 not found"}`),
 	})
 
-	_, err := client(t, server).Tags.Remove(t.Context(), "DEV-7", "early", nil)
+	_, err := client(t, server).Tags.Remove(t.Context(), youtrack.IssueID("DEV-7"), "early", nil)
 
 	want := youtrack.Error{Code: youtrack.CodeNotFound, Details: []youtrack.Pair{
 		requestTo(http.MethodDelete, server, "/api/issues/DEV-7/tags/10-1"),

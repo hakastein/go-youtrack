@@ -79,21 +79,21 @@ func TestAttachmentsRefuseAnOwnerThatIsNoReadableID(t *testing.T) {
 		{
 			name: "a list",
 			call: func(ctx context.Context, attachments *youtrack.AttachmentsService) error {
-				_, err := attachments.List(ctx, "12-5", &youtrack.ListAttachmentsOptions{Fields: "id"})
+				_, err := attachments.List(ctx, youtrack.IssueID("12-5"), &youtrack.ListAttachmentsOptions{Fields: "id"})
 				return err
 			},
 		},
 		{
 			name: "an upload",
 			call: func(ctx context.Context, attachments *youtrack.AttachmentsService) error {
-				_, err := attachments.Create(ctx, "12-5", attachmentFile("one.txt", "x"), answeredWith("id"))
+				_, err := attachments.Create(ctx, youtrack.IssueID("12-5"), attachmentFile("one.txt", "x"), answeredWith("id"))
 				return err
 			},
 		},
 		{
 			name: "a deletion",
 			call: func(ctx context.Context, attachments *youtrack.AttachmentsService) error {
-				_, err := attachments.Delete(ctx, "12-5", "12-6")
+				_, err := attachments.Delete(ctx, youtrack.IssueID("12-5"), "12-6")
 				return err
 			},
 		},
@@ -119,7 +119,7 @@ func TestCreateAttachmentRefusesAFileWithoutANameOrBytesToRead(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Attachments.Create(t.Context(), "DEV-1", tc.file, answeredWith("id"))
+			_, err := client(t, fake.ServeNothing(t)).Attachments.Create(t.Context(), youtrack.IssueID("DEV-1"), tc.file, answeredWith("id"))
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
@@ -145,7 +145,7 @@ func TestCreateAttachmentRefusesANameTheServerWouldKeepAsAnother(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Attachments.Create(t.Context(), "DEV-1", attachmentFile(tc.file, "x"), answeredWith("id"))
+			_, err := client(t, fake.ServeNothing(t)).Attachments.Create(t.Context(), youtrack.IssueID("DEV-1"), attachmentFile(tc.file, "x"), answeredWith("id"))
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
@@ -174,7 +174,7 @@ func TestCreateAttachmentSendsTheNameAsWritten(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, attachmentFiledOnce(tc.file, 1)))
 
-			_, err := client(t, server).Attachments.Create(t.Context(), "DEV-1", attachmentFile(tc.file, "x"),
+			_, err := client(t, server).Attachments.Create(t.Context(), youtrack.IssueID("DEV-1"), attachmentFile(tc.file, "x"),
 				answeredWith("id"))
 
 			require.NoError(t, err)
@@ -218,7 +218,7 @@ func TestCreateAttachmentStreamsTheFileAsOnePart(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, tc.filed))
 
-			_, err := client(t, server).Attachments.Create(t.Context(), tc.owner, attachmentFile("one.bin", string(content)),
+			_, err := client(t, server).Attachments.Create(t.Context(), owned(t, tc.owner), attachmentFile("one.bin", string(content)),
 				answeredWith("id"))
 
 			require.NoError(t, err)
@@ -241,7 +241,7 @@ func TestCreateAttachmentAsksForTheNameAndTheSizeItChecks(t *testing.T) {
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, attachmentFiledOnce("one.txt", 1)))
 
-	node, err := client(t, server).Attachments.Create(t.Context(), "DEV-1", attachmentFile("one.txt", "x"),
+	node, err := client(t, server).Attachments.Create(t.Context(), youtrack.IssueID("DEV-1"), attachmentFile("one.txt", "x"),
 		answeredWith("id"))
 
 	require.NoError(t, err)
@@ -254,7 +254,7 @@ func TestCreateAttachmentLeavesClosingTheFileToTheCaller(t *testing.T) {
 	server := fake.Serve(t, fake.JSON(http.StatusOK, attachmentFiledOnce("one.txt", 1)))
 	content := &closeRecorder{Reader: strings.NewReader("x")}
 
-	_, err := client(t, server).Attachments.Create(t.Context(), "DEV-1", youtrack.File{Name: "one.txt", Content: content},
+	_, err := client(t, server).Attachments.Create(t.Context(), youtrack.IssueID("DEV-1"), youtrack.File{Name: "one.txt", Content: content},
 		answeredWith("id"))
 
 	require.NoError(t, err)
@@ -282,7 +282,7 @@ func TestCreateAttachmentReturnsOnACancellationWhileAReadOfTheFileHangs(t *testi
 	t.Cleanup(func() { close(release) })
 	file := youtrack.File{Name: "one.txt", Content: stallingFile{cancel: cancel, release: release}}
 
-	_, err := client(t, server).Attachments.Create(ctx, "DEV-1", file, answeredWith("id"))
+	_, err := client(t, server).Attachments.Create(ctx, youtrack.IssueID("DEV-1"), file, answeredWith("id"))
 
 	assert.ErrorIs(t, err, context.Canceled)
 	sent := requestTo(http.MethodPost, server, "/api/issues/DEV-1/attachments?fields=id,name,size")
@@ -369,7 +369,7 @@ func TestCreateAttachmentRefusesAnAnswerThatIsNotTheFileThatWentOut(t *testing.T
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, tc.body))
 
-			_, err := client(t, server).Attachments.Create(t.Context(), tc.owner, attachmentFile("one.txt", "abcdef"),
+			_, err := client(t, server).Attachments.Create(t.Context(), owned(t, tc.owner), attachmentFile("one.txt", "abcdef"),
 				answeredWith("id"))
 
 			want := youtrack.Error{
@@ -399,7 +399,7 @@ func TestDeleteAttachmentRefusesAnIDThatIsNoInternalID(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := client(t, fake.ServeNothing(t)).Attachments.Delete(t.Context(), "DEV-1", tc.id)
+			_, err := client(t, fake.ServeNothing(t)).Attachments.Delete(t.Context(), youtrack.IssueID("DEV-1"), tc.id)
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
 	}
@@ -454,7 +454,7 @@ func TestDeleteAttachmentDeletesUnderTheOwnerTheReadNamed(t *testing.T) {
 			t.Parallel()
 			server := attachmentDeleting(t, fake.JSON(http.StatusOK, tc.read))
 
-			node, err := client(t, server).Attachments.Delete(t.Context(), tc.owner, "12-5")
+			node, err := client(t, server).Attachments.Delete(t.Context(), owned(t, tc.owner), "12-5")
 
 			require.NoError(t, err)
 			assert.Equal(t, youtrack.NewMap(
@@ -503,7 +503,7 @@ func TestDeleteAttachmentRefusesAnAnswerItCannotAddressTheDeletionBy(t *testing.
 			t.Parallel()
 			server := attachmentDeleting(t, fake.JSON(http.StatusOK, tc.read))
 
-			_, err := client(t, server).Attachments.Delete(t.Context(), "DEV-7", "12-5")
+			_, err := client(t, server).Attachments.Delete(t.Context(), youtrack.IssueID("DEV-7"), "12-5")
 
 			read := requestTo(http.MethodGet, server, "/api/issues/DEV-7/attachments/12-5?fields=id,name,issue(idReadable)")
 			assert.Equal(t, unreadable(read, tc.read), errorOf(t, err))
@@ -527,7 +527,7 @@ func TestListAttachmentsReadsTheOwnerThroughItsOwnAPI(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, `[]`))
 
-			_, err := client(t, server).Attachments.List(t.Context(), tc.owner, &youtrack.ListAttachmentsOptions{Fields: "id"})
+			_, err := client(t, server).Attachments.List(t.Context(), owned(t, tc.owner), &youtrack.ListAttachmentsOptions{Fields: "id"})
 
 			require.NoError(t, err)
 			assert.Equal(t, []string{tc.path}, server.Paths())
@@ -539,7 +539,7 @@ func TestListAttachmentsResolvesTheLinkOfARecordTheServerNamedNothing(t *testing
 	t.Parallel()
 	server := fake.Serve(t, fake.JSON(http.StatusOK, `[{"url":"/api/files/12-2?sign=s"}]`))
 
-	node, err := client(t, server).Attachments.List(t.Context(), "DEV-1", &youtrack.ListAttachmentsOptions{Fields: "url"})
+	node, err := client(t, server).Attachments.List(t.Context(), youtrack.IssueID("DEV-1"), &youtrack.ListAttachmentsOptions{Fields: "url"})
 
 	require.NoError(t, err)
 	assert.Equal(t, wholePage("attachments", youtrack.NewMap(
@@ -555,14 +555,14 @@ func TestAttachmentsRefuseTheContentOfAFileInTheFields(t *testing.T) {
 		{
 			name: "in a record of a list of attachments",
 			call: func(ctx context.Context, attachments *youtrack.AttachmentsService) error {
-				_, err := attachments.List(ctx, "DEV-1", &youtrack.ListAttachmentsOptions{Fields: "+base64Content"})
+				_, err := attachments.List(ctx, youtrack.IssueID("DEV-1"), &youtrack.ListAttachmentsOptions{Fields: "+base64Content"})
 				return err
 			},
 		},
 		{
 			name: "in what an upload answers with",
 			call: func(ctx context.Context, attachments *youtrack.AttachmentsService) error {
-				_, err := attachments.Create(ctx, "DEV-1", attachmentFile("one.txt", "x"),
+				_, err := attachments.Create(ctx, youtrack.IssueID("DEV-1"), attachmentFile("one.txt", "x"),
 					answeredWith("id,base64Content"))
 				return err
 			},

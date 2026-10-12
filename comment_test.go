@@ -41,11 +41,11 @@ const commentStanding = `{"$type":"IssueComment","deleted":false}`
 type commentWrite func(ctx context.Context, comments *youtrack.CommentsService, text string) (*youtrack.Node, error)
 
 func commentCreatedOnAnIssue(ctx context.Context, comments *youtrack.CommentsService, text string) (*youtrack.Node, error) {
-	return comments.Create(ctx, "DEV-7", text, answeredWith("id"))
+	return comments.Create(ctx, youtrack.IssueID("DEV-7"), text, answeredWith("id"))
 }
 
 func commentUpdatedOnAnIssue(ctx context.Context, comments *youtrack.CommentsService, text string) (*youtrack.Node, error) {
-	return comments.Update(ctx, "DEV-7", "7-12", text, answeredWith("id"))
+	return comments.Update(ctx, youtrack.IssueID("DEV-7"), "7-12", text, answeredWith("id"))
 }
 
 func TestCommentsRefuseAnOwnerThatIsNoReadableID(t *testing.T) {
@@ -57,35 +57,35 @@ func TestCommentsRefuseAnOwnerThatIsNoReadableID(t *testing.T) {
 		{
 			name: "a list by an internal id",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.List(ctx, "3-19", &youtrack.ListCommentsOptions{Fields: "id"})
+				_, err := comments.List(ctx, youtrack.IssueID("3-19"), &youtrack.ListCommentsOptions{Fields: "id"})
 				return err
 			},
 		},
 		{
 			name: "a list by two dots",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.List(ctx, "..", &youtrack.ListCommentsOptions{Fields: "id"})
+				_, err := comments.List(ctx, youtrack.IssueID(".."), &youtrack.ListCommentsOptions{Fields: "id"})
 				return err
 			},
 		},
 		{
 			name: "a creation",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "3-19", "Text", answeredWith("id"))
+				_, err := comments.Create(ctx, youtrack.IssueID("3-19"), "Text", answeredWith("id"))
 				return err
 			},
 		},
 		{
 			name: "a rewrite",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Update(ctx, "3-19", "7-12", "Text", answeredWith("id"))
+				_, err := comments.Update(ctx, youtrack.IssueID("3-19"), "7-12", "Text", answeredWith("id"))
 				return err
 			},
 		},
 		{
 			name: "a deletion",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Delete(ctx, "3-19", "7-12")
+				_, err := comments.Delete(ctx, youtrack.IssueID("3-19"), "7-12")
 				return err
 			},
 		},
@@ -113,7 +113,7 @@ func TestListCommentsHoldsTheCustomFieldsOfTheirIssueToTheKeysOfTheModule(t *tes
 			t.Parallel()
 			comments := client(t, fake.ServeNothing(t)).Comments
 
-			_, err := comments.List(t.Context(), "DEV-1", &youtrack.ListCommentsOptions{Fields: tc.expression})
+			_, err := comments.List(t.Context(), youtrack.IssueID("DEV-1"), &youtrack.ListCommentsOptions{Fields: tc.expression})
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
@@ -159,8 +159,8 @@ func TestCommentWritesRefuseACommentIDThatIsNoInternalID(t *testing.T) {
 			t.Parallel()
 			comments := client(t, fake.ServeNothing(t)).Comments
 
-			_, rewritten := comments.Update(t.Context(), "DEV-1", tc.id, "Text", answeredWith("id"))
-			_, deleted := comments.Delete(t.Context(), "DEV-1", tc.id)
+			_, rewritten := comments.Update(t.Context(), youtrack.IssueID("DEV-1"), tc.id, "Text", answeredWith("id"))
+			_, deleted := comments.Delete(t.Context(), youtrack.IssueID("DEV-1"), tc.id)
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, rewritten))
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, deleted))
@@ -209,7 +209,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a creation on an issue",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "DEV-7", "Text", answeredWith("id"))
+				_, err := comments.Create(ctx, youtrack.IssueID("DEV-7"), "Text", answeredWith("id"))
 				return err
 			},
 			routes: []string{"POST /api/issues/DEV-7/comments"},
@@ -217,7 +217,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a creation on an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "DEV-A-3", "Text", answeredWith("id"))
+				_, err := comments.Create(ctx, youtrack.ArticleID("DEV-A-3"), "Text", answeredWith("id"))
 				return err
 			},
 			routes: []string{"POST /api/articles/DEV-A-3/comments"},
@@ -225,7 +225,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a rewrite on an issue, which reads the comment first",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Update(ctx, "DEV-7", "7-12", "Text", answeredWith("id"))
+				_, err := comments.Update(ctx, youtrack.IssueID("DEV-7"), "7-12", "Text", answeredWith("id"))
 				return err
 			},
 			routes: []string{"GET /api/issues/DEV-7/comments/7-12", "POST /api/issues/DEV-7/comments/7-12"},
@@ -233,7 +233,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a rewrite on an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Update(ctx, "DEV-A-3", "8-5", "Text", answeredWith("id"))
+				_, err := comments.Update(ctx, youtrack.ArticleID("DEV-A-3"), "8-5", "Text", answeredWith("id"))
 				return err
 			},
 			routes: []string{"POST /api/articles/DEV-A-3/comments/8-5"},
@@ -241,7 +241,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a removal from an issue",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Delete(ctx, "DEV-7", "7-12")
+				_, err := comments.Delete(ctx, youtrack.IssueID("DEV-7"), "7-12")
 				return err
 			},
 			routes: []string{"DELETE /api/issues/DEV-7/comments/7-12"},
@@ -249,7 +249,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a removal from an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Delete(ctx, "DEV-A-3", "8-5")
+				_, err := comments.Delete(ctx, youtrack.ArticleID("DEV-A-3"), "8-5")
 				return err
 			},
 			routes: []string{"DELETE /api/articles/DEV-A-3/comments/8-5"},
@@ -257,7 +257,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a list of an issue",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.List(ctx, "DEV-7", &youtrack.ListCommentsOptions{Fields: "id", Page: youtrack.Page{Limit: 1}})
+				_, err := comments.List(ctx, youtrack.IssueID("DEV-7"), &youtrack.ListCommentsOptions{Fields: "id", Page: youtrack.Page{Limit: 1}})
 				return err
 			},
 			routes: []string{"GET /api/issues/DEV-7/comments"},
@@ -265,7 +265,7 @@ func TestCommentCallsAddressTheCommentsOfTheOwnerTheyNamed(t *testing.T) {
 		{
 			name: "a list of an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.List(ctx, "DEV-A-3", &youtrack.ListCommentsOptions{Fields: "id", Page: youtrack.Page{Limit: 1}})
+				_, err := comments.List(ctx, youtrack.ArticleID("DEV-A-3"), &youtrack.ListCommentsOptions{Fields: "id", Page: youtrack.Page{Limit: 1}})
 				return err
 			},
 			routes: []string{"GET /api/articles/DEV-A-3/comments"},
@@ -302,7 +302,7 @@ func TestDeleteCommentSendsAnInternalIDAsTheSegmentUnderItsOwner(t *testing.T) {
 			t.Parallel()
 			server := fake.Serve(t, fake.JSON(http.StatusOK, ``))
 
-			node, err := client(t, server).Comments.Delete(t.Context(), "DEV-1", tc.id)
+			node, err := client(t, server).Comments.Delete(t.Context(), youtrack.IssueID("DEV-1"), tc.id)
 
 			require.NoError(t, err)
 			assert.Equal(t, youtrack.NewMap(youtrack.Pair{Key: "id", Value: youtrack.NewString(tc.id)}), node)
@@ -379,7 +379,7 @@ func TestCommentWritesRefuseAnAnswerThatDisagreesWithTheWrite(t *testing.T) {
 		{
 			name: "a rewrite answered with no id, which the expression does not ask for",
 			write: func(ctx context.Context, comments *youtrack.CommentsService, text string) (*youtrack.Node, error) {
-				return comments.Update(ctx, "DEV-7", "7-12", text, answeredWith("author(login)"))
+				return comments.Update(ctx, youtrack.IssueID("DEV-7"), "7-12", text, answeredWith("author(login)"))
 			},
 			written: `{"$type":"IssueComment","author":{"$type":"User","login":"author"},"text":"Other"}`,
 			target:  "/api/issues/DEV-7/comments/7-12?fields=author(login),text",
@@ -450,14 +450,14 @@ func TestCommentWritesCheckMoreThanTheyPrint(t *testing.T) {
 		{
 			name: "a creation",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) (*youtrack.Node, error) {
-				return comments.Create(ctx, "DEV-7", "Text", answeredWith("author(login)"))
+				return comments.Create(ctx, youtrack.IssueID("DEV-7"), "Text", answeredWith("author(login)"))
 			},
 			fields: "author(login),id,text",
 		},
 		{
 			name: "a rewrite",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) (*youtrack.Node, error) {
-				return comments.Update(ctx, "DEV-7", "7-12", "Text", answeredWith("author(login)"))
+				return comments.Update(ctx, youtrack.IssueID("DEV-7"), "7-12", "Text", answeredWith("author(login)"))
 			},
 			fields: "author(login),text",
 		},
@@ -495,7 +495,7 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 		{
 			name: "a flag only a comment of an issue carries, asked of a new comment of an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "DEV-A-3", "Text", answeredWith("id,deleted"))
+				_, err := comments.Create(ctx, youtrack.ArticleID("DEV-A-3"), "Text", answeredWith("id,deleted"))
 				return err
 			},
 			method:  http.MethodPost,
@@ -509,7 +509,7 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 		{
 			name: "the owner of a comment of an article, asked of a new comment of an issue",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.Create(ctx, "DEV-7", "Text", answeredWith("id,article(idReadable)"))
+				_, err := comments.Create(ctx, youtrack.IssueID("DEV-7"), "Text", answeredWith("id,article(idReadable)"))
 				return err
 			},
 			method:  http.MethodPost,
@@ -523,7 +523,7 @@ func TestCommentCallsCheckTheAnswerAgainstTheSchemaOfTheOwner(t *testing.T) {
 		{
 			name: "a flag only a comment of an issue carries, asked of the comments of an article",
 			call: func(ctx context.Context, comments *youtrack.CommentsService) error {
-				_, err := comments.List(ctx, "DEV-A-3", &youtrack.ListCommentsOptions{Fields: "id,deleted", Page: youtrack.Page{Limit: 1}})
+				_, err := comments.List(ctx, youtrack.ArticleID("DEV-A-3"), &youtrack.ListCommentsOptions{Fields: "id,deleted", Page: youtrack.Page{Limit: 1}})
 				return err
 			},
 			method:  http.MethodGet,
@@ -564,7 +564,7 @@ func TestListCommentsCountsTheCommentsOfAnArticleWhereTheyFillThePage(t *testing
 		fake.JSON(http.StatusOK, `[{"$type":"ArticleComment","id":"8-1","text":"Text"}]`)(w, r)
 	})
 
-	node, err := client(t, server).Comments.List(t.Context(), "DEV-A-3",
+	node, err := client(t, server).Comments.List(t.Context(), youtrack.ArticleID("DEV-A-3"),
 		&youtrack.ListCommentsOptions{Fields: "id,text", Page: youtrack.Page{Limit: 1}})
 
 	require.NoError(t, err)

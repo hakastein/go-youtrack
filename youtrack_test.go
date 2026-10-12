@@ -29,6 +29,14 @@ func client(t *testing.T, server *fake.Server, opts ...youtrack.Option) *youtrac
 	return c
 }
 
+// owned is the id of an issue or an article written as a caller with a string holds it.
+func owned(t *testing.T, id string) youtrack.Owner {
+	t.Helper()
+	found, err := youtrack.OwnerOf(id)
+	require.NoError(t, err)
+	return found
+}
+
 // The prose of a message is not compared: it changes without the behaviour changing.
 func errorOf(t *testing.T, err error) youtrack.Error {
 	t.Helper()

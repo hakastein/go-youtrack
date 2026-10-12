@@ -242,7 +242,7 @@ func TestUpdateIssueRefusesACallBeforeAnyRequest(t *testing.T) {
 			t.Parallel()
 			issues := client(t, fake.ServeNothing(t)).Issues
 
-			_, err := issues.Update(t.Context(), cmp.Or(tc.id, "DEV-1"), tc.in, answeredWith(tc.expression))
+			_, err := issues.Update(t.Context(), youtrack.IssueID(cmp.Or(tc.id, "DEV-1")), tc.in, answeredWith(tc.expression))
 
 			assert.Equal(t, youtrack.Error{Code: youtrack.CodeBadUsage}, errorOf(t, err))
 		})
