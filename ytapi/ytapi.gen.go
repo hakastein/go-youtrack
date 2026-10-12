@@ -2195,6 +2195,15 @@ type UpdateArticleParams struct {
 	Fields                  *string `form:"fields,omitempty" json:"fields,omitempty"`
 }
 
+// GetArticleActivitiesParams defines parameters for GetArticleActivities.
+type GetArticleActivitiesParams struct {
+	Categories string  `form:"categories" json:"categories"`
+	Reverse    *bool   `form:"reverse,omitempty" json:"reverse,omitempty"`
+	Fields     *string `form:"fields,omitempty" json:"fields,omitempty"`
+	Skip       *int32  `form:"$skip,omitempty" json:"$skip,omitempty"`
+	Top        *int32  `form:"$top,omitempty" json:"$top,omitempty"`
+}
+
 // GetArticleAttachmentsParams defines parameters for GetArticleAttachments.
 type GetArticleAttachmentsParams struct {
 	Fields *string `form:"fields,omitempty" json:"fields,omitempty"`
@@ -3855,6 +3864,9 @@ type ClientInterface interface {
 	// UpdateArticle performs a POST /articles/{id} (the `UpdateArticle` operationId) request.
 	// Takes a body of the `application/json` content type.
 	UpdateArticle(ctx context.Context, id string, params *UpdateArticleParams, body UpdateArticleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetArticleActivities performs a GET /articles/{id}/activities (the `GetArticleActivities` operationId) request.
+	GetArticleActivities(ctx context.Context, id string, params *GetArticleActivitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetArticleAttachments performs a GET /articles/{id}/attachments (the `GetArticleAttachments` operationId) request.
 	GetArticleAttachments(ctx context.Context, id string, params *GetArticleAttachmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6957,6 +6969,19 @@ func (c *Client) UpdateArticleWithBody(ctx context.Context, id string, params *U
 // Takes a body of the `application/json` content type.
 func (c *Client) UpdateArticle(ctx context.Context, id string, params *UpdateArticleParams, body UpdateArticleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateArticleRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetArticleActivities performs a GET /articles/{id}/activities (the `GetArticleActivities` operationId) request.
+func (c *Client) GetArticleActivities(ctx context.Context, id string, params *GetArticleActivitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetArticleActivitiesRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -18404,6 +18429,111 @@ func NewUpdateArticleRequestWithBody(server string, id string, params *UpdateArt
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetArticleActivitiesRequest constructs an http.Request for the GetArticleActivities method
+func NewGetArticleActivitiesRequest(server string, id string, params *GetArticleActivitiesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/articles/%s/activities", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "categories", params.Categories, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Reverse != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "reverse", *params.Reverse, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Fields != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "fields", *params.Fields, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Skip != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "$skip", *params.Skip, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Top != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "$top", *params.Top, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }

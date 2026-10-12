@@ -106,6 +106,51 @@ actions:
   - target: $.paths['/issues/{id}/activities'].get
     update:
       operationId: GetIssueActivities
+  # Spec omits the history of an article: the server answers it with the ActivityItem of an issue, and categories is
+  # required — without it 400 "No requested categories specified as a filter parameter" (YouTrack 2026.1.13757).
+  - target: $.paths
+    update:
+      /articles/{id}/activities:
+        get:
+          operationId: GetArticleActivities
+          parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                type: string
+            - name: categories
+              in: query
+              required: true
+              schema:
+                type: string
+            - name: reverse
+              in: query
+              schema:
+                type: boolean
+            - name: fields
+              in: query
+              schema:
+                type: string
+            - name: $skip
+              in: query
+              schema:
+                type: integer
+                format: int32
+            - name: $top
+              in: query
+              schema:
+                type: integer
+                format: int32
+          responses:
+            "200":
+              description: collection of ActivityItem
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ActivityItem"
   - target: $.paths['/articles/{id}/comments'].get
     update:
       operationId: GetArticleComments

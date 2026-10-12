@@ -1,5 +1,19 @@
 # Изменения
 
+## v0.8.0
+
+Ломающие:
+
+- `Activities.List` принимает `Owner`: история задачи или статьи.
+- `ListActivitiesOptions.Categories` — `[]ActivityCategory`; `ActivityCategories()` заменён на
+  `IssueActivityCategories()`, категории — константы `IssueActivityCategory`.
+- Категория другого вида владельца — `unknown_name`, `nil` среди категорий — `bad_usage`.
+
+Новое:
+
+- История статьи: `ArticleActivityCategories()` и константы `ArticleActivityCategory`.
+- Объект с `$type`, которого спецификация не объявляет, читается по схеме своего свойства.
+
 ## v0.7.0
 
 Ломающие:
