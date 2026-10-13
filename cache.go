@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const (
@@ -132,6 +133,33 @@ func (c metaCache) write(path string, content []byte) (err error) {
 		return err
 	}
 	return os.Rename(temporary.Name(), path)
+}
+
+// The star of the token is kept a day: past it the profile is read again.
+const starLifetime = 24 * time.Hour
+
+type cachedStar struct {
+	ID string `json:"id"`
+}
+
+func (c metaCache) loadStar(target string) (string, bool) {
+	path := c.file(target)
+	if path == "" {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil || time.Since(info.ModTime()) > starLifetime {
+		return "", false
+	}
+	held, hit := readCached[cachedStar](c, target)
+	if !hit || len(held) != 1 {
+		return "", false
+	}
+	return held[0].ID, true
+}
+
+func (c metaCache) storeStar(target, id string) {
+	c.put(target, []cachedStar{{ID: id}})
 }
 
 func (c metaCache) file(target string) string {

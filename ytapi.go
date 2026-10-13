@@ -291,3 +291,7 @@ func (c *Client) apiGetUsers(ctx context.Context, search, fields string, w windo
 func (c *Client) apiGetCurrentUser(ctx context.Context, fields string) (*http.Response, error) {
 	return c.API().GetCurrentUser(ctx, &ytapi.GetCurrentUserParams{Fields: &fields})
 }
+
+func (c *Client) apiGetCurrentUserProfile(ctx context.Context, fields string) (*http.Response, error) {
+	return c.API().GetGeneralUserProfile(ctx, "me", &ytapi.GetGeneralUserProfileParams{Fields: &fields})
+}

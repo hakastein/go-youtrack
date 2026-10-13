@@ -394,6 +394,11 @@ func (c *Client) resolveTagging(ctx context.Context, at owner, sought TagRef) (t
 	if fault != nil {
 		return tagOp{}, fault
 	}
+	if target.kind == issueOwner {
+		if fault := c.rejectStar(ctx, []hungTag{{id: tag.id, name: found.shown.name}}); fault != nil {
+			return tagOp{}, fault
+		}
+	}
 	return tagOp{on: on, target: target, found: found, tag: tag}, nil
 }
 
@@ -473,7 +478,7 @@ type hungTag struct {
 
 // A refusal of the server does not say which tag it refused, so it carries every tag the write sent.
 func withHungTags(fault *Error, tags []hungTag) *Error {
-	if fault == nil || len(tags) == 0 || (fault.Code != CodeDenied && fault.Code != CodeRejected) {
+	if fault == nil || fault.AfterWrite || len(tags) == 0 || (fault.Code != CodeDenied && fault.Code != CodeRejected) {
 		return fault
 	}
 	sent := make([]*Node, 0, len(tags))
