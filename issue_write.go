@@ -16,10 +16,13 @@ type FieldWrite struct {
 	Clear  bool
 }
 
+// IssueInput: Tags hang on the issue in the same write that files it; a name of no tag the token is shown
+// fails the call before anything is written.
 type IssueInput struct {
 	Summary     string
 	Description string
 	Fields      []FieldWrite
+	Tags        []TagRef
 }
 
 // IssueUpdate: a nil part is left as the issue holds it. YouTrack keeps an empty description as none, so an empty
@@ -126,14 +129,18 @@ func createIssue(ctx context.Context, c *Client, code string, parts issueInput, 
 	if missing := filed.missing(); len(missing) > 0 {
 		return nil, project.fault(CodeMissingRequired, missingMessage, "missing", textList(missing))
 	}
+	if filed.tags, fault = c.resolveTagsToHang(ctx, parts.tags); fault != nil {
+		return nil, fault
+	}
 	asked, _, fault := c.issueRequest(ctx, requested, filed.verifyFields()...)
 	if fault != nil {
 		return nil, fault
 	}
 	body := filed.createBody()
-	return writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	node, fault := writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssue(ctx, body, fields)
 	}, filed.verify, writeResultNode(requested))
+	return node, withHungTags(fault, filed.tags)
 }
 
 func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueInput,
@@ -167,6 +174,7 @@ type issueInput struct {
 	named             []namedValue
 	clearsDescription bool
 	cleared           []string
+	tags              []TagRef
 }
 
 func (in IssueInput) parse() (issueInput, *Error) {
@@ -181,7 +189,12 @@ func (in IssueInput) parse() (issueInput, *Error) {
 	if len(cleared) > 0 {
 		return issueInput{}, &Error{Code: CodeBadUsage, Message: fmt.Sprintf(clearOnCreate, quote(cleared[0]))}
 	}
-	return issueInput{summary: &in.Summary, description: description, named: named}, nil
+	for _, tag := range in.Tags {
+		if fault := rejectNoTagName(tag.Name); fault != nil {
+			return issueInput{}, fault
+		}
+	}
+	return issueInput{summary: &in.Summary, description: description, named: named, tags: in.Tags}, nil
 }
 
 func (in IssueUpdate) parse() (issueInput, *Error) {
@@ -272,6 +285,7 @@ type createIssueBody struct {
 	Summary      string            `json:"summary"`
 	Description  *string           `json:"description,omitempty"`
 	CustomFields []customFieldBody `json:"customFields,omitempty"`
+	Tags         []idBody          `json:"tags,omitempty"`
 }
 
 type updateIssueBody struct {
@@ -289,6 +303,7 @@ type customFieldBody struct {
 type issueWrite struct {
 	text    issueInput
 	fields  []resolvedField
+	tags    []hungTag
 	project projectMetadata
 }
 
@@ -307,6 +322,7 @@ func (w issueWrite) createBody() []byte {
 		Summary:      *w.text.summary,
 		Description:  w.text.description,
 		CustomFields: w.bodies(),
+		Tags:         w.tagBodies(),
 	})
 	return body
 }
@@ -350,6 +366,9 @@ func (w issueWrite) verifyFields() []requestedField {
 	if len(w.fields) > 0 {
 		own = append(own, requestedField{name: customFieldsKey})
 	}
+	if len(w.tags) > 0 {
+		own = append(own, requestedField{name: tagsKey, children: []requestedField{{name: idKey}, {name: nameKey}}})
+	}
 	return own
 }
 
@@ -369,6 +388,7 @@ func (w issueWrite) verify(a decodedResponse) *Error {
 	if fault != nil {
 		return fault
 	}
+	wrong = w.verifyTags(issue[tagsKey], wrong)
 	return mismatchFault(a, wrong, Pair{Key: issueKey, Value: responseID(a, idReadableKey)})
 }
 
@@ -860,4 +880,39 @@ func fieldByID(fields []projectField, id string) (projectField, bool) {
 		}
 	}
 	return projectField{}, false
+}
+
+func (w issueWrite) tagBodies() []idBody {
+	tags := make([]idBody, 0, len(w.tags))
+	for _, tag := range w.tags {
+		tags = append(tags, idBody{ID: tag.id})
+	}
+	return tags
+}
+
+// A tag the answer carries beyond the ones written is no mismatch: a workflow may hang it on a new issue.
+func (w issueWrite) verifyTags(value any, wrong []mismatch) []mismatch {
+	if len(w.tags) == 0 {
+		return wrong
+	}
+	expected := make([]string, 0, len(w.tags))
+	for _, tag := range w.tags {
+		expected = append(expected, tag.name)
+	}
+	items, isList := value.([]any)
+	if !isList {
+		return append(wrong, mismatch{field: tagsKey, expected: textList(expected), actual: rawValueNode(value)})
+	}
+	held := make(map[string]bool, len(items))
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		id, _ := memberOf(item, idKey).(string)
+		name, _ := memberOf(item, nameKey).(string)
+		held[id] = true
+		names = append(names, name)
+	}
+	if !slices.ContainsFunc(w.tags, func(tag hungTag) bool { return !held[tag.id] }) {
+		return wrong
+	}
+	return append(wrong, mismatch{field: tagsKey, expected: textList(expected), actual: textList(names)})
 }
