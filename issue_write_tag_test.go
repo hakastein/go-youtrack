@@ -11,14 +11,17 @@ import (
 	"github.com/hakastein/go-youtrack/fake"
 )
 
+const profilePath = "/api/users/me/profiles/general"
+
 const issueTagged = issuesPath + "?fields=idReadable,summary,tags(id,name)"
 
 func issueTagging(t *testing.T, tags string, write http.HandlerFunc) *fake.Server {
 	t.Helper()
 	return routes(t, map[string]http.HandlerFunc{
-		"GET " + projectPath: fake.JSON(http.StatusOK, issueProject()),
-		"GET /api/tags":      fake.JSON(http.StatusOK, tags),
-		"POST " + issuesPath: write,
+		"GET " + projectPath:                 fake.JSON(http.StatusOK, issueProject()),
+		"GET /api/tags":                      fake.JSON(http.StatusOK, tags),
+		"GET /api/users/me/profiles/general": fake.JSON(http.StatusOK, starProfile("10-9")),
+		"POST " + issuesPath:                 write,
 	})
 }
 
@@ -54,7 +57,7 @@ func TestCreateIssueHangsTheTagsInTheWriteThatFilesIt(t *testing.T) {
 			_, err := issueCreate(t, server, issueTags(tc.tags...), "idReadable")
 
 			require.NoError(t, err)
-			assert.Equal(t, []string{projectPath, "/api/tags", issuesPath}, server.Paths())
+			assert.Equal(t, []string{projectPath, "/api/tags", profilePath, issuesPath}, server.Paths())
 			assert.JSONEq(t, `{"project":{"id":"0-1"},"summary":"First","tags":`+tc.body+`}`, server.Last(t).Body)
 		})
 	}
@@ -67,7 +70,7 @@ func TestCreateIssueReadsEveryTagOnceAndAsksForTheTagsItChecks(t *testing.T) {
 	_, err := issueCreate(t, server, issueTags(youtrack.TagRef{Name: "Early"}, youtrack.TagRef{Name: "10-1"}), "idReadable")
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{projectPath, "/api/tags", issuesPath}, server.Paths())
+	assert.Equal(t, []string{projectPath, "/api/tags", profilePath, issuesPath}, server.Paths())
 	assert.Equal(t, tagCatalogueTarget, server.Targets(t)[1])
 	assert.Equal(t, "idReadable,summary,tags(id,name)", server.Last(t).URL.Query().Get("fields"))
 }

@@ -466,6 +466,7 @@ func catalogue() map[string]schema {
 			"dateFieldFormat": "DateFormatDescriptor",
 			"id":              "",
 			"locale":          "LocaleDescriptor",
+			"star":            "Tag",
 			"timezone":        "TimeZoneDescriptor",
 		}},
 		"GitHubChangesProcessor": {parent: "VcsHostingChangesProcessor", properties: map[string]string{

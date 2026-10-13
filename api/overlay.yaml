@@ -81,6 +81,15 @@ actions:
   - target: $.paths['/users/{id}'].get
     update:
       operationId: GetUser
+  - target: $.paths['/users/{id}/profiles/general'].get
+    update:
+      operationId: GetGeneralUserProfile
+  # Spec omits star: the server answers it with the tag that is the star of the user (YouTrack 2026.1.13757).
+  - target: $.components.schemas.GeneralUserProfile.properties
+    update:
+      star:
+        $ref: '#/components/schemas/Tag'
+        readOnly: true
   - target: $.paths['/users'].get.parameters
     update:
       - name: query

@@ -17,12 +17,14 @@ type FieldWrite struct {
 }
 
 // IssueInput: Tags hang on the issue in the same write that files it; a name of no tag the token is shown
-// fails the call before anything is written.
+// fails the call before anything is written. A nil Star leaves the star to the profile of the user, which may star
+// every issue the user files; a false Star takes such a star off by a second write.
 type IssueInput struct {
 	Summary     string
 	Description string
 	Fields      []FieldWrite
 	Tags        []TagRef
+	Star        *bool
 }
 
 // IssueUpdate: a nil part is left as the issue holds it. YouTrack keeps an empty description as none, so an empty
@@ -32,6 +34,7 @@ type IssueUpdate struct {
 	Description      *string
 	ClearDescription bool
 	Fields           []FieldWrite
+	Star             *bool
 }
 
 // Create checks the call against the metadata of the project before the write: the names and the values of the
@@ -112,6 +115,7 @@ const (
 	descriptionBothWays = "the call both writes the description of the issue and empties it"
 	clearOnCreate       = "the call empties the custom field %s of an issue it files: a field a new issue is given " +
 		"no value for is filed as the project fills it"
+	tagNamedTwiceLiterally = "the tag %s is named twice: name it once"
 )
 
 func createIssue(ctx context.Context, c *Client, code string, parts issueInput, requested []requestedField) (*Node, *Error) {
@@ -132,14 +136,24 @@ func createIssue(ctx context.Context, c *Client, code string, parts issueInput, 
 	if filed.tags, fault = c.resolveTagsToHang(ctx, parts.tags); fault != nil {
 		return nil, fault
 	}
+	if fault := c.rejectStar(ctx, filed.tags); fault != nil {
+		return nil, fault
+	}
+	filed.creating = true
 	asked, _, fault := c.issueRequest(ctx, requested, filed.verifyFields()...)
 	if fault != nil {
 		return nil, fault
 	}
 	body := filed.createBody()
+	output := writeResultNode(requested)
 	node, fault := writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssue(ctx, body, fields)
-	}, filed.verify, writeResultNode(requested))
+	}, filed.verify, func(a decodedResponse) (*Node, *Error) {
+		if starred, _ := hasStar(a.objects[0]); filed.text.star == nil || *filed.text.star || !starred {
+			return output(a)
+		}
+		return c.unstarCreated(ctx, a, asked, output)
+	})
 	return node, withHungTags(fault, filed.tags)
 }
 
@@ -175,6 +189,7 @@ type issueInput struct {
 	clearsDescription bool
 	cleared           []string
 	tags              []TagRef
+	star              *bool
 }
 
 func (in IssueInput) parse() (issueInput, *Error) {
@@ -189,16 +204,21 @@ func (in IssueInput) parse() (issueInput, *Error) {
 	if len(cleared) > 0 {
 		return issueInput{}, &Error{Code: CodeBadUsage, Message: fmt.Sprintf(clearOnCreate, quote(cleared[0]))}
 	}
-	for _, tag := range in.Tags {
+	for at, tag := range in.Tags {
 		if fault := rejectNoTagName(tag.Name); fault != nil {
 			return issueInput{}, fault
 		}
+		if slices.ContainsFunc(in.Tags[:at], func(named TagRef) bool {
+			return named.Name == tag.Name && strings.EqualFold(named.OwnedBy, tag.OwnedBy)
+		}) {
+			return issueInput{}, &Error{Code: CodeBadUsage, Message: fmt.Sprintf(tagNamedTwiceLiterally, quote(tag.Name))}
+		}
 	}
-	return issueInput{summary: &in.Summary, description: description, named: named, tags: in.Tags}, nil
+	return issueInput{summary: &in.Summary, description: description, named: named, tags: in.Tags, star: in.Star}, nil
 }
 
 func (in IssueUpdate) parse() (issueInput, *Error) {
-	if in.Summary == nil && in.Description == nil && !in.ClearDescription && len(in.Fields) == 0 {
+	if in.Summary == nil && in.Description == nil && !in.ClearDescription && len(in.Fields) == 0 && in.Star == nil {
 		return issueInput{}, &Error{Code: CodeBadUsage, Message: nothingToWrite}
 	}
 	if in.ClearDescription && in.Description != nil {
@@ -212,7 +232,7 @@ func (in IssueUpdate) parse() (issueInput, *Error) {
 		return issueInput{}, fault
 	}
 	return issueInput{summary: in.Summary, description: in.Description, named: named,
-		clearsDescription: in.ClearDescription, cleared: cleared}, nil
+		clearsDescription: in.ClearDescription, cleared: cleared, star: in.Star}, nil
 }
 
 type namedValue struct {
@@ -286,12 +306,14 @@ type createIssueBody struct {
 	Description  *string           `json:"description,omitempty"`
 	CustomFields []customFieldBody `json:"customFields,omitempty"`
 	Tags         []idBody          `json:"tags,omitempty"`
+	Watchers     *watchersBody     `json:"watchers,omitempty"`
 }
 
 type updateIssueBody struct {
 	Summary      *string           `json:"summary,omitempty"`
 	Description  json.RawMessage   `json:"description,omitempty"`
 	CustomFields []customFieldBody `json:"customFields,omitempty"`
+	Watchers     *watchersBody     `json:"watchers,omitempty"`
 }
 
 type customFieldBody struct {
@@ -301,10 +323,11 @@ type customFieldBody struct {
 }
 
 type issueWrite struct {
-	text    issueInput
-	fields  []resolvedField
-	tags    []hungTag
-	project projectMetadata
+	text     issueInput
+	fields   []resolvedField
+	tags     []hungTag
+	project  projectMetadata
+	creating bool
 }
 
 type resolvedField struct {
@@ -323,6 +346,7 @@ func (w issueWrite) createBody() []byte {
 		Description:  w.text.description,
 		CustomFields: w.bodies(),
 		Tags:         w.tagBodies(),
+		Watchers:     starBody(w.text.star),
 	})
 	return body
 }
@@ -332,6 +356,7 @@ func (w issueWrite) updateBody() []byte {
 		Summary:      w.text.summary,
 		Description:  optionalJSON(w.text.clearsDescription, w.text.description),
 		CustomFields: w.bodies(),
+		Watchers:     starBody(w.text.star),
 	})
 	return body
 }
@@ -369,6 +394,9 @@ func (w issueWrite) verifyFields() []requestedField {
 	if len(w.tags) > 0 {
 		own = append(own, requestedField{name: tagsKey, children: []requestedField{{name: idKey}, {name: nameKey}}})
 	}
+	if w.text.star != nil {
+		own = append(own, starFieldsToVerify())
+	}
 	return own
 }
 
@@ -389,6 +417,7 @@ func (w issueWrite) verify(a decodedResponse) *Error {
 		return fault
 	}
 	wrong = w.verifyTags(issue[tagsKey], wrong)
+	wrong = w.verifyStar(issue, wrong)
 	return mismatchFault(a, wrong, Pair{Key: issueKey, Value: responseID(a, idReadableKey)})
 }
 

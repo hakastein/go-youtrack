@@ -613,6 +613,7 @@ type GeneralUserProfile struct {
 
 	// Locale Represents a language locale that is used in UI.
 	Locale *LocaleDescriptor `json:"locale,omitempty"`
+	Star   *Tag              `json:"star,omitempty"`
 
 	// Timezone Represents a time zone.
 	Timezone *TimeZoneDescriptor `json:"timezone,omitempty"`
@@ -2760,8 +2761,8 @@ type GetUserParams struct {
 	Fields *string `form:"fields,omitempty" json:"fields,omitempty"`
 }
 
-// GetUsersIdProfilesGeneralParams defines parameters for GetUsersIdProfilesGeneral.
-type GetUsersIdProfilesGeneralParams struct {
+// GetGeneralUserProfileParams defines parameters for GetGeneralUserProfile.
+type GetGeneralUserProfileParams struct {
 	Fields *string `form:"fields,omitempty" json:"fields,omitempty"`
 }
 
@@ -4320,8 +4321,8 @@ type ClientInterface interface {
 	// GetUser performs a GET /users/{id} (the `GetUser` operationId) request.
 	GetUser(ctx context.Context, id string, params *GetUserParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetUsersIdProfilesGeneral performs a GET /users/{id}/profiles/general (the `GetUsersIdProfilesGeneral` operationId) request.
-	GetUsersIdProfilesGeneral(ctx context.Context, id string, params *GetUsersIdProfilesGeneralParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetGeneralUserProfile performs a GET /users/{id}/profiles/general (the `GetGeneralUserProfile` operationId) request.
+	GetGeneralUserProfile(ctx context.Context, id string, params *GetGeneralUserProfileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostUsersIdProfilesGeneralWithBody performs a POST /users/{id}/profiles/general (the `PostUsersIdProfilesGeneral` operationId) request,
 	// with any type of body and a specified content type.
@@ -8734,9 +8735,9 @@ func (c *Client) GetUser(ctx context.Context, id string, params *GetUserParams, 
 	return c.Client.Do(req)
 }
 
-// GetUsersIdProfilesGeneral performs a GET /users/{id}/profiles/general (the `GetUsersIdProfilesGeneral` operationId) request.
-func (c *Client) GetUsersIdProfilesGeneral(ctx context.Context, id string, params *GetUsersIdProfilesGeneralParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetUsersIdProfilesGeneralRequest(c.Server, id, params)
+// GetGeneralUserProfile performs a GET /users/{id}/profiles/general (the `GetGeneralUserProfile` operationId) request.
+func (c *Client) GetGeneralUserProfile(ctx context.Context, id string, params *GetGeneralUserProfileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetGeneralUserProfileRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -25671,8 +25672,8 @@ func NewGetUserRequest(server string, id string, params *GetUserParams) (*http.R
 	return req, nil
 }
 
-// NewGetUsersIdProfilesGeneralRequest constructs an http.Request for the GetUsersIdProfilesGeneral method
-func NewGetUsersIdProfilesGeneralRequest(server string, id string, params *GetUsersIdProfilesGeneralParams) (*http.Request, error) {
+// NewGetGeneralUserProfileRequest constructs an http.Request for the GetGeneralUserProfile method
+func NewGetGeneralUserProfileRequest(server string, id string, params *GetGeneralUserProfileParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
