@@ -45,8 +45,6 @@ func TestCreateIssueHangsTheTagsInTheWriteThatFilesIt(t *testing.T) {
 			body: `[{"id":"10-3"}]`},
 		{name: "two tags", tags: []youtrack.TagRef{{Name: "Early"}, {Name: "Mixed", OwnedBy: "FIRST"}},
 			body: `[{"id":"10-1"},{"id":"10-4"}]`},
-		{name: "one tag named twice", tags: []youtrack.TagRef{{Name: "Early"}, {Name: "early", OwnedBy: "first"}},
-			body: `[{"id":"10-1"}]`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -125,6 +123,50 @@ func TestCreateIssueRefusesTagNamesItCannotResolve(t *testing.T) {
 				Details: append([]youtrack.Pair{requestTo(http.MethodGet, server, tagCatalogueTarget)}, tc.details...)}
 			assert.Equal(t, want, errorOf(t, err))
 			assert.Equal(t, []string{projectPath, "/api/tags"}, server.Paths())
+		})
+	}
+}
+
+func TestCreateIssueRefusesOneTagNamedTwice(t *testing.T) {
+	t.Parallel()
+	server := issueTagging(t, tagsShown(), fake.Unexpected(t))
+
+	_, err := issueCreate(t, server, issueTags(youtrack.TagRef{Name: "Early"}, youtrack.TagRef{Name: "early",
+		OwnedBy: "first"}), "idReadable")
+
+	assert.Equal(t, youtrack.CodeBadUsage, errorOf(t, err).Code)
+	assert.Equal(t, []string{projectPath, "/api/tags"}, server.Paths())
+}
+
+func TestCreateIssueNamesTheTagsItSentWhenTheServerRefusesTheWrite(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		status int
+		code   youtrack.Code
+	}{
+		{name: "403", status: http.StatusForbidden, code: youtrack.CodeDenied},
+		{name: "400", status: http.StatusBadRequest, code: youtrack.CodeRejected},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			server := issueTagging(t, tagsShown(), fake.JSON(tc.status, `{"error":"refused"}`))
+
+			_, err := issueCreate(t, server, issueTags(youtrack.TagRef{Name: "Early"}, youtrack.TagRef{Name: "Mixed",
+				OwnedBy: "second"}), "idReadable")
+
+			got := errorOf(t, err)
+			assert.Equal(t, tc.code, got.Code)
+			assert.False(t, err.(*youtrack.Error).MayHaveWritten())
+			sent := youtrack.NewList(
+				youtrack.NewMap(youtrack.Pair{Key: "name", Value: youtrack.NewString("Early")},
+					youtrack.Pair{Key: "owner", Value: youtrack.NewString("first")},
+					youtrack.Pair{Key: "id", Value: youtrack.NewString("10-1")}),
+				youtrack.NewMap(youtrack.Pair{Key: "name", Value: youtrack.NewString("Mixed")},
+					youtrack.Pair{Key: "owner", Value: youtrack.NewString("second")},
+					youtrack.Pair{Key: "id", Value: youtrack.NewString("10-3")}))
+			assert.Contains(t, got.Details, youtrack.Pair{Key: "tags", Value: sent})
 		})
 	}
 }

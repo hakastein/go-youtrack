@@ -137,9 +137,10 @@ func createIssue(ctx context.Context, c *Client, code string, parts issueInput, 
 		return nil, fault
 	}
 	body := filed.createBody()
-	return writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
+	node, fault := writeAs(ctx, c, issueSchema, asked, func(ctx context.Context, fields string) (*http.Response, error) {
 		return c.apiCreateIssue(ctx, body, fields)
 	}, filed.verify, writeResultNode(requested))
+	return node, withHungTags(fault, filed.tags)
 }
 
 func updateIssue[T any](ctx context.Context, c *Client, id string, parts issueInput,

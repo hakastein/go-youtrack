@@ -466,8 +466,23 @@ func printedTagFields() []requestedField {
 }
 
 type hungTag struct {
-	id   string
-	name string
+	id    string
+	name  string
+	owner string
+}
+
+// A refusal of the server does not say which tag it refused, so it carries every tag the write sent.
+func withHungTags(fault *Error, tags []hungTag) *Error {
+	if fault == nil || len(tags) == 0 || (fault.Code != CodeDenied && fault.Code != CodeRejected) {
+		return fault
+	}
+	sent := make([]*Node, 0, len(tags))
+	for _, tag := range tags {
+		sent = append(sent, NewMap(Pair{Key: nameKey, Value: NewString(tag.name)},
+			Pair{Key: "owner", Value: NewString(tag.owner)}, Pair{Key: idKey, Value: NewString(tag.id)}))
+	}
+	fault.Details = append(fault.Details, Pair{Key: "tags", Value: NewList(sent...)})
+	return fault
 }
 
 func (c *Client) resolveTagsToHang(ctx context.Context, sought []TagRef) ([]hungTag, *Error) {
@@ -483,18 +498,21 @@ func (c *Client) resolveTagsToHang(ctx context.Context, sought []TagRef) ([]hung
 		return nil, fault
 	}
 	tags := make([]hungTag, 0, len(found))
-	for _, tag := range found {
+	for at, tag := range found {
 		id, fault := tag.pathSafeID()
 		if fault != nil {
 			return nil, fault
 		}
-		if slices.ContainsFunc(tags, func(hung hungTag) bool { return hung.id == id.id }) {
-			continue
+		if first := slices.IndexFunc(tags, func(hung hungTag) bool { return hung.id == id.id }); first >= 0 {
+			return nil, &Error{Code: CodeBadUsage, Message: fmt.Sprintf(tagNamedTwice, quote(found[first].name),
+				quote(found[at].name), quote(tag.shown.name), quote(tag.shown.owner))}
 		}
-		tags = append(tags, hungTag{id: id.id, name: tag.shown.name})
+		tags = append(tags, hungTag{id: id.id, name: tag.shown.name, owner: tag.shown.owner})
 	}
 	return tags, nil
 }
+
+const tagNamedTwice = "the tags %s and %s are one tag, %s of %s: name it once"
 
 type resolvedTag struct {
 	response decodedResponse
